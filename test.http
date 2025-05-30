@@ -1,0 +1,1 @@
+GET http://localhost:8005/generate_charts_agent?instructions=Gere+um+gr%C3%A1fico+de+exemplo HTTP/1.1

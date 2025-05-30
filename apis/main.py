@@ -19,7 +19,7 @@ app = FastAPI()
 
 # Agents clients
 database_query_agent_client = CustomGoogleAgentClient(**constants.api.AGENTS_MAPPINGS["database_query_agent"])
-database_query_agent_client.warm_up()
+generate_charts_agent_client = CustomGoogleAgentClient(**constants.api.AGENTS_MAPPINGS["generate_charts_agent"])
 
 
 # Endpoints
@@ -33,6 +33,15 @@ async def download_file(file_name: str):
 def database_query_agent_endpoint(instructions: str) -> dict:
     start_time = time.perf_counter()
     response = database_query_agent_client.call(instructions)
+    result = response.json()
+    print(f"Time taken: {time.perf_counter() - start_time} seconds")
+    return JSONResponse(result)
+
+
+@app.get("/generate_charts_agent")
+def generate_charts_agent_endpoint(instructions: str) -> dict:
+    start_time = time.perf_counter()
+    response = generate_charts_agent_client.call(instructions)
     result = response.json()
     print(f"Time taken: {time.perf_counter() - start_time} seconds")
     return JSONResponse(result)

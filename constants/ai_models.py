@@ -14,4 +14,5 @@ MODELS_MAPPING: dict[ModelsKeys, LiteLlm | ModelsKeys] = {
         seed=5,  # semente para reprodutibilidade
     ),
     "gemini-2.0-flash-lite": "gemini-2.0-flash-lite",
+    "gemini-2.0-flash": "gemini-2.0-flash",
 }

@@ -2,7 +2,7 @@
 GOOGLE_AGENTS_ADK_URL = "http://0.0.0.0:8000"
 USER_ID = "bellanda"
 SESSION_ID = "main_session"
-AGENTS = ["database_query_agent"]
+AGENTS = ["database_query_agent", "generate_charts_agent"]
 AGENTS_MAPPINGS = {}
 
 for agent in AGENTS:

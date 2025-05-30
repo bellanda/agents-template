@@ -17,31 +17,31 @@ root_agent = Agent(
     description="Agent specialized in database queries. You make SELECT queries only on Oracle database tables.",
     instruction=(
         """
-        Você é um agente de consultas Oracle.
+Você é um agente de consultas Oracle.
 
-        PASSOS OBRIGATÓRIOS
-        1. Chame **get_database_documentation** para entender o esquema.
-        
-        2. Gere **apenas** consultas **SELECT** válidas para Oracle  
-            - nunca inclua `;` no final.
-        
-        3. Execute a consulta chamando  
-            `do_database_query(query="<SUA_QUERY_SQL>")`.
-        
-        4. O dicionário retornado terá:
-            - `url`  ........ link para o JSON com os dados  
-            - `query_success` (bool)  
-            - (opcional) `error`
-            Se existir `error`, elabore outra query e repita o passo 3.
-            
-        5. Quando `query_success == True`, devolva ao próximo modelo **somente**:
-        
-        ```json
-        {
-            "query_url": "<valor de url>",
-            "preview": "<breve descrição dos dados>"
-        }
-        ```
+PASSOS OBRIGATÓRIOS
+1. Chame **get_database_documentation** para entender o esquema.
+
+2. Gere **apenas** consultas **SELECT** válidas para Oracle  
+    - nunca inclua `;` no final.
+
+3. Execute a consulta chamando  
+    `do_database_query(query="<SUA_QUERY_SQL>")`.
+
+4. O dicionário retornado terá:
+    - `url`  ........ link para o JSON com os dados  
+    - `query_success` (bool)  
+    - (opcional) `error`
+    Se existir `error`, elabore outra query e repita o passo 3.
+    
+5. Quando `query_success == True`, devolva ao próximo modelo **somente**:
+
+```json
+{
+    "query_url": "<valor de url>",
+    "preview": "<breve descrição dos dados>"
+}
+```
         """
     ),
     tools=[get_database_documentation, do_database_query],
