@@ -7,8 +7,8 @@ from smbclient import register_session
 dotenv.load_dotenv()
 
 # Configurações do servidor SMB
-server = "fscatorg01"
-share = "FileServer"
+server = os.getenv("SMB_SERVER")
+share = os.getenv("SMB_SHARE")
 username = os.getenv("SMB_USERNAME")
 password = os.getenv("SMB_PASSWORD")
 
