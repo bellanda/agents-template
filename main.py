@@ -1,4 +1,8 @@
+import importlib
 import json
+import time
+import uuid
+from pathlib import Path
 from typing import Any, Dict
 
 import uvicorn
@@ -10,9 +14,7 @@ from google.adk.sessions import InMemorySessionService
 from google.genai import types
 from pydantic import BaseModel
 
-from google_agents.weather_agent.agent import root_agent as weather_agent
-
-app = FastAPI(title="Weather Agent LiteLLM Proxy", version="1.0.0")
+app = FastAPI(title="Google Agents LiteLLM Proxy", version="1.0.0")
 
 # Add CORS middleware for LibreChat compatibility
 app.add_middleware(
@@ -23,9 +25,58 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Set up session service and runner
+# Global storage for agents and runners
+agents_registry = {}
+runners_registry = {}
 session_service = InMemorySessionService()
-runner = Runner(agent=weather_agent, app_name="weather_app", session_service=session_service)
+
+
+def discover_agents() -> Dict[str, Any]:
+    """Automatically discover all agents in the google_agents directory."""
+    agents = {}
+    google_agents_path = Path("google_agents")
+
+    if not google_agents_path.exists():
+        print("Warning: google_agents directory not found")
+        return agents
+
+    for agent_dir in google_agents_path.iterdir():
+        if agent_dir.is_dir() and not agent_dir.name.startswith("_"):
+            agent_file = agent_dir / "agent.py"
+            if agent_file.exists():
+                try:
+                    # Import the agent module
+                    module_path = f"google_agents.{agent_dir.name}.agent"
+                    agent_module = importlib.import_module(module_path)
+
+                    # Get the root_agent
+                    if hasattr(agent_module, "root_agent"):
+                        agent = agent_module.root_agent
+                        model_id = f"{agent_dir.name}".replace("_", "-")
+
+                        # Create runner for this agent
+                        runner = Runner(agent=agent, app_name=f"{agent_dir.name}_app", session_service=session_service)
+
+                        agents[model_id] = {
+                            "agent": agent,
+                            "runner": runner,
+                            "name": agent.name,
+                            "description": agent.description,
+                            "agent_dir": agent_dir.name,
+                        }
+
+                        print(f"✓ Discovered agent: {model_id} ({agent.name})")
+                    else:
+                        print(f"Warning: No 'root_agent' found in {module_path}")
+
+                except Exception as e:
+                    print(f"Error loading agent from {agent_dir.name}: {str(e)}")
+
+    return agents
+
+
+# Discover all agents on startup
+agents_registry = discover_agents()
 
 
 # Request/Response models for the API
@@ -33,6 +84,7 @@ class ChatRequest(BaseModel):
     message: str
     user_id: str = "default_user"
     session_id: str = "default_session"
+    model: str = "weather-agent"  # Default model
 
 
 class ChatResponse(BaseModel):
@@ -40,14 +92,26 @@ class ChatResponse(BaseModel):
     status: str = "success"
 
 
+def get_agent_info(model_id: str) -> Dict[str, Any]:
+    """Get agent information by model ID."""
+    if model_id not in agents_registry:
+        available_models = list(agents_registry.keys())
+        raise HTTPException(status_code=404, detail=f"Model '{model_id}' not found. Available models: {available_models}")
+    return agents_registry[model_id]
+
+
 # Helper function for agent interaction
-async def call_agent_async(query: str, user_id: str, session_id: str) -> str:
-    """Sends a query to the agent and returns the final response."""
-    print(f">>> User Query: {query}")
+async def call_agent_async(query: str, user_id: str, session_id: str, model_id: str) -> str:
+    """Sends a query to the specified agent and returns the final response."""
+    print(f">>> User Query: {query} (Model: {model_id})")
+
+    agent_info = get_agent_info(model_id)
+    runner = agent_info["runner"]
+    app_name = f"{agent_info['agent_dir']}_app"
 
     # Create session if needed
     try:
-        session_service.create_session(app_name="weather_app", user_id=user_id, session_id=session_id)
+        session_service.create_session(app_name=app_name, user_id=user_id, session_id=session_id)
     except Exception:
         pass  # Session might already exist
 
@@ -67,7 +131,7 @@ async def call_agent_async(query: str, user_id: str, session_id: str) -> str:
             # Try with simplified session ID
             simple_session_id = f"session_{abs(hash(session_id)) % 10000}"
             try:
-                session_service.create_session(app_name="weather_app", user_id=user_id, session_id=simple_session_id)
+                session_service.create_session(app_name=app_name, user_id=user_id, session_id=simple_session_id)
                 async for event in runner.run_async(user_id=user_id, session_id=simple_session_id, new_message=content):
                     if event.is_final_response():
                         if event.content and event.content.parts:
@@ -84,19 +148,26 @@ async def call_agent_async(query: str, user_id: str, session_id: str) -> str:
 
 @app.get("/")
 async def root():
-    return {"message": "Weather Agent LiteLLM Proxy is running"}
+    available_models = list(agents_registry.keys())
+    return {
+        "message": "Google Agents LiteLLM Proxy is running",
+        "available_models": available_models,
+        "total_agents": len(available_models),
+    }
 
 
 @app.get("/health")
 async def health_check():
-    return {"status": "healthy", "agent": "weather_agent_litellm"}
+    return {"status": "healthy", "proxy": "google_agents_litellm", "agents_loaded": len(agents_registry)}
 
 
 @app.post("/chat", response_model=ChatResponse)
 async def chat_with_agent(request: ChatRequest):
     """Chat endpoint for LibreChat integration."""
     try:
-        response = await call_agent_async(query=request.message, user_id=request.user_id, session_id=request.session_id)
+        response = await call_agent_async(
+            query=request.message, user_id=request.user_id, session_id=request.session_id, model_id=request.model
+        )
         return ChatResponse(response=response)
     except Exception as e:
         print(f"Error: {str(e)}")
@@ -107,9 +178,6 @@ async def chat_with_agent(request: ChatRequest):
 @app.post("/v1/chat/completions")
 async def openai_compatible_chat(request: Dict[Any, Any]):
     """OpenAI-compatible endpoint for LibreChat integration."""
-    import time
-    import uuid
-
     try:
         # Extract the last message from the OpenAI format
         messages = request.get("messages", [])
@@ -123,8 +191,16 @@ async def openai_compatible_chat(request: Dict[Any, Any]):
             user_query = "Please generate a concise, 5-word-or-less title for the conversation /no_think"
 
         # Get the requested model and stream setting
-        requested_model = request.get("model", "weather-agent-qwen3-4b")
+        requested_model = request.get("model", list(agents_registry.keys())[0] if agents_registry else "")
+        if not requested_model:
+            raise HTTPException(status_code=400, detail="No model specified and no agents available")
+
         stream = request.get("stream", False)
+
+        # Get agent info
+        agent_info = get_agent_info(requested_model)
+        runner = agent_info["runner"]
+        app_name = f"{agent_info['agent_dir']}_app"
 
         # Use a default user/session for this endpoint
         user_id = "librechat_user"
@@ -139,7 +215,7 @@ async def openai_compatible_chat(request: Dict[Any, Any]):
             async def generate_stream():
                 # Setup session
                 try:
-                    session_service.create_session(app_name="weather_app", user_id=user_id, session_id=session_id)
+                    session_service.create_session(app_name=app_name, user_id=user_id, session_id=session_id)
                 except Exception:
                     pass  # Session might already exist
 
@@ -210,9 +286,7 @@ async def openai_compatible_chat(request: Dict[Any, Any]):
                     if "Session not found" in str(runner_error):
                         try:
                             simple_session_id = f"session_{abs(hash(session_id)) % 10000}"
-                            session_service.create_session(
-                                app_name="weather_app", user_id=user_id, session_id=simple_session_id
-                            )
+                            session_service.create_session(app_name=app_name, user_id=user_id, session_id=simple_session_id)
 
                             async for event in runner.run_async(
                                 user_id=user_id, session_id=simple_session_id, new_message=content
@@ -278,7 +352,9 @@ async def openai_compatible_chat(request: Dict[Any, Any]):
             )
         else:
             # Non-streaming: use the original logic
-            agent_response = await call_agent_async(query=user_query, user_id=user_id, session_id=session_id)
+            agent_response = await call_agent_async(
+                query=user_query, user_id=user_id, session_id=session_id, model_id=requested_model
+            )
 
             # Check if this is a LibreChat title generation request and clean response
             is_librechat_title = "Please generate a concise, 5-word-or-less title for the conversation" in user_query
@@ -335,28 +411,48 @@ async def openai_compatible_chat(request: Dict[Any, Any]):
         raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
 
 
-# Add models endpoint for LibreChat to discover available models
+# Automatically list all discovered models
 @app.get("/v1/models")
 async def list_models():
-    """List available models for LibreChat integration."""
-    import time
-
+    """List all available models/agents for LibreChat integration."""
     current_timestamp = int(time.time())
 
-    return {
-        "object": "list",
-        "data": [
+    models_data = []
+    for model_id, agent_info in agents_registry.items():
+        models_data.append(
             {
-                "id": "weather-agent-qwen3-4b",
+                "id": model_id,
                 "object": "model",
                 "created": current_timestamp,
                 "owned_by": "google-adk",
                 "permission": [],
-                "root": "weather-agent-qwen3-4b",
+                "root": model_id,
                 "parent": None,
-            },
-        ],
+                "description": agent_info.get("description", ""),
+                "agent_name": agent_info.get("name", ""),
+            }
+        )
+
+    return {
+        "object": "list",
+        "data": models_data,
     }
+
+
+# Endpoint to reload agents (useful for development)
+@app.post("/admin/reload-agents")
+async def reload_agents():
+    """Reload all agents from the google_agents directory."""
+    global agents_registry
+    try:
+        agents_registry = discover_agents()
+        return {
+            "status": "success",
+            "message": f"Reloaded {len(agents_registry)} agents",
+            "agents": list(agents_registry.keys()),
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Failed to reload agents: {str(e)}")
 
 
 if __name__ == "__main__":
