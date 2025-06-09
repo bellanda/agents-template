@@ -4,12 +4,8 @@ import dotenv
 
 dotenv.load_dotenv()
 
-KEYS = {
-    "GOOGLE_API_KEY": os.getenv("GOOGLE_API_KEY"),
-    "OPENAI_API_KEY": os.getenv("OPENAI_API_KEY"),
-    "ANTHROPIC_API_KEY": os.getenv("ANTHROPIC_API_KEY"),
-}
-
-for key, value in KEYS.items():
-    if value is None:
-        raise ValueError(f"Environment variable {key} is not set")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+NVIDIA_API_KEY = os.getenv("NVIDIA_API_KEY")
+GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+ANTHROPIC_API_KEY = os.getenv("ANTHROPIC_API_KEY")
+GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY")

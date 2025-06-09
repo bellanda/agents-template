@@ -31,4 +31,11 @@ dependencies = [
     "pandas>=2.2.3",
     "pydantic>=2.11.3",
     "fastapi[standard]>=0.115.12",
+    "langchain-nvidia-ai-endpoints>=0.3.10",
+    "langchain>=0.3.25",
+    "duckpy>=2.1.1",
+    "groq>=0.26.0",
+    "langchain-groq>=0.3.2",
+    "langgraph>=0.4.8",
+    "langchain-openai>=0.3.21",
 ]
