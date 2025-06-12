@@ -47,7 +47,7 @@ async def execute_google_agent(
 
 
 async def execute_langchain_agent(agent_info: Dict, query: str, user_id: str, session_id: str) -> str:
-    """Execute LangChain agent and return response."""
+    """Execute LangChain agent and return response with robust error handling."""
     agent = agent_info["agent"]
 
     try:
@@ -57,10 +57,56 @@ async def execute_langchain_agent(agent_info: Dict, query: str, user_id: str, se
         if "CompiledStateGraph" in str(type(agent)):
             print("🚀 Using LangGraph interface")
             config = {"configurable": {"thread_id": f"thread_{user_id}_{session_id}"}}
-            if hasattr(agent, "ainvoke"):
-                response = await agent.ainvoke({"messages": [("user", query)]}, config=config)
-            else:
-                response = agent.invoke({"messages": [("user", query)]}, config=config)
+
+            try:
+                if hasattr(agent, "ainvoke"):
+                    response = await agent.ainvoke({"messages": [("user", query)]}, config=config)
+                else:
+                    response = agent.invoke({"messages": [("user", query)]}, config=config)
+            except Exception as e:
+                error_msg = str(e)
+                print(f"❌ LangGraph execution error: {error_msg}")
+
+                # Check if it's the tool call history error
+                if "tool_calls that do not have a corresponding ToolMessage" in error_msg:
+                    print("🔄 Detected tool call history error, retrying with fresh session...")
+
+                    # Try with a fresh session (new thread_id)
+                    import time
+
+                    fresh_config = {"configurable": {"thread_id": f"fresh_{user_id}_{session_id}_{int(time.time())}"}}
+
+                    try:
+                        if hasattr(agent, "ainvoke"):
+                            response = await agent.ainvoke({"messages": [("user", query)]}, config=fresh_config)
+                        else:
+                            response = agent.invoke({"messages": [("user", query)]}, config=fresh_config)
+                        print("✅ Successfully recovered from tool call history error")
+                    except Exception as retry_error:
+                        print(f"❌ Fresh session retry also failed: {retry_error}")
+                        # Try without config (stateless)
+                        try:
+                            if hasattr(agent, "ainvoke"):
+                                response = await agent.ainvoke({"messages": [("user", query)]})
+                            else:
+                                response = agent.invoke({"messages": [("user", query)]})
+                            print("✅ Successfully executed without session config")
+                        except Exception as stateless_error:
+                            print(f"❌ Stateless execution also failed: {stateless_error}")
+                            return "❌ Desculpe, ocorreu um erro técnico. Tente novamente em alguns instantes."
+                else:
+                    # For other errors, try without config
+                    print("🔄 Retrying without session config...")
+                    try:
+                        if hasattr(agent, "ainvoke"):
+                            response = await agent.ainvoke({"messages": [("user", query)]})
+                        else:
+                            response = agent.invoke({"messages": [("user", query)]})
+                        print("✅ Successfully executed without session config")
+                    except Exception as stateless_error:
+                        print(f"❌ Stateless execution also failed: {stateless_error}")
+                        return f"❌ Desculpe, ocorreu um erro técnico: {str(stateless_error)}"
+
         # Traditional LangChain agents
         elif hasattr(agent, "ainvoke"):
             print("🚀 Using ainvoke method")
@@ -91,7 +137,8 @@ async def execute_langchain_agent(agent_info: Dict, query: str, user_id: str, se
 
     except Exception as e:
         print(f"❌ LangChain execution error: {e}")
-        raise Exception(f"LangChain agent execution failed: {e}")
+        # Always return something, never let it fail completely
+        return f"❌ Desculpe, ocorreu um erro inesperado: {str(e)}"
 
 
 async def call_agent_async(
