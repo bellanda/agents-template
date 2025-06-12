@@ -4,6 +4,13 @@ from typing import Dict
 from google.adk.sessions import InMemorySessionService
 from google.genai import types
 
+from api.utils.tools import (
+    generate_error_message,
+    generate_result_message,
+    generate_status_message,
+    generate_thinking_message,
+)
+
 
 async def stream_google_agent(
     agent_info: Dict,
@@ -25,15 +32,70 @@ async def stream_google_agent(
     runner = agent_info["runner"]
     app_name = f"{agent_info['agent_dir']}_app"
 
+    # Send initial status message
+    initial_status = generate_status_message("processing", "Iniciando processamento da solicitação...")
+    initial_chunk = {
+        "id": completion_id,
+        "object": "chat.completion.chunk",
+        "created": current_timestamp,
+        "model": requested_model,
+        "choices": [
+            {
+                "index": 0,
+                "delta": {"content": f"\n{initial_status}\n"},
+                "logprobs": None,
+                "finish_reason": None,
+            }
+        ],
+    }
+    yield f"data: {json.dumps(initial_chunk)}\n\n"
+
     try:
         session_service.create_session(app_name=app_name, user_id=user_id, session_id=session_id)
         print(f"🌊 [STREAM] ✅ Sessão criada: {session_id}")
+
+        # Send session created status
+        session_status = generate_status_message("completed", "Sessão estabelecida com sucesso")
+        session_chunk = {
+            "id": completion_id,
+            "object": "chat.completion.chunk",
+            "created": current_timestamp,
+            "model": requested_model,
+            "choices": [
+                {
+                    "index": 0,
+                    "delta": {"content": f"\n{session_status}\n"},
+                    "logprobs": None,
+                    "finish_reason": None,
+                }
+            ],
+        }
+        yield f"data: {json.dumps(session_chunk)}\n\n"
+
     except Exception as e:
         print(f"🌊 [STREAM] ⚠️ Sessão já existe ou erro: {e}")
         pass
 
     content = types.Content(role="user", parts=[types.Part(text=query)])
     print("🌊 [STREAM] ✅ Content criado para runner")
+
+    # Send thinking message
+    thinking_msg = generate_thinking_message("Analisando a solicitação e preparando resposta...")
+    thinking_chunk = {
+        "id": completion_id,
+        "object": "chat.completion.chunk",
+        "created": current_timestamp,
+        "model": requested_model,
+        "choices": [
+            {
+                "index": 0,
+                "delta": {"content": f"\n{thinking_msg}\n"},
+                "logprobs": None,
+                "finish_reason": None,
+            }
+        ],
+    }
+    yield f"data: {json.dumps(thinking_chunk)}\n\n"
 
     try:
         print("🌊 [STREAM] 🚀 Iniciando runner.run_async...")
@@ -104,6 +166,24 @@ async def stream_google_agent(
                 print(f"🌊 [STREAM] 🏁 is_final_response: {is_final}")
                 if is_final:
                     print("🌊 [STREAM] 🏁 EVENTO FINAL DETECTADO!")
+
+                    # Send completion status
+                    completion_status = generate_result_message("success", "Resposta gerada com sucesso")
+                    completion_chunk = {
+                        "id": completion_id,
+                        "object": "chat.completion.chunk",
+                        "created": current_timestamp,
+                        "model": requested_model,
+                        "choices": [
+                            {
+                                "index": 0,
+                                "delta": {"content": f"\n{completion_status}\n"},
+                                "logprobs": None,
+                                "finish_reason": None,
+                            }
+                        ],
+                    }
+                    yield f"data: {json.dumps(completion_chunk)}\n\n"
                     break
             else:
                 print("🌊 [STREAM] ⚠️ Evento sem método is_final_response")
@@ -118,7 +198,8 @@ async def stream_google_agent(
         print("❌ [STREAM] Traceback completo:")
         traceback.print_exc()
 
-        # Send error message to client
+        # Send error message using HPEAgents markup
+        error_msg = generate_error_message(f"Erro na geração: {str(e)}")
         error_chunk = {
             "id": completion_id,
             "object": "chat.completion.chunk",
@@ -127,7 +208,7 @@ async def stream_google_agent(
             "choices": [
                 {
                     "index": 0,
-                    "delta": {"content": f"\n❌ Erro na geração: {str(e)}\n"},
+                    "delta": {"content": f"\n{error_msg}\n"},
                     "logprobs": None,
                     "finish_reason": None,
                 }
@@ -137,6 +218,25 @@ async def stream_google_agent(
 
         if "Session not found" in str(e):
             print("🌊 [STREAM] 🔄 Tentando com sessão simplificada...")
+
+            # Send retry status
+            retry_status = generate_status_message("processing", "Tentando reconectar com sessão simplificada...")
+            retry_chunk = {
+                "id": completion_id,
+                "object": "chat.completion.chunk",
+                "created": current_timestamp,
+                "model": requested_model,
+                "choices": [
+                    {
+                        "index": 0,
+                        "delta": {"content": f"\n{retry_status}\n"},
+                        "logprobs": None,
+                        "finish_reason": None,
+                    }
+                ],
+            }
+            yield f"data: {json.dumps(retry_chunk)}\n\n"
+
             # Retry with simplified session
             simple_session_id = f"session_{abs(hash(session_id)) % 10000}"
             session_service.create_session(app_name=app_name, user_id=user_id, session_id=simple_session_id)

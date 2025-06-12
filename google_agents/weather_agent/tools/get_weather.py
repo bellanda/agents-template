@@ -1,26 +1,23 @@
-def get_weather(city: str) -> dict:
-    """Retrieves the current weather report for a specified city.
+from api.utils.tools import generate_error_message, generate_result_message, generate_step_message
 
-    Args:
-        city (str): The name of the city (e.g., "New York", "London", "Tokyo").
 
-    Returns:
-        dict: A dictionary containing the weather information.
-    """
-    print(f"Tool: get_weather called for city: {city}")
+def get_weather(city: str) -> str:
+    """Get current weather information for a city."""
 
-    # Mock weather data
-    mock_weather_db = {
-        "newyork": {"status": "success", "report": "The weather in New York is sunny with a temperature of 25°C."},
-        "london": {"status": "success", "report": "It's cloudy in London with a temperature of 15°C."},
-        "tokyo": {"status": "success", "report": "Tokyo is experiencing light rain and a temperature of 18°C."},
-        "saopaulo": {"status": "success", "report": "São Paulo is partly cloudy with a temperature of 22°C."},
-        "paris": {"status": "success", "report": "Paris is sunny with a temperature of 18°C."},
-    }
+    start_msg = generate_step_message(1, f"Consultando clima para: {city}")
+    print(f"Tool: {start_msg}")
 
-    city_normalized = city.lower().replace(" ", "")
+    try:
+        # Using a free weather API (OpenWeatherMap requires API key)
+        # For demo purposes, returning mock data
+        weather_data = {"city": city, "temperature": "22°C", "condition": "Ensolarado", "humidity": "65%", "wind": "10 km/h"}
 
-    if city_normalized in mock_weather_db:
-        return mock_weather_db[city_normalized]
-    else:
-        return {"status": "error", "error_message": f"Sorry, I don't have weather information for '{city}'."}
+        success_msg = generate_result_message("success", f"Dados meteorológicos obtidos para {city}")
+        print(f"Tool: {success_msg}")
+
+        return f"Clima em {city}: {weather_data['temperature']}, {weather_data['condition']}, Umidade: {weather_data['humidity']}, Vento: {weather_data['wind']}"
+
+    except Exception as e:
+        error_msg = generate_error_message(f"Erro ao consultar clima: {str(e)}")
+        print(f"Tool: {error_msg}")
+        return f"Não foi possível obter informações do clima para {city}. Erro: {str(e)}"

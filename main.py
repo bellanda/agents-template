@@ -10,6 +10,12 @@ from api.agents.executors import call_agent_async
 from api.routes.admin import reload_agents
 from api.routes.chat import ChatRequest, ChatResponse, openai_compatible_chat
 from api.routes.models import list_models
+from api.utils.tools import (
+    generate_result_message,
+    generate_status_message,
+    generate_step_message,
+    generate_thinking_message,
+)
 
 # Initialize FastAPI app
 app = FastAPI(title="Multi-Agent LiteLLM Proxy", version="1.0.0")
@@ -43,18 +49,27 @@ def get_session_service():
 async def startup_event():
     """Initialize agents on startup."""
     global agents_registry
-    print("🚀 Initializing Multi-Agent Proxy...")
+
+    startup_msg = generate_status_message("processing", "Initializing Multi-Agent Proxy...")
+    print(f"🚀 {startup_msg}")
+
     agents_registry = discover_agents(session_service)
-    print(f"✅ Loaded {len(agents_registry)} agents")
+
+    agents_loaded_msg = generate_result_message("success", f"Loaded {len(agents_registry)} agents")
+    print(f"✅ {agents_loaded_msg}")
 
     # Print loaded agents
     for model_id, agent_info in agents_registry.items():
-        print(f"  - {model_id} ({agent_info['type']}): {agent_info['name']}")
+        agent_step_msg = generate_step_message(1, f"{model_id} ({agent_info['type']}): {agent_info['name']}")
+        print(f"  - {agent_step_msg}")
 
 
 @app.get("/")
 async def root(agents_registry: dict = Depends(get_agents_registry)):
     """API status and available models."""
+    thinking_msg = generate_thinking_message("Preparing agent information for display...")
+    print(f"💭 {thinking_msg}")
+
     available_models = list(agents_registry.keys())
     google_agents = [k for k, v in agents_registry.items() if v.get("type") == "google"]
     langchain_agents = [k for k, v in agents_registry.items() if v.get("type") == "langchain"]
@@ -72,6 +87,9 @@ async def root(agents_registry: dict = Depends(get_agents_registry)):
 @app.get("/health")
 async def health_check(agents_registry: dict = Depends(get_agents_registry)):
     """Health check endpoint."""
+    health_msg = generate_status_message("completed", "Health check passed")
+    print(f"💚 {health_msg}")
+
     return {"status": "healthy", "agents_loaded": len(agents_registry)}
 
 
@@ -109,6 +127,9 @@ async def openai_chat_completions(
 @app.get("/v1/models")
 async def list_available_models(agents_registry: dict = Depends(get_agents_registry)):
     """List available models in OpenAI format."""
+    models_msg = generate_result_message("success", f"Listing {len(agents_registry)} available models")
+    print(f"📋 {models_msg}")
+
     return await list_models(agents_registry)
 
 
@@ -118,14 +139,26 @@ async def reload_all_agents(session_service=Depends(get_session_service)):
     """Reload all agents."""
     global agents_registry
     try:
+        reload_msg = generate_status_message("processing", "Reloading all agents...")
+        print(f"🔄 {reload_msg}")
+
         result = await reload_agents(session_service)
         # Update global registry after reload
         agents_registry = discover_agents(session_service)
+
+        reload_success_msg = generate_result_message("success", "All agents reloaded successfully")
+        print(f"✅ {reload_success_msg}")
+
         return result
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Failed to reload agents: {str(e)}")
 
 
 if __name__ == "__main__":
-    print("\n🚀 Starting Multi-Agent Proxy...")
+    startup_thinking = generate_thinking_message("Preparing to start the Multi-Agent Proxy server...")
+    print(f"\n💭 {startup_thinking}")
+
+    server_start_msg = generate_status_message("processing", "Starting Multi-Agent Proxy...")
+    print(f"🚀 {server_start_msg}")
+
     uvicorn.run(app, host="0.0.0.0", port=8000)

@@ -1,37 +1,67 @@
 import re
 import time
 
+import requests
 from bs4 import BeautifulSoup
 
-from utilities.web_search import optimized_requests
+from api.utils.tools import generate_error_message, generate_result_message
+
+
+def scrape_url(url: str) -> str:
+    """Scrape content from a single URL."""
+    start_time = time.time()
+
+    try:
+        headers = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
+        }
+
+        response = requests.get(url, headers=headers, timeout=10)
+        response.raise_for_status()
+
+        soup = BeautifulSoup(response.content, "html.parser")
+
+        # Remove script and style elements
+        for script in soup(["script", "style"]):
+            script.decompose()
+
+        # Get text content
+        text = soup.get_text()
+
+        # Clean up text
+        lines = (line.strip() for line in text.splitlines())
+        chunks = (phrase.strip() for line in lines for phrase in line.split("  "))
+        text = " ".join(chunk for chunk in chunks if chunk)
+
+        end_time = time.time()
+        success_msg = generate_result_message("success", f"Scraped {url} in {end_time - start_time:.2f}s")
+        print(f"🔍 {success_msg}")
+
+        return text
+
+    except Exception as e:
+        end_time = time.time()
+        error_msg = generate_error_message(f"Failed to scrape {url} in {end_time - start_time:.2f}s: {str(e)}")
+        print(f"❌ {error_msg}")
+        return ""
 
 
 def perform_scraping(url: str) -> str:
-    start_time = time.perf_counter()
-
-    response = optimized_requests.get(url)
-
-    # Verifica se a resposta é um erro (string) ou sucesso (Response)
-    if optimized_requests.is_error_response(response):
-        end_time = time.perf_counter()
-        error_msg = optimized_requests.get_error_message(response)
-        print(f"❌ Failed to scrape {url} in {end_time - start_time:.2f}s: {error_msg}")
-        return f"ERRO_SCRAPING: {error_msg}"
+    """Legacy function for backward compatibility."""
+    start_time = time.time()
 
     try:
-        soup = BeautifulSoup(response.text, "html.parser")
-        text = soup.get_text(strip=False)
-
-        end_time = time.perf_counter()
-        print(f"🔍 Scraped {url} in {end_time - start_time:.2f}s")
-
-        # Strip inteligente
-        return smart_strip(text)
+        content = scrape_url(url)
+        if content:
+            return content
+        else:
+            return f"ERRO_SCRAPING: Não foi possível extrair conteúdo de {url}"
 
     except Exception as e:
-        end_time = time.perf_counter()
-        print(f"❌ Error parsing {url} in {end_time - start_time:.2f}s: {str(e)}")
-        return f"ERRO_PARSING: {url} - {str(e)}"
+        end_time = time.time()
+        error_msg = generate_error_message(f"Error parsing {url} in {end_time - start_time:.2f}s: {str(e)}")
+        print(f"❌ {error_msg}")
+        return f"ERRO_EXCEPTION: {str(e)}"
 
 
 def smart_strip(text: str) -> str:

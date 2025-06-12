@@ -1,6 +1,7 @@
 from langchain.tools import tool
 from pydantic import BaseModel, Field
 
+from api.utils.tools import generate_error_message, generate_result_message, generate_status_message, generate_step_message
 from utilities.web_search import search
 
 # Controle global para evitar buscas duplas na mesma sessão
@@ -57,20 +58,28 @@ def web_search(query: str) -> str:
             or cached_query in query_normalized
             or len(set(query_normalized.split()) & set(cached_query.split())) >= 2
         ):
-            print(f"🔄 [TOOL] Usando resultado em cache para query similar: '{cached_query}'")
+            cache_msg = generate_status_message(
+                "completed", f"Usando resultado em cache para query similar: '{cached_query}'"
+            )
+            print(f"🔄 [TOOL] {cache_msg}")
             return cached_result
 
     try:
-        print("🔍 [TOOL] Iniciando busca...")
+        search_msg = generate_step_message(1, "Iniciando busca na web...")
+        print(f"🔍 [TOOL] {search_msg}")
+
         result = search(query)
 
         # Armazenar no cache
         _search_cache[query_normalized] = (current_time, result)
 
-        print(f"✅ [TOOL] Busca concluída! Resultado: {len(result) if result else 0} caracteres")
+        success_msg = generate_result_message(
+            "success", f"Busca concluída! Resultado: {len(result) if result else 0} caracteres"
+        )
+        print(f"✅ [TOOL] {success_msg}")
         print(f"📄 [TOOL] Primeiros 100 chars: {result[:100] if result else 'VAZIO'}...")
         return result
     except Exception as e:
-        error_msg = f"Erro inesperado ao realizar a busca na web: {str(e)}"
-        print(f"❌ [TOOL] ERRO: {error_msg}")
-        return error_msg
+        error_msg = generate_error_message(f"Erro inesperado ao realizar a busca na web: {str(e)}")
+        print(f"❌ [TOOL] {error_msg}")
+        return f"Erro inesperado ao realizar a busca na web: {str(e)}"

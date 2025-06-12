@@ -2,7 +2,12 @@ import json
 from typing import Dict
 
 from api.agents.executors import execute_langchain_agent
-from api.utils.tools import generate_tool_progress_message, should_agent_process_tool_result
+from api.utils.tools import (
+    generate_thinking_message,
+    generate_tool_end_message,
+    generate_tool_start_message,
+    should_agent_process_tool_result,
+)
 
 
 async def stream_langchain_agent(
@@ -37,8 +42,8 @@ async def stream_langchain_agent(
                 # Get tool input for context
                 tool_input = event.get("data", {}).get("input", {})
 
-                # Generate dynamic progress message with markdown formatting
-                progress_msg = generate_tool_progress_message(event_name, "start", tool_input)
+                # Generate HPEAgents markup message
+                progress_msg = generate_tool_start_message(event_name, tool_input)
 
                 progress_chunk = {
                     "id": completion_id,
@@ -48,7 +53,7 @@ async def stream_langchain_agent(
                     "choices": [
                         {
                             "index": 0,
-                            "delta": {"content": f"\n> *{progress_msg}*\n\n"},
+                            "delta": {"content": f"\n{progress_msg}\n"},
                             "logprobs": None,
                             "finish_reason": None,
                         }
@@ -63,13 +68,32 @@ async def stream_langchain_agent(
                 completed_tools.append(tool_name)
                 print(f"🔧 Tool completed: {tool_name}")
 
-                # Don't send completion messages - they're redundant
-                # The next step or final response makes it clear the tool completed
+                # Generate tool end message
+                tool_end_msg = generate_tool_end_message(tool_name, success=True)
+
+                tool_end_chunk = {
+                    "id": completion_id,
+                    "object": "chat.completion.chunk",
+                    "created": current_timestamp,
+                    "model": requested_model,
+                    "choices": [
+                        {
+                            "index": 0,
+                            "delta": {"content": f"\n{tool_end_msg}\n"},
+                            "logprobs": None,
+                            "finish_reason": None,
+                        }
+                    ],
+                }
+                yield f"data: {json.dumps(tool_end_chunk)}\n\n"
 
                 # Check if all tools are completed and send processing message
                 if len(completed_tools) == len(tool_calls_made) and not all_tools_completed:
                     all_tools_completed = True
-                    processing_msg = "🤔 Processando informações e preparando resposta..."
+
+                    # Generate thinking message
+                    thinking_msg = generate_thinking_message("Analisando resultados e preparando resposta...")
+
                     processing_chunk = {
                         "id": completion_id,
                         "object": "chat.completion.chunk",
@@ -78,7 +102,7 @@ async def stream_langchain_agent(
                         "choices": [
                             {
                                 "index": 0,
-                                "delta": {"content": f"\n> *{processing_msg}*\n\n---\n\n"},
+                                "delta": {"content": f"\n{thinking_msg}\n\n---\n\n"},
                                 "logprobs": None,
                                 "finish_reason": None,
                             }
