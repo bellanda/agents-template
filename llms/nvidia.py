@@ -18,6 +18,7 @@ def call_nvidia_llm(
     start_time = time.time()
 
     # Call LLM
+    print("CHEGUEI AQUI")
     completion = client.chat.completions.create(
         model=model,
         messages=[{"role": "user", "content": prompt}],
@@ -26,6 +27,7 @@ def call_nvidia_llm(
         max_tokens=max_tokens,
         stream=False,
     )
+    print("COMPLETED")
 
     # Measure time
     end_time = time.time()

@@ -21,7 +21,7 @@ def search(query: str) -> str:
         content = perform_scraping(result["url"])
         full_content += f"Página {i + 1}\nURL: {result['url']}\nTítulo: {result['title']}\nDescrição: {result['description']}\n\n{content}\n\n"
 
-        prompt = f"""
+    prompt = f"""
         Você é um analista de conteúdos da web especializado em condensar grandes volumes de texto.
 
         ## Objetivo
