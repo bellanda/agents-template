@@ -6,6 +6,8 @@ from PIL import Image
 
 from constants import api_keys
 
+client = genai.Client(api_key=api_keys.GOOGLE_API_KEY)
+
 
 def call_google_llm(
     model: str,
@@ -13,7 +15,9 @@ def call_google_llm(
     temperature: float = 1.00,
     top_p: float = 0.01,
     max_tokens: int = 1024,
-) -> str: ...
+) -> str:
+    response = client.models.generate_content(model=model, contents=[prompt])
+    return response.text
 
 
 def generate_image_imagen3(prompt: str, number_of_images: int) -> Image.Image:

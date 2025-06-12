@@ -3,6 +3,9 @@ from pydantic import BaseModel, Field
 
 from utilities.web_search import search
 
+# Controle global para evitar buscas duplas na mesma sessão
+_search_cache = {}
+
 
 class WebSearchInput(BaseModel):
     """Input para realizar uma busca na web."""
@@ -20,6 +23,9 @@ def web_search(query: str) -> str:
     - Fatos ou dados específicos
     - Qualquer informação que não esteja em seu conhecimento base
 
+    IMPORTANTE: Esta ferramenta já faz scraping de múltiplas páginas e resume automaticamente.
+    UMA busca é suficiente para obter informações completas.
+
     Args:
         query: Query para realizar uma busca na web.
 
@@ -30,9 +36,37 @@ def web_search(query: str) -> str:
     print(f"🚨 [TOOL] web_search EXECUTANDO com query: '{query}'")
     print(f"🚨 [TOOL] Timestamp: {__import__('time').time()}")
 
+    # Verificar se já foi feita uma busca similar recentemente
+    query_normalized = query.lower().strip()
+    current_time = __import__("time").time()
+
+    # Limpar cache antigo (mais de 60 segundos)
+    keys_to_remove = []
+    for cached_query, (timestamp, result) in _search_cache.items():
+        if current_time - timestamp > 60:
+            keys_to_remove.append(cached_query)
+
+    for key in keys_to_remove:
+        del _search_cache[key]
+
+    # Verificar se existe busca similar no cache
+    for cached_query, (timestamp, cached_result) in _search_cache.items():
+        # Se a query é muito similar e foi feita recentemente (últimos 30 segundos)
+        if current_time - timestamp < 30 and (
+            query_normalized in cached_query
+            or cached_query in query_normalized
+            or len(set(query_normalized.split()) & set(cached_query.split())) >= 2
+        ):
+            print(f"🔄 [TOOL] Usando resultado em cache para query similar: '{cached_query}'")
+            return cached_result
+
     try:
         print("🔍 [TOOL] Iniciando busca...")
         result = search(query)
+
+        # Armazenar no cache
+        _search_cache[query_normalized] = (current_time, result)
+
         print(f"✅ [TOOL] Busca concluída! Resultado: {len(result) if result else 0} caracteres")
         print(f"📄 [TOOL] Primeiros 100 chars: {result[:100] if result else 'VAZIO'}...")
         return result

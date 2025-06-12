@@ -1,13 +1,22 @@
 import pathlib
 import sys
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 
-from llms.nvidia import call_nvidia_llm
+# from llms.nvidia import call_nvidia_llm
+from llms.google import call_google_llm
 from utilities.web_search.duckduckgo import search as search_duckduckgo
 from utilities.web_search.scrapper import perform_scraping
 
 BASE_DIR = pathlib.Path(__file__).parent.parent.parent
+
+
+def scrape_single_result(result_with_index):
+    """Função auxiliar para fazer scraping de uma única página"""
+    i, result = result_with_index
+    content = perform_scraping(result["url"])
+    return i, result, content
 
 
 def search(query: str) -> str:
@@ -16,10 +25,52 @@ def search(query: str) -> str:
     print(f"📊 [SEARCH] Encontrados {len(results)} resultados do DuckDuckGo")
 
     full_content = ""
+    successful_scrapes = 0
+    failed_scrapes = 0
 
-    for i, result in enumerate(results):
-        content = perform_scraping(result["url"])
-        full_content += f"Página {i + 1}\nURL: {result['url']}\nTítulo: {result['title']}\nDescrição: {result['description']}\n\n{content}\n\n"
+    # Usar ThreadPoolExecutor para fazer scraping em paralelo
+    print(f"🚀 [SEARCH] Iniciando scraping paralelo de {len(results)} páginas...")
+
+    # Preparar dados para o ThreadPoolExecutor
+    results_with_index = [(i, result) for i, result in enumerate(results)]
+    scraped_results = {}
+
+    # Executar scraping em paralelo
+    with ThreadPoolExecutor(max_workers=min(len(results), 10)) as executor:
+        # Submeter todas as tarefas
+        future_to_index = {
+            executor.submit(scrape_single_result, result_with_index): result_with_index[0]
+            for result_with_index in results_with_index
+        }
+
+        # Processar resultados conforme completam
+        for future in as_completed(future_to_index):
+            try:
+                i, result, content = future.result()
+                scraped_results[i] = (result, content)
+
+                # Verifica se o scraping foi bem-sucedido
+                if content.startswith("ERRO_"):
+                    failed_scrapes += 1
+                    print(f"⚠️ [SEARCH] Página {i + 1} falhou: {result['url']}")
+                else:
+                    successful_scrapes += 1
+                    print(f"✅ [SEARCH] Página {i + 1} processada: {result['url']}")
+
+            except Exception as e:
+                i = future_to_index[future]
+                failed_scrapes += 1
+                print(f"❌ [SEARCH] Erro na página {i + 1}: {str(e)}")
+                # Adicionar resultado com erro
+                scraped_results[i] = (results[i], f"ERRO_EXCEPTION: {str(e)}")
+
+    # Montar o conteúdo final na ordem original
+    for i in range(len(results)):
+        if i in scraped_results:
+            result, content = scraped_results[i]
+            full_content += f"Página {i + 1}\nURL: {result['url']}\nTítulo: {result['title']}\nDescrição: {result['description']}\n\n{content}\n\n"
+
+    print(f"📈 [SEARCH] Resumo: {successful_scrapes} sucessos, {failed_scrapes} falhas de {len(results)} páginas")
 
     prompt = f"""
         Você é um analista de conteúdos da web especializado em condensar grandes volumes de texto.
@@ -86,7 +137,8 @@ def search(query: str) -> str:
         f.write(full_content)
 
     # Summarize web search results
-    result_summarized = call_nvidia_llm("meta/llama-4-scout-17b-16e-instruct", prompt, max_tokens=1024)
+    # result_summarized = call_nvidia_llm("meta/llama-4-scout-17b-16e-instruct", prompt, max_tokens=1024)
+    result_summarized = call_google_llm("gemini-2.0-flash-lite", prompt, max_tokens=1024)
 
     # Save summarized web search results
     SUMMARIZED_WEB_SEARCH_RESULTS_FILE = SCRAPPER_DIR / "summarized_web_search_results.txt"

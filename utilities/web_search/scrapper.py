@@ -10,14 +10,28 @@ def perform_scraping(url: str) -> str:
     start_time = time.perf_counter()
 
     response = optimized_requests.get(url)
-    soup = BeautifulSoup(response.text, "html.parser")
-    text = soup.get_text(strip=False)
 
-    end_time = time.perf_counter()
-    print(f"🔍 Scraped {url} in {end_time - start_time} seconds")
+    # Verifica se a resposta é um erro (string) ou sucesso (Response)
+    if optimized_requests.is_error_response(response):
+        end_time = time.perf_counter()
+        error_msg = optimized_requests.get_error_message(response)
+        print(f"❌ Failed to scrape {url} in {end_time - start_time:.2f}s: {error_msg}")
+        return f"ERRO_SCRAPING: {error_msg}"
 
-    # Strip inteligente
-    return smart_strip(text)
+    try:
+        soup = BeautifulSoup(response.text, "html.parser")
+        text = soup.get_text(strip=False)
+
+        end_time = time.perf_counter()
+        print(f"🔍 Scraped {url} in {end_time - start_time:.2f}s")
+
+        # Strip inteligente
+        return smart_strip(text)
+
+    except Exception as e:
+        end_time = time.perf_counter()
+        print(f"❌ Error parsing {url} in {end_time - start_time:.2f}s: {str(e)}")
+        return f"ERRO_PARSING: {url} - {str(e)}"
 
 
 def smart_strip(text: str) -> str:

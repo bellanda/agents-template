@@ -1,18 +1,24 @@
 import atexit
 import random
 import time
-from typing import Dict, Optional
+from typing import Dict, Optional, Union
 
 import requests
 from requests.adapters import HTTPAdapter
+from requests.exceptions import ConnectionError, HTTPError, RequestException, Timeout
 from urllib3.util.retry import Retry
 
 
 class OptimizedSession:
-    """Sessão otimizada do requests que simula comportamento real de navegador."""
+    """Sessão otimizada do requests que simula comportamento real de navegador com timeouts baixos."""
 
-    def __init__(self):
+    def __init__(self, timeout: tuple = (3, 5)):
+        """
+        Args:
+            timeout: Tuple (connection_timeout, read_timeout) em segundos
+        """
         self.session = requests.Session()
+        self.timeout = timeout
         self._setup_session()
 
     def _get_random_user_agent(self) -> str:
@@ -46,34 +52,48 @@ class OptimizedSession:
         }
 
     def _setup_session(self):
-        """Configura a sessão com as melhores práticas."""
+        """Configura a sessão com timeouts baixos e sem retry agressivo."""
         # Headers padrão
         self.session.headers.update(self._get_default_headers())
 
-        # Configuração de retry com backoff exponencial
+        # Configuração de retry mínima - apenas 1 tentativa extra
         retry_strategy = Retry(
-            total=3, status_forcelist=[429, 500, 502, 503, 504], backoff_factor=1, allowed_methods=["HEAD", "GET", "OPTIONS"]
+            total=1,  # Reduzido para apenas 1 retry
+            status_forcelist=[429, 500, 502, 503, 504],
+            backoff_factor=0.3,  # Backoff mais rápido
+            allowed_methods=["HEAD", "GET", "OPTIONS"],
         )
 
-        # Adaptador HTTP com retry
+        # Adaptador HTTP com retry mínimo
         adapter = HTTPAdapter(max_retries=retry_strategy)
         self.session.mount("http://", adapter)
         self.session.mount("https://", adapter)
 
-        # Configurações de timeout padrão
-        self.session.timeout = (10, 30)  # (connection_timeout, read_timeout)
-
-        # Verificação SSL mais flexível (cuidado em produção)
+        # Verificação SSL mais flexível
         self.session.verify = True
 
-        # Pool de conexões otimizado
-        self.session.adapters["http://"].poolmanager.connection_pool_kw.update({"maxsize": 20, "block": True})
-        self.session.adapters["https://"].poolmanager.connection_pool_kw.update({"maxsize": 20, "block": True})
+    def _handle_request_error(self, url: str, error: Exception) -> str:
+        """Converte erros de request em strings descritivas."""
+        if isinstance(error, Timeout):
+            return f"TIMEOUT_ERROR: {url} - Request timed out"
+        elif isinstance(error, ConnectionError):
+            return f"CONNECTION_ERROR: {url} - Failed to connect"
+        elif isinstance(error, HTTPError):
+            return f"HTTP_ERROR: {url} - HTTP {error.response.status_code}"
+        elif isinstance(error, RequestException):
+            return f"REQUEST_ERROR: {url} - {str(error)}"
+        else:
+            return f"UNKNOWN_ERROR: {url} - {str(error)}"
 
-    def get(self, url: str, delay: Optional[float] = None, **kwargs) -> requests.Response:
-        """GET request otimizado com delay opcional."""
+    def get(
+        self, url: str, delay: Optional[float] = None, timeout: Optional[tuple] = None, **kwargs
+    ) -> Union[requests.Response, str]:
+        """GET request otimizado com timeout baixo e tratamento de erro."""
         if delay:
             time.sleep(delay)
+
+        # Usa timeout personalizado ou padrão da instância
+        request_timeout = timeout or self.timeout
 
         # Atualiza User-Agent para cada request
         if "headers" not in kwargs:
@@ -81,12 +101,20 @@ class OptimizedSession:
         if "User-Agent" not in kwargs["headers"]:
             kwargs["headers"]["User-Agent"] = self._get_random_user_agent()
 
-        return self.session.get(url, **kwargs)
+        try:
+            return self.session.get(url, timeout=request_timeout, **kwargs)
+        except Exception as e:
+            return self._handle_request_error(url, e)
 
-    def post(self, url: str, delay: Optional[float] = None, **kwargs) -> requests.Response:
-        """POST request otimizado com delay opcional."""
+    def post(
+        self, url: str, delay: Optional[float] = None, timeout: Optional[tuple] = None, **kwargs
+    ) -> Union[requests.Response, str]:
+        """POST request otimizado com timeout baixo e tratamento de erro."""
         if delay:
             time.sleep(delay)
+
+        # Usa timeout personalizado ou padrão da instância
+        request_timeout = timeout or self.timeout
 
         # Headers específicos para POST
         if "headers" not in kwargs:
@@ -100,85 +128,130 @@ class OptimizedSession:
             }
         )
 
-        return self.session.post(url, **kwargs)
+        try:
+            return self.session.post(url, timeout=request_timeout, **kwargs)
+        except Exception as e:
+            return self._handle_request_error(url, e)
 
-    def request(self, method: str, url: str, delay: Optional[float] = None, **kwargs) -> requests.Response:
-        """Request genérico otimizado."""
+    def request(
+        self, method: str, url: str, delay: Optional[float] = None, timeout: Optional[tuple] = None, **kwargs
+    ) -> Union[requests.Response, str]:
+        """Request genérico otimizado com timeout baixo e tratamento de erro."""
         if delay:
             time.sleep(delay)
+
+        # Usa timeout personalizado ou padrão da instância
+        request_timeout = timeout or self.timeout
 
         if "headers" not in kwargs:
             kwargs["headers"] = {}
         if "User-Agent" not in kwargs["headers"]:
             kwargs["headers"]["User-Agent"] = self._get_random_user_agent()
 
-        return self.session.request(method, url, **kwargs)
+        try:
+            return self.session.request(method, url, timeout=request_timeout, **kwargs)
+        except Exception as e:
+            return self._handle_request_error(url, e)
 
     def close(self):
         """Fecha a sessão."""
         self.session.close()
 
 
-# Instância global da sessão otimizada
-_optimized_session = OptimizedSession()
+# Instância global da sessão otimizada com timeout baixo
+_optimized_session = OptimizedSession(timeout=(2, 3))
 
 
 # Funções de conveniência que usam a sessão otimizada
-def get(url: str, delay: Optional[float] = None, **kwargs) -> requests.Response:
-    """GET request otimizado que simula comportamento real de navegador.
+def get(url: str, delay: Optional[float] = None, timeout: Optional[tuple] = None, **kwargs) -> Union[requests.Response, str]:
+    """GET request otimizado que simula comportamento real de navegador com timeout baixo.
 
     Args:
         url: URL para fazer o request
         delay: Delay em segundos antes do request (simula comportamento humano)
+        timeout: Tuple (connection_timeout, read_timeout) em segundos. Default: (3, 5)
         **kwargs: Argumentos adicionais para requests.get
 
     Returns:
-        Response object do requests
+        Response object do requests ou string com erro
     """
-    return _optimized_session.get(url, delay=delay, **kwargs)
+    return _optimized_session.get(url, delay=delay, timeout=timeout, **kwargs)
 
 
-def post(url: str, delay: Optional[float] = None, **kwargs) -> requests.Response:
-    """POST request otimizado que simula comportamento real de navegador.
+def post(
+    url: str, delay: Optional[float] = None, timeout: Optional[tuple] = None, **kwargs
+) -> Union[requests.Response, str]:
+    """POST request otimizado que simula comportamento real de navegador com timeout baixo.
 
     Args:
         url: URL para fazer o request
         delay: Delay em segundos antes do request
+        timeout: Tuple (connection_timeout, read_timeout) em segundos. Default: (3, 5)
         **kwargs: Argumentos adicionais para requests.post
 
     Returns:
-        Response object do requests
+        Response object do requests ou string com erro
     """
-    return _optimized_session.post(url, delay=delay, **kwargs)
+    return _optimized_session.post(url, delay=delay, timeout=timeout, **kwargs)
 
 
-def request(method: str, url: str, delay: Optional[float] = None, **kwargs) -> requests.Response:
-    """Request genérico otimizado que simula comportamento real de navegador.
+def request(
+    method: str, url: str, delay: Optional[float] = None, timeout: Optional[tuple] = None, **kwargs
+) -> Union[requests.Response, str]:
+    """Request genérico otimizado que simula comportamento real de navegador com timeout baixo.
 
     Args:
         method: Método HTTP (GET, POST, etc.)
         url: URL para fazer o request
         delay: Delay em segundos antes do request
+        timeout: Tuple (connection_timeout, read_timeout) em segundos. Default: (3, 5)
         **kwargs: Argumentos adicionais para requests.request
 
     Returns:
-        Response object do requests
+        Response object do requests ou string com erro
     """
-    return _optimized_session.request(method, url, delay=delay, **kwargs)
+    return _optimized_session.request(method, url, delay=delay, timeout=timeout, **kwargs)
 
 
-def new_session() -> OptimizedSession:
+def new_session(timeout: tuple = (3, 5)) -> OptimizedSession:
     """Cria uma nova sessão otimizada independente.
+
+    Args:
+        timeout: Tuple (connection_timeout, read_timeout) em segundos
 
     Returns:
         Nova instância de OptimizedSession
     """
-    return OptimizedSession()
+    return OptimizedSession(timeout=timeout)
 
 
-# Função para simular delay humano aleatório
-def human_delay(min_seconds: float = 0.5, max_seconds: float = 2.0) -> float:
-    """Gera um delay aleatório para simular comportamento humano.
+def is_error_response(response: Union[requests.Response, str]) -> bool:
+    """Verifica se a resposta é um erro (string) ou sucesso (Response).
+
+    Args:
+        response: Resposta do request
+
+    Returns:
+        True se for erro, False se for Response válido
+    """
+    return isinstance(response, str)
+
+
+def get_error_message(response: Union[requests.Response, str]) -> Optional[str]:
+    """Extrai mensagem de erro se a resposta for um erro.
+
+    Args:
+        response: Resposta do request
+
+    Returns:
+        Mensagem de erro ou None se for Response válido
+    """
+    return response if isinstance(response, str) else None
+
+
+# Função para simular delay humano aleatório mais rápido
+def human_delay(min_seconds: float = 0.1, max_seconds: float = 0.5) -> float:
+    """Gera um delay aleatório para simular comportamento humano (mais rápido).
 
     Args:
         min_seconds: Tempo mínimo de delay

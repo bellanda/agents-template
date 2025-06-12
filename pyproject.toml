@@ -38,4 +38,5 @@ dependencies = [
     "langchain-groq>=0.3.2",
     "langgraph>=0.4.8",
     "langchain-openai>=0.3.21",
+    "langchain-google-genai>=2.1.5",
 ]
