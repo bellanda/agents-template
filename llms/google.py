@@ -1,12 +1,17 @@
-from io import BytesIO
+import base64
+from typing import List, Optional, Union
 
 from google import genai
-from google.genai import types
-from PIL import Image
 
 from constants import api_keys
 
 client = genai.Client(api_key=api_keys.GOOGLE_API_KEY)
+
+
+class GoogleLLMs:
+    gemini_2_5_pro = "gemini-2.5-pro"
+    gemini_2_5_flash = "gemini-2.5-flash"
+    gemini_2_5_flash_lite = "gemini-2.5-flash-lite-preview-06-17"
 
 
 def call_google_llm(
@@ -15,56 +20,55 @@ def call_google_llm(
     temperature: float = 1.00,
     top_p: float = 0.01,
     max_tokens: int = 1024,
+    images: Optional[List[Union[str, bytes]]] = None,
 ) -> str:
-    response = client.models.generate_content(model=model, contents=[prompt])
+    """
+    Call Google Gemini API with support for text and images.
+
+    Args:
+        model: The model name to use
+        prompt: The text prompt
+        temperature: Controls randomness
+        top_p: Controls diversity via nucleus sampling
+        max_tokens: Maximum tokens to generate
+        images: Optional list of images (URLs, file paths, or base64 encoded data)
+
+    Returns:
+        The generated response text
+    """
+    # Prepare content
+    content_parts = [prompt]
+
+    # Add images if provided
+    if images:
+        for image in images:
+            if isinstance(image, str):
+                if image.startswith("http"):
+                    # URL image
+                    content_parts.append({"mime_type": "image/jpeg", "data": image})
+                elif image.startswith("data:image"):
+                    # Base64 data URL
+                    content_parts.append({"mime_type": "image/jpeg", "data": image})
+                else:
+                    # File path
+                    try:
+                        with open(image, "rb") as f:
+                            image_data = base64.b64encode(f.read()).decode()
+                        content_parts.append({"mime_type": "image/jpeg", "data": image_data})
+                    except Exception as e:
+                        print(f"Error reading image file {image}: {e}")
+            elif isinstance(image, bytes):
+                # Raw bytes
+                image_data = base64.b64encode(image).decode()
+                content_parts.append({"mime_type": "image/jpeg", "data": image_data})
+
+    response = client.models.generate_content(
+        model=model,
+        contents=content_parts,
+        config={
+            "temperature": temperature,
+            "top_p": top_p,
+            "max_output_tokens": max_tokens,
+        },
+    )
     return response.text
-
-
-def generate_image_imagen3(prompt: str, number_of_images: int) -> Image.Image:
-    print("🖼️ [IMAGEN3] Iniciando geração de imagem...")
-    print(f"🖼️ [IMAGEN3] Prompt: '{prompt}'")
-    print(f"🖼️ [IMAGEN3] Número de imagens: {number_of_images}")
-
-    try:
-        print("🖼️ [IMAGEN3] Criando cliente Google GenAI...")
-        client = genai.Client(api_key=api_keys.GOOGLE_API_KEY)
-        print("🖼️ [IMAGEN3] Cliente criado com sucesso!")
-
-        print("🖼️ [IMAGEN3] Configurando geração de imagem...")
-        config = types.GenerateImagesConfig(number_of_images=number_of_images)
-        print(f"🖼️ [IMAGEN3] Config criada: {config}")
-
-        print("🖼️ [IMAGEN3] Chamando API do Google para gerar imagem...")
-        response = client.models.generate_images(
-            model="imagen-3.0-generate-002",
-            prompt=prompt,
-            config=config,
-        )
-        print(f"🖼️ [IMAGEN3] Resposta recebida! Tipo: {type(response)}")
-        print(
-            f"🖼️ [IMAGEN3] Número de imagens geradas: {len(response.generated_images) if hasattr(response, 'generated_images') else 'N/A'}"
-        )
-
-        print("🖼️ [IMAGEN3] Processando imagens geradas...")
-        for i, generated_image in enumerate(response.generated_images):
-            print(f"🖼️ [IMAGEN3] Processando imagem {i + 1}...")
-            print(f"🖼️ [IMAGEN3] Tipo da imagem: {type(generated_image)}")
-            print(
-                f"🖼️ [IMAGEN3] Tamanho dos bytes: {len(generated_image.image.image_bytes) if hasattr(generated_image, 'image') else 'N/A'}"
-            )
-
-            image = Image.open(BytesIO(generated_image.image.image_bytes))
-            print(f"🖼️ [IMAGEN3] PIL Image criada! Tamanho: {image.size}")
-            print(f"🖼️ [IMAGEN3] Modo da imagem: {image.mode}")
-
-        print("🖼️ [IMAGEN3] SUCESSO! Retornando imagem...")
-        return image
-
-    except Exception as e:
-        print(f"❌ [IMAGEN3] ERRO na API do Google: {e}")
-        print(f"❌ [IMAGEN3] Tipo do erro: {type(e)}")
-        import traceback
-
-        print("❌ [IMAGEN3] Traceback completo:")
-        traceback.print_exc()
-        raise e

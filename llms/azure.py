@@ -1,6 +1,19 @@
+import base64
+from typing import List, Optional, Union
+
 from openai import AzureOpenAI, OpenAI
 
 from constants import api_keys
+
+
+class AzureLLMs:
+    o4_mini = "o4-mini"
+    gpt_4_1 = "gpt-4.1"
+    gpt_4_1_mini = "gpt-4.1-mini"
+    gpt_4_1_nano = "gpt-4.1-nano"
+    deepseek_v3_0324 = "DeepSeek-V3-0324"
+    deepseek_r1_0528 = "DeepSeek-R1-0528"
+
 
 AZURE_MODELS_VERSIONS = {
     "o4-mini": "2025-01-01-preview",
@@ -23,10 +36,12 @@ def call_azure_llm(
     temperature: float = 1.00,
     top_p: float = 0.01,
     reasoning_effort: str = "medium",
+    images: Optional[List[Union[str, bytes]]] = None,
 ) -> str:
     """
     Call Azure OpenAI API using the correct chat completions endpoint.
     Supports both OpenAI models and DeepSeek models with different endpoints.
+    Now supports multimodal inputs with images.
 
     Args:
         model: The deployment name in Azure OpenAI or model name for DeepSeek
@@ -34,6 +49,7 @@ def call_azure_llm(
         temperature: Controls randomness (0.0 to 2.0)
         top_p: Controls diversity via nucleus sampling
         reasoning_effort: Reasoning effort level for reasoning models ("low", "medium", "high")
+        images: Optional list of images (URLs, file paths, or base64 encoded data)
 
     Returns:
         The generated response text (reasoning tokens are included automatically in usage stats)
@@ -57,10 +73,47 @@ def call_azure_llm(
         )
 
     try:
+        # Prepare message content
+        message_content = [{"type": "text", "text": prompt}]
+
+        # Add images if provided
+        if images:
+            for image in images:
+                if isinstance(image, str):
+                    if image.startswith("http"):
+                        # URL image
+                        message_content.append({"type": "image_url", "image_url": {"url": image}})
+                    elif image.startswith("data:image"):
+                        # Base64 data URL
+                        message_content.append({"type": "image_url", "image_url": {"url": image}})
+                    else:
+                        # File path
+                        try:
+                            with open(image, "rb") as f:
+                                image_data = base64.b64encode(f.read()).decode()
+                            # Detect image format
+                            image_format = "jpeg"
+                            if image.lower().endswith(".png"):
+                                image_format = "png"
+                            elif image.lower().endswith(".gif"):
+                                image_format = "gif"
+                            elif image.lower().endswith(".webp"):
+                                image_format = "webp"
+
+                            data_url = f"data:image/{image_format};base64,{image_data}"
+                            message_content.append({"type": "image_url", "image_url": {"url": data_url}})
+                        except Exception as e:
+                            print(f"Error reading image file {image}: {e}")
+                elif isinstance(image, bytes):
+                    # Raw bytes (assume JPEG)
+                    image_data = base64.b64encode(image).decode()
+                    data_url = f"data:image/jpeg;base64,{image_data}"
+                    message_content.append({"type": "image_url", "image_url": {"url": data_url}})
+
         # Prepare the request parameters
         request_params = {
             "model": model,
-            "messages": [{"role": "user", "content": prompt}],
+            "messages": [{"role": "user", "content": message_content}],
             "temperature": temperature,
         }
 
@@ -69,6 +122,7 @@ def call_azure_llm(
             request_params["reasoning_effort"] = reasoning_effort
 
         # Use the correct chat completions API
+        print(request_params)
         response = client.chat.completions.create(**request_params)
 
         # Extract the response content
