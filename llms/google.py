@@ -21,9 +21,11 @@ def call_google_llm(
     top_p: float = 0.01,
     max_tokens: int = 1024,
     images: Optional[List[Union[str, bytes]]] = None,
-) -> str:
+    stream: bool = False,
+) -> Union[str, object]:
     """
     Call Google Gemini API with support for text and images.
+    Now supports streaming responses.
 
     Args:
         model: The model name to use
@@ -32,9 +34,10 @@ def call_google_llm(
         top_p: Controls diversity via nucleus sampling
         max_tokens: Maximum tokens to generate
         images: Optional list of images (URLs, file paths, or base64 encoded data)
+        stream: Whether to stream the response
 
     Returns:
-        The generated response text
+        The generated response text or streaming response object
     """
     # Prepare content
     content_parts = [prompt]
@@ -70,5 +73,11 @@ def call_google_llm(
             "top_p": top_p,
             "max_output_tokens": max_tokens,
         },
+        stream=stream,
     )
+
+    # If streaming, return the response object directly
+    if stream:
+        return response
+
     return response.text

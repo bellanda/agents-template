@@ -37,11 +37,12 @@ def call_azure_llm(
     top_p: float = 0.01,
     reasoning_effort: str = "medium",
     images: Optional[List[Union[str, bytes]]] = None,
-) -> str:
+    stream: bool = False,
+) -> Union[str, object]:
     """
     Call Azure OpenAI API using the correct chat completions endpoint.
     Supports both OpenAI models and DeepSeek models with different endpoints.
-    Now supports multimodal inputs with images.
+    Now supports multimodal inputs with images and streaming.
 
     Args:
         model: The deployment name in Azure OpenAI or model name for DeepSeek
@@ -50,9 +51,10 @@ def call_azure_llm(
         top_p: Controls diversity via nucleus sampling
         reasoning_effort: Reasoning effort level for reasoning models ("low", "medium", "high")
         images: Optional list of images (URLs, file paths, or base64 encoded data)
+        stream: Whether to stream the response
 
     Returns:
-        The generated response text (reasoning tokens are included automatically in usage stats)
+        The generated response text or streaming response object
     """
     # Is it a DeepSeek model? (or another company model)
     if model not in OPENAI_MODELS:
@@ -115,6 +117,7 @@ def call_azure_llm(
             "model": model,
             "messages": [{"role": "user", "content": message_content}],
             "temperature": temperature,
+            "stream": stream,
         }
 
         # Add reasoning_effort parameter for reasoning models (only for OpenAI models)
@@ -125,7 +128,11 @@ def call_azure_llm(
         print(request_params)
         response = client.chat.completions.create(**request_params)
 
-        # Extract the response content
+        # If streaming, return the response object directly
+        if stream:
+            return response
+
+        # Extract the response content for non-streaming
         content = response.choices[0].message.content
 
         # For reasoning models, the reasoning tokens are automatically included in usage stats

@@ -2,30 +2,32 @@ import base64
 import time
 from typing import List, Optional, Union
 
-from groq import Groq
+from openai import OpenAI
 
 from constants import api_keys
 
-client = Groq(api_key=api_keys.GROQ_API_KEY)
+# Initialize OpenAI client with Fireworks AI endpoint
+client = OpenAI(
+    api_key=api_keys.FIREWORKS_API_KEY,
+    base_url="https://api.fireworks.ai/inference/v1",
+)
 
 
-class GroqLLMs:
-    # OpenAI models
-    gpt_oss_120b = "openai/gpt-oss-120b"
-    gpt_oss_20b = "openai/gpt-oss-20b"
-    # Llama 4
-    llama_4_maverick_17b_128e_instruct = "meta-llama/llama-4-maverick-17b-128e-instruct"
-    llama_4_scout_17b_16e_instruct = "meta-llama/llama-4-scout-17b-16e-instruct"
-    # Llama 3
-    llama_3_3_70b_versatile = "llama-3.3-70b-versatile"
-    llama_3_1_8b_instant = "llama-3.1-8b-instant"
-    # Whisper
-    whisper_large_v3 = "whisper-large-v3"
-    whisper_large_v3_turbo = "whisper-large-v3-turbo"
-    distil_whisper_large_v3_en = "distil-whisper-large-v3-en"
+class FireworksLLMs:
+    # Qwen models
+    qwen3_235b_a22b_instruct_2507 = "accounts/fireworks/models/qwen3-235b-a22b-instruct-2507"
+    qwen3_235b_a22b_thinking_2507 = "accounts/fireworks/models/qwen3-235b-a22b-thinking-2507"
+    qwen3_coder_480b_a35b_instruct = "accounts/fireworks/models/qwen3-coder-480b-a35b-instruct"
+
+    # DeepSeek models
+    deepseek_v3_0324 = "accounts/fireworks/models/deepseek-v3-0324"
+    deepseek_r1_0528 = "accounts/fireworks/models/deepseek-r1-0528"
+
+    # MoonshotAI Kimi K2
+    kimi_k2_instruct = "accounts/fireworks/models/kimi-k2-instruct"
 
 
-def call_groq_llm(
+def call_fireworks_llm(
     model: str,
     prompt: str,
     temperature: float = 0.2,
@@ -36,7 +38,7 @@ def call_groq_llm(
     stream: bool = False,
 ) -> Union[str, object]:
     """
-    Call Groq LLM API with support for text and images.
+    Call Fireworks AI LLM API with support for text and images using OpenAI client.
     Now supports streaming responses.
 
     Args:
@@ -92,23 +94,28 @@ def call_groq_llm(
                 data_url = f"data:image/jpeg;base64,{image_data}"
                 message_content.append({"type": "image_url", "image_url": {"url": data_url}})
 
-    # Call LLM
-    completion = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": message_content}],
-        temperature=temperature,
-        max_completion_tokens=max_tokens,
-        top_p=top_p,
-        stream=stream,
-        stop=stop,
-    )
+    # Call LLM using OpenAI client with Fireworks endpoint
+    try:
+        response = client.chat.completions.create(
+            model=model,
+            messages=[{"role": "user", "content": message_content}],
+            temperature=temperature,
+            max_tokens=max_tokens,
+            top_p=top_p,
+            stop=stop,
+            stream=stream,
+        )
 
-    # If streaming, return the response object directly
-    if stream:
-        return completion
+        # If streaming, return the response object directly
+        if stream:
+            return response
 
-    # Measure time
-    end_time = time.time()
-    print(f"⚡ Time taken to call GROQ LLM ({model}): {end_time - start_time} seconds")
+        # Measure time
+        end_time = time.time()
+        print(f"🎆 Time taken to call Fireworks LLM ({model}): {end_time - start_time} seconds")
 
-    return completion.choices[0].message.content
+        return response.choices[0].message.content
+
+    except Exception as e:
+        print(f"Error calling Fireworks LLM: {e}")
+        return f"Error: {str(e)}"

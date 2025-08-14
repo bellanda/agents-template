@@ -95,6 +95,7 @@ GOOGLE_API_KEY=your_google_api_key_here
 OPENAI_API_KEY=your_openai_api_key_here
 GROQ_API_KEY=your_groq_api_key_here
 NVIDIA_API_KEY=your_nvidia_api_key_here
+FIREWORKS_API_KEY=your_fireworks_api_key_here
 
 # Database configuration (if using Oracle)
 ORACLE_HOST=your_oracle_host
@@ -270,6 +271,32 @@ The `utilities/` directory provides:
 - **Excel**: Excel file generation with styling and templates
 - **Web Search**: Web search functionality for agents
 - **Server**: Server-related utilities and helpers
+
+## LLM Providers
+
+The template supports multiple LLM providers through the `llms/` directory:
+
+### OpenAI
+- GPT models through Azure OpenAI or direct OpenAI API
+- Full OpenAI API compatibility
+
+### Google AI
+- Gemini models (Gemini Pro, Gemini Pro Vision)
+- Image generation with Imagen 3
+
+### Groq
+- Fast inference with Llama models
+- Support for OpenAI-compatible models (GPT-OSS-120B, GPT-OSS-20B)
+
+### NVIDIA AI Endpoints
+- High-performance inference
+- Support for various open-source models
+
+### Fireworks AI
+- Qwen models (235B, Coder 480B)
+- DeepSeek models (V3, R1)
+- MoonshotAI Kimi K2
+- Full OpenAI API compatibility
 
 ## Example Agents
 

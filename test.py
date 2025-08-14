@@ -1,22 +1,21 @@
-from concurrent.futures import ThreadPoolExecutor
+from llms.fireworks import FireworksLLMs, call_fireworks_llm
 
-from llms.groq import GroqLLMs, call_groq_llm
-
-with open("docs/extract_for_rag_prompt.md", "r") as file:
+with open("./temp.txt", "r", encoding="utf-8") as file:
     prompt = file.read()
 
+# Call LLM with streaming
+result = call_fireworks_llm(FireworksLLMs.qwen3_coder_480b_a35b_instruct, prompt, max_tokens=8000, stream=True)
 
-def process_image(i):
-    result = call_groq_llm(
-        GroqLLMs.llama_4_maverick_17b_128e_instruct,
-        prompt,
-        images=[""],
-    )
+# Collect complete content from stream
+complete_content = ""
+for chunk in result:
+    if chunk.choices[0].delta.content is not None:
+        content = chunk.choices[0].delta.content
+        complete_content += content
+        print(content, end="", flush=True)  # Print in real-time
 
-    with open(f"docs/extract_for_rag_result_{i}.md", "w") as file:
-        file.write(result)
+# Save complete content to file
+with open("result.txt", "w", encoding="utf-8") as file:
+    file.write(complete_content)
 
-
-if __name__ == "__main__":
-    with ThreadPoolExecutor(max_workers=10) as executor:
-        executor.map(process_image, range(1))
+print(f"\n\n✅ Conteúdo completo salvo em 'result.txt' ({len(complete_content)} caracteres)")

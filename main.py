@@ -161,4 +161,4 @@ if __name__ == "__main__":
     server_start_msg = generate_status_message("processing", "Starting Multi-Agent Proxy...")
     print(f"🚀 {server_start_msg}")
 
-    uvicorn.run(app, host="0.0.0.0", port=8000)
+    uvicorn.run(app, host="0.0.0.0", port=8073)
