@@ -1,21 +1,17 @@
-from llms.fireworks import FireworksLLMs, call_fireworks_llm
+import asyncio
 
-with open("./temp.txt", "r", encoding="utf-8") as file:
-    prompt = file.read()
+from langchain_agents.web_search_agent.agent import root_agent
 
-# Call LLM with streaming
-result = call_fireworks_llm(FireworksLLMs.qwen3_coder_480b_a35b_instruct, prompt, max_tokens=8000, stream=True)
 
-# Collect complete content from stream
-complete_content = ""
-for chunk in result:
-    if chunk.choices[0].delta.content is not None:
-        content = chunk.choices[0].delta.content
-        complete_content += content
-        print(content, end="", flush=True)  # Print in real-time
+async def main():
+    # Use astream_events para receber todos os eventos do agente
+    async for event in root_agent.astream_events(
+        {"messages": [{"role": "user", "content": "Fale sobre os novos modelos Open Source da OpenAI"}]},
+        version="v1",
+        config={"configurable": {"thread_id": "1"}},
+    ):
+        if event.get("event") == "on_chat_model_stream":
+            print(event["data"]["chunk"].content, end="", flush=True)
 
-# Save complete content to file
-with open("result.txt", "w", encoding="utf-8") as file:
-    file.write(complete_content)
 
-print(f"\n\n✅ Conteúdo completo salvo em 'result.txt' ({len(complete_content)} caracteres)")
+asyncio.run(main())

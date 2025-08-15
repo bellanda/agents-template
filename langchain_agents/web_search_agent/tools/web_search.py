@@ -14,7 +14,7 @@ class WebSearchInput(BaseModel):
     query: str = Field(description="Query para realizar uma busca na web.")
 
 
-@tool("web_search", args_schema=WebSearchInput, return_direct=False)
+@tool("web_search", args_schema=WebSearchInput)
 def web_search(query: str) -> str:
     """Ferramenta para realizar busca na web sobre qualquer tópico.
 

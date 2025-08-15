@@ -1,34 +1,25 @@
-from langchain_core.messages import SystemMessage
-from langchain_google_genai import ChatGoogleGenerativeAI
-from langchain_groq import ChatGroq
-from langgraph.checkpoint.memory import MemorySaver
+from langchain.chat_models import init_chat_model
+from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.prebuilt import create_react_agent
 
 from constants import api_keys
 from langchain_agents.web_search_agent.tools import web_search
 
 # Configurar o modelo com parâmetros para reduzir repetições
-llm = ChatGroq(
-    model="meta-llama/llama-4-maverick-17b-128e-instruct",
+model = init_chat_model(
+    "groq:openai/gpt-oss-20b",
     api_key=api_keys.GROQ_API_KEY,
-    temperature=0.1,  # Reduzir criatividade para ser mais determinístico
-    max_tokens=1024,  # Limitar tokens para respostas mais concisas
+    temperature=0.1,
+    max_tokens=8000,
+    verbose=True,
+    streaming=True,
 )
-
-llm = ChatGoogleGenerativeAI(
-    model="gemini-2.5-flash-preview-05-20",
-    api_key=api_keys.GOOGLE_API_KEY,
-    temperature=0.1,  # Reduzir criatividade para ser mais determinístico
-    max_tokens=1024,  # Limitar tokens para respostas mais concisas
-)
-
 
 # Configurar as tools disponíveis
 tools = [web_search]
 
 # System message para o agente
-system_message = SystemMessage(
-    content="""Você é um assistente inteligente especializado em busca na web.
+SYSTEM_PROMPT = """Você é um assistente inteligente especializado em busca na web.
 
 🚨 REGRA FUNDAMENTAL: FAÇA APENAS UMA BUSCA POR PERGUNTA! 🚨
 
@@ -44,34 +35,26 @@ QUANDO NÃO USAR A FERRAMENTA:
 - Solicitações de explicação sobre dados que você já obteve da busca
 
 REGRAS CRÍTICAS:
-1. ⚠️ **APENAS UMA BUSCA**: Faça SOMENTE UMA busca por pergunta. NUNCA faça buscas adicionais ou de "confirmação".
-2. ⚠️ **CONFIE NO RESULTADO**: A ferramenta já faz scraping de 5 páginas e resume automaticamente. O resultado é completo.
-3. ⚠️ **RESPONDA IMEDIATAMENTE**: Após receber o resultado da busca, responda diretamente ao usuário. NÃO faça buscas adicionais.
-4. **USE APENAS DADOS REAIS**: Nunca invente informações - use apenas dados retornados pela busca.
-5. **MELHORE A APRESENTAÇÃO**: Processe e formate bem os dados para o usuário final.
-6. **INCLUA LINKS**: Sempre retorne URLs em formato markdown quando disponíveis.
-
-PROCESSO OBRIGATÓRIO:
-1. Receba a pergunta do usuário
-2. Se precisar de informações atuais → Faça UMA busca
-3. Receba o resultado completo da busca
-4. Responda ao usuário com base no resultado
-5. FIM - NÃO faça mais buscas
+1. ⚠️ **CONFIE NO RESULTADO**: A ferramenta já faz scraping de 5 páginas e resume automaticamente. O resultado é completo.
+2. **USE APENAS DADOS REAIS**: Nunca invente informações - use apenas dados retornados pela busca.
+3. **MELHORE A APRESENTAÇÃO**: Processe e formate bem os dados para o usuário final tudo em formato de markdown.
+4. **INCLUA LINKS**: Sempre retorne URLs em formato markdown quando disponíveis.
 
 FORMATO DE RESPOSTA:
 - Use markdown para formatação clara
 - Inclua emojis quando apropriado
 - Organize informações em seções
-- Cite fontes com links clicáveis
+- Cite fontes com links clicáveis"""
 
-LEMBRE-SE: A ferramenta web_search já é muito completa - ela busca no DuckDuckGo, faz scraping de múltiplas páginas em paralelo e resume automaticamente o conteúdo. UMA busca é suficiente!"""
+
+checkpointer = InMemorySaver()
+
+root_agent = create_react_agent(
+    model=model,
+    tools=[web_search],
+    prompt=SYSTEM_PROMPT,
+    checkpointer=checkpointer,
 )
-
-# Configurar memória (checkpointer)
-memory = MemorySaver()
-
-# Criar o agente usando LangGraph
-root_agent = create_react_agent(llm, tools, prompt=system_message, checkpointer=memory)
 
 # Metadata for the discovery system
 AGENT_NAME = "web_search_agent"

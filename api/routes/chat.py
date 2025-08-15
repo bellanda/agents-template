@@ -2,9 +2,9 @@ import json
 import re
 import time
 import uuid
-from typing import Any, Dict
+from typing import Dict
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
@@ -45,7 +45,7 @@ async def chat_with_agent(request: ChatRequest, agents_registry: Dict, session_s
 
 
 @router.post("/v1/chat/completions")
-async def openai_compatible_chat(request: Dict[Any, Any], agents_registry: Dict, session_service):
+async def openai_compatible_chat(request: Request, agents_registry: Dict, session_service):
     """OpenAI-compatible endpoint for LibreChat integration."""
     print("\n📨 === INCOMING REQUEST ===")
     print(f"🤖 Model: {request.get('model', 'unknown')}")
@@ -112,8 +112,24 @@ async def openai_compatible_chat(request: Dict[Any, Any], agents_registry: Dict,
                         ):
                             yield chunk
                     else:
+                        verbose = False
+                        # Checa no corpo
+                        body = request.json() if hasattr(request, "json") else {}
+                        if "verbose" in body:
+                            verbose = bool(body["verbose"])
+                        # Checa na query string, se disponível
+                        elif hasattr(request, "query_params") and request.query_params.get("verbose"):
+                            verbose = request.query_params.get("verbose") in ["1", "true", "True"]
+
                         async for chunk in stream_langchain_agent(
-                            agent_info, user_query, user_id, session_id, completion_id, current_timestamp, requested_model
+                            agent_info,
+                            user_query,
+                            user_id,
+                            session_id,
+                            completion_id,
+                            current_timestamp,
+                            requested_model,
+                            verbose,
                         ):
                             yield chunk
 
