@@ -34,8 +34,8 @@ def search(query: str) -> str:
         if not results:
             return "Nenhum resultado encontrado para a busca."
 
-        # Limitar a 5 resultados para evitar sobrecarga
-        results = results[:5]
+        # Limitar a 10 resultados para evitar sobrecarga
+        results = results[:10]
 
         # Passo 2: Fazer scraping das páginas em paralelo
         scraping_msg = generate_step_message(2, f"Iniciando scraping paralelo de {len(results)} páginas...")
@@ -46,7 +46,7 @@ def search(query: str) -> str:
         failed_scrapes = 0
 
         # Usar ThreadPoolExecutor para scraping paralelo
-        with ThreadPoolExecutor(max_workers=3) as executor:
+        with ThreadPoolExecutor(max_workers=10) as executor:
             # Submeter todas as tarefas de scraping
             future_to_result = {executor.submit(scrape_url, result["url"]): result for result in results}
 

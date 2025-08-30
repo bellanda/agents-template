@@ -42,3 +42,15 @@ dependencies = [
     "langchain-core>=0.3.74",
     "langchain-community>=0.3.27",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["langchain_agents", "google_agents", "utilities"]
+
+[tool.hatch.build.targets.wheel.sources]
+"utilities" = "utilities"
+"langchain_agents" = "langchain_agents"
+"google_agents" = "google_agents"

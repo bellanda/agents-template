@@ -1,5 +1,5 @@
 import base64
-from typing import List, Optional, Union
+from typing import Union
 
 from google import genai
 
@@ -14,27 +14,24 @@ class GoogleLLMs:
     gemini_2_5_flash_lite = "gemini-2.5-flash-lite-preview-06-17"
 
 
-def call_google_llm(
-    model: str,
-    prompt: str,
-    temperature: float = 1.00,
-    top_p: float = 0.01,
-    max_tokens: int = 1024,
-    images: Optional[List[Union[str, bytes]]] = None,
-    stream: bool = False,
-) -> Union[str, object]:
+def call_google_llm(model: str, prompt: str, **kwargs) -> Union[str, object]:
     """
     Call Google Gemini API with support for text and images.
-    Now supports streaming responses.
+    Supports streaming responses and all Google parameters.
 
     Args:
         model: The model name to use
         prompt: The text prompt
-        temperature: Controls randomness
-        top_p: Controls diversity via nucleus sampling
-        max_tokens: Maximum tokens to generate
-        images: Optional list of images (URLs, file paths, or base64 encoded data)
-        stream: Whether to stream the response
+        **kwargs: Additional parameters supported by Google API including:
+            - temperature: Controls randomness (0.0 to 2.0)
+            - top_p: Controls diversity via nucleus sampling
+            - max_output_tokens: Maximum tokens to generate
+            - images: Optional list of images (URLs, file paths, or base64 encoded data)
+            - stream: Whether to stream the response
+            - top_k: Top-k sampling parameter
+            - candidate_count: Number of response candidates
+            - stop_sequences: Stop sequences
+            - safety_settings: Safety settings configuration
 
     Returns:
         The generated response text or streaming response object
@@ -42,7 +39,8 @@ def call_google_llm(
     # Prepare content
     content_parts = [prompt]
 
-    # Add images if provided
+    # Extract images from kwargs if provided
+    images = kwargs.pop("images", None)
     if images:
         for image in images:
             if isinstance(image, str):
@@ -65,19 +63,27 @@ def call_google_llm(
                 image_data = base64.b64encode(image).decode()
                 content_parts.append({"mime_type": "image/jpeg", "data": image_data})
 
+    # Prepare config from kwargs
+    config = {}
+    if "temperature" in kwargs:
+        config["temperature"] = kwargs.pop("temperature")
+    if "top_p" in kwargs:
+        config["top_p"] = kwargs.pop("top_p")
+    if "max_output_tokens" in kwargs:
+        config["max_output_tokens"] = kwargs.pop("max_output_tokens")
+
+    # Add any remaining config parameters
+    if kwargs:
+        config.update(kwargs)
+
     response = client.models.generate_content(
         model=model,
         contents=content_parts,
-        config={
-            "temperature": temperature,
-            "top_p": top_p,
-            "max_output_tokens": max_tokens,
-        },
-        stream=stream,
+        config=config,
     )
 
     # If streaming, return the response object directly
-    if stream:
+    if config.get("stream", False):
         return response
 
     return response.text

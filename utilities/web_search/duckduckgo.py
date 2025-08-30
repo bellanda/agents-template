@@ -22,7 +22,7 @@ def search(query: str) -> list[str]:
             "title": result["title"],
             "description": result["description"],
         }
-        for result in results[0:5]
+        for result in results[0:10]
     ]
 
 

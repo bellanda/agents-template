@@ -2,55 +2,51 @@ import base64
 import time
 from typing import Union
 
-from groq import Groq
+from openai import OpenAI
 
 from constants import api_keys
 
-client = Groq(api_key=api_keys.GROQ_API_KEY)
+client = OpenAI(
+    base_url="https://openrouter.ai/api/v1",
+    api_key=api_keys.OPENROUTER_API_KEY,
+)
 
 
-class GroqLLMs:
-    # OpenAI models
-    gpt_oss_120b = "openai/gpt-oss-120b"
-    gpt_oss_20b = "openai/gpt-oss-20b"
-    # Llama 4
-    llama_4_maverick_17b_128e_instruct = "meta-llama/llama-4-maverick-17b-128e-instruct"
-    llama_4_scout_17b_16e_instruct = "meta-llama/llama-4-scout-17b-16e-instruct"
-    llama_4_guard_12b = "meta-llama/llama-guard-4-12b"
-    # Llama 3
-    llama_3_3_70b_versatile = "llama-3.3-70b-versatile"
-    llama_3_1_8b_instant = "llama-3.1-8b-instant"
-    # Whisper
-    whisper_large_v3 = "whisper-large-v3"
-    whisper_large_v3_turbo = "whisper-large-v3-turbo"
-    distil_whisper_large_v3_en = "distil-whisper-large-v3-en"
+class OpenRouterLLMs:
+    # DeepSeek models
+    deepseek_v3_1_free = "deepseek/deepseek-chat-v3.1:free"
+
+    # Meta models
+    llama_4_scout_free = "meta-llama/llama-4-scout:free"
+    llama_4_maverick_free = "meta-llama/llama-4-maverick:free"
+    llama_3_1_8b_free = "meta-llama/llama-3.1-8b:free"
+    llama_3_1_70b_free = "meta-llama/llama-3.1-70b:free"
 
 
-def call_groq_llm(model: str, prompt: str, **kwargs) -> Union[str, object]:
+def call_openrouter_llm(model: str, prompt: str, **kwargs) -> Union[str, object]:
     """
-    Call Groq LLM API with support for text and images.
-    Supports streaming responses and all Groq parameters.
+    Call OpenRouter LLM API with support for text and images.
+    Supports streaming responses and all OpenRouter parameters.
 
     Args:
         model: The model name to use
         prompt: The text prompt
-        **kwargs: Additional parameters supported by Groq API including:
+        **kwargs: Additional parameters supported by OpenRouter API including:
             - temperature: Controls randomness (0.0 to 2.0)
-            - max_completion_tokens: Maximum tokens to generate
+            - max_tokens: Maximum tokens to generate
             - top_p: Controls diversity via nucleus sampling
             - stop: Stop sequences
             - images: Optional list of images (URLs, file paths, or base64 encoded data)
             - stream: Whether to stream the response
+            - include_reasoning: Whether to include reasoning
+            - reasoning_format: Format for reasoning output
+            - reasoning_effort: Reasoning effort level for reasoning models ("low", "medium", "high")
             - frequency_penalty: Frequency penalty (-2.0 to 2.0)
             - presence_penalty: Presence penalty (-2.0 to 2.0)
             - logit_bias: Logit bias for specific tokens
             - user: User identifier for tracking
-            - include_reasoning: Whether to include reasoning
-            - reasoning_format: Format for reasoning output
-            - reasoning_effort: Reasoning effort level for reasoning models ("low", "medium", "high")
-            - response_format: Response format configuration
-            - seed: Seed for deterministic sampling
-            - service_tier: Service tier selection
+            - extra_headers: Additional headers (HTTP-Referer, X-Title)
+            - extra_body: Additional body parameters
 
     Returns:
         The generated response text or streaming response object
@@ -96,17 +92,23 @@ def call_groq_llm(model: str, prompt: str, **kwargs) -> Union[str, object]:
                 data_url = f"data:image/jpeg;base64,{image_data}"
                 message_content.append({"type": "image_url", "image_url": {"url": data_url}})
 
+    # Prepare the request parameters
+    request_params = {"model": model, "messages": [{"role": "user", "content": message_content}], **kwargs}
+
     # Call LLM
-    completion = client.chat.completions.create(
-        model=model, messages=[{"role": "user", "content": message_content}], **kwargs
-    )
+    try:
+        response = client.chat.completions.create(**request_params)
 
-    # If streaming, return the response object directly
-    if kwargs.get("stream", False):
-        return completion
+        # If streaming, return the response object directly
+        if kwargs.get("stream", False):
+            return response
 
-    # Measure time
-    end_time = time.time()
-    print(f"⚡ Time taken to call GROQ LLM ({model}): {end_time - start_time} seconds")
+        # Measure time
+        end_time = time.time()
+        print(f"🌐 Time taken to call OpenRouter LLM ({model}): {end_time - start_time} seconds")
 
-    return completion.choices[0].message.content
+        return response.choices[0].message.content
+
+    except Exception as e:
+        print(f"Error calling OpenRouter LLM: {e}")
+        raise e

@@ -1,5 +1,5 @@
 import base64
-from typing import List, Optional, Union
+from typing import Union
 
 from openai import AzureOpenAI, OpenAI
 
@@ -30,28 +30,28 @@ OPENAI_URI = "https://ai-foundry-hpe-resource.openai.azure.com"
 DEEPSEEK_URI = "https://ai-foundry-hpe-resource.services.ai.azure.com/models"
 
 
-def call_azure_llm(
-    model: str,
-    prompt: str,
-    temperature: float = 1.00,
-    top_p: float = 0.01,
-    reasoning_effort: str = "medium",
-    images: Optional[List[Union[str, bytes]]] = None,
-    stream: bool = False,
-) -> Union[str, object]:
+def call_azure_llm(model: str, prompt: str, **kwargs) -> Union[str, object]:
     """
     Call Azure OpenAI API using the correct chat completions endpoint.
     Supports both OpenAI models and DeepSeek models with different endpoints.
-    Now supports multimodal inputs with images and streaming.
+    Supports multimodal inputs with images and streaming.
 
     Args:
         model: The deployment name in Azure OpenAI or model name for DeepSeek
         prompt: The user prompt/message
-        temperature: Controls randomness (0.0 to 2.0)
-        top_p: Controls diversity via nucleus sampling
-        reasoning_effort: Reasoning effort level for reasoning models ("low", "medium", "high")
-        images: Optional list of images (URLs, file paths, or base64 encoded data)
-        stream: Whether to stream the response
+        **kwargs: Additional parameters supported by Azure API including:
+            - temperature: Controls randomness (0.0 to 2.0)
+            - top_p: Controls diversity via nucleus sampling
+            - reasoning_effort: Reasoning effort level for reasoning models ("low", "medium", "high")
+            - images: Optional list of images (URLs, file paths, or base64 encoded data)
+            - stream: Whether to stream the response
+            - max_tokens: Maximum tokens to generate
+            - frequency_penalty: Frequency penalty (-2.0 to 2.0)
+            - presence_penalty: Presence penalty (-2.0 to 2.0)
+            - logit_bias: Logit bias for specific tokens
+            - user: User identifier for tracking
+            - response_format: Response format configuration
+            - seed: Seed for deterministic sampling
 
     Returns:
         The generated response text or streaming response object
@@ -78,7 +78,8 @@ def call_azure_llm(
         # Prepare message content
         message_content = [{"type": "text", "text": prompt}]
 
-        # Add images if provided
+        # Extract images from kwargs if provided
+        images = kwargs.pop("images", None)
         if images:
             for image in images:
                 if isinstance(image, str):
@@ -113,23 +114,19 @@ def call_azure_llm(
                     message_content.append({"type": "image_url", "image_url": {"url": data_url}})
 
         # Prepare the request parameters
-        request_params = {
-            "model": model,
-            "messages": [{"role": "user", "content": message_content}],
-            "temperature": temperature,
-            "stream": stream,
-        }
+        request_params = {"model": model, "messages": [{"role": "user", "content": message_content}], **kwargs}
 
         # Add reasoning_effort parameter for reasoning models (only for OpenAI models)
         if model in REASONING_MODELS and model in OPENAI_MODELS:
-            request_params["reasoning_effort"] = reasoning_effort
+            if "reasoning_effort" not in request_params:
+                request_params["reasoning_effort"] = "medium"
 
         # Use the correct chat completions API
         print(request_params)
         response = client.chat.completions.create(**request_params)
 
         # If streaming, return the response object directly
-        if stream:
+        if request_params.get("stream", False):
             return response
 
         # Extract the response content for non-streaming

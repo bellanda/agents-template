@@ -1,6 +1,6 @@
 import base64
 import time
-from typing import List, Optional, Union
+from typing import Union
 
 from openai import OpenAI
 
@@ -27,29 +27,27 @@ class FireworksLLMs:
     kimi_k2_instruct = "accounts/fireworks/models/kimi-k2-instruct"
 
 
-def call_fireworks_llm(
-    model: str,
-    prompt: str,
-    temperature: float = 0.2,
-    max_tokens: int = 1024,
-    top_p: float = 1,
-    stop: str = None,
-    images: Optional[List[Union[str, bytes]]] = None,
-    stream: bool = False,
-) -> Union[str, object]:
+def call_fireworks_llm(model: str, prompt: str, **kwargs) -> Union[str, object]:
     """
     Call Fireworks AI LLM API with support for text and images using OpenAI client.
-    Now supports streaming responses.
+    Supports streaming responses and all Fireworks parameters.
 
     Args:
         model: The model name to use
         prompt: The text prompt
-        temperature: Controls randomness
-        max_tokens: Maximum tokens to generate
-        top_p: Controls diversity via nucleus sampling
-        stop: Stop sequence
-        images: Optional list of images (URLs, file paths, or base64 encoded data)
-        stream: Whether to stream the response
+        **kwargs: Additional parameters supported by Fireworks API including:
+            - temperature: Controls randomness (0.0 to 2.0)
+            - max_tokens: Maximum tokens to generate
+            - top_p: Controls diversity via nucleus sampling
+            - stop: Stop sequences
+            - images: Optional list of images (URLs, file paths, or base64 encoded data)
+            - stream: Whether to stream the response
+            - frequency_penalty: Frequency penalty (-2.0 to 2.0)
+            - presence_penalty: Presence penalty (-2.0 to 2.0)
+            - logit_bias: Logit bias for specific tokens
+            - user: User identifier for tracking
+            - response_format: Response format configuration
+            - seed: Seed for deterministic sampling
 
     Returns:
         The generated response text or streaming response object
@@ -60,7 +58,8 @@ def call_fireworks_llm(
     # Prepare message content
     message_content = [{"type": "text", "text": prompt}]
 
-    # Add images if provided
+    # Extract images from kwargs if provided
+    images = kwargs.pop("images", None)
     if images:
         for image in images:
             if isinstance(image, str):
@@ -97,17 +96,11 @@ def call_fireworks_llm(
     # Call LLM using OpenAI client with Fireworks endpoint
     try:
         response = client.chat.completions.create(
-            model=model,
-            messages=[{"role": "user", "content": message_content}],
-            temperature=temperature,
-            max_tokens=max_tokens,
-            top_p=top_p,
-            stop=stop,
-            stream=stream,
+            model=model, messages=[{"role": "user", "content": message_content}], **kwargs
         )
 
         # If streaming, return the response object directly
-        if stream:
+        if kwargs.get("stream", False):
             return response
 
         # Measure time

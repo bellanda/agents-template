@@ -1,6 +1,6 @@
 import base64
 import time
-from typing import List, Optional, Union
+from typing import Union
 
 from openai import OpenAI
 
@@ -22,27 +22,26 @@ class NvidiaLLMs:
     qwen_3_235b_a22b = "qwen/qwen3-235b-a22b"
 
 
-def call_nvidia_llm(
-    model: str,
-    prompt: str,
-    temperature: float = 1.00,
-    top_p: float = 0.01,
-    max_tokens: int = 1024,
-    images: Optional[List[Union[str, bytes]]] = None,
-    stream: bool = False,
-) -> Union[str, object]:
+def call_nvidia_llm(model: str, prompt: str, **kwargs) -> Union[str, object]:
     """
     Call NVIDIA LLM API with support for text and images.
-    Now supports streaming responses.
+    Supports streaming responses and all NVIDIA parameters.
 
     Args:
         model: The model name to use
         prompt: The text prompt
-        temperature: Controls randomness
-        top_p: Controls diversity via nucleus sampling
-        max_tokens: Maximum tokens to generate
-        images: Optional list of images (URLs, file paths, or base64 encoded data)
-        stream: Whether to stream the response
+        **kwargs: Additional parameters supported by NVIDIA API including:
+            - temperature: Controls randomness (0.0 to 2.0)
+            - top_p: Controls diversity via nucleus sampling
+            - max_tokens: Maximum tokens to generate
+            - images: Optional list of images (URLs, file paths, or base64 encoded data)
+            - stream: Whether to stream the response
+            - frequency_penalty: Frequency penalty (-2.0 to 2.0)
+            - presence_penalty: Presence penalty (-2.0 to 2.0)
+            - logit_bias: Logit bias for specific tokens
+            - user: User identifier for tracking
+            - response_format: Response format configuration
+            - seed: Seed for deterministic sampling
 
     Returns:
         The generated response text or streaming response object
@@ -53,7 +52,8 @@ def call_nvidia_llm(
     # Prepare message content
     message_content = [{"type": "text", "text": prompt}]
 
-    # Add images if provided
+    # Extract images from kwargs if provided
+    images = kwargs.pop("images", None)
     if images:
         for image in images:
             if isinstance(image, str):
@@ -90,17 +90,12 @@ def call_nvidia_llm(
     # Call LLM
     print("CHEGUEI AQUI")
     completion = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": message_content}],
-        temperature=temperature,
-        top_p=top_p,
-        max_tokens=max_tokens,
-        stream=stream,
+        model=model, messages=[{"role": "user", "content": message_content}], **kwargs
     )
     print("COMPLETED")
 
     # If streaming, return the response object directly
-    if stream:
+    if kwargs.get("stream", False):
         return completion
 
     # Measure time
