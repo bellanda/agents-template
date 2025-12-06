@@ -5,38 +5,26 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    # --- Core API & schema (required for FastAPI + validation + env) ---
-    "fastapi[standard]>=0.115.12",
-    "pydantic>=2.11.3",
-    "python-dotenv>=1.1.0",
-
-    # --- Agent runtime (LangChain/LangGraph + shared core) [required] ---
-    "langchain>=0.3.25",
-    "langgraph>=0.4.8",
-    "langchain-core>=0.3.74",
-    "langchain-community>=0.3.27",
-
-    # --- Providers used in this template (keep to preserve current agents) ---
-    "groq>=0.26.0",
-    "langchain-groq>=0.3.2",
-    "langchain-openai>=0.3.21",
-    "langchain-google-genai>=2.1.5",
-    "langchain-nvidia-ai-endpoints>=0.3.10",
-    # Optional/extend: add extra providers as needed (e.g., langchain-fireworks, openrouter)
-
-    # --- Tools used by built-in agents (web search) ---
-    "duckduckgo-search>=8.0.1",
     "duckpy>=2.1.1",
-
-    # --- Optional analytics/ETL/nb tooling (not required for agents) ---
-    "polars>=1.27.1",
-    "sqlalchemy>=2.0.40",
-    "fastexcel>=0.13.0",
-    "xlsxwriter>=3.2.2",
-    "plotly>=6.0.1",
-    "ipykernel>=6.29.5",
-    "ipywidgets>=8.1.6",
-    "chainlit>=2.5.5",
+    "fastapi[standard]>=0.124.0",
+    "fastexcel>=0.18.0",
+    "groq>=0.37.1",
+    "ipykernel>=7.1.0",
+    "ipywidgets>=8.1.8",
+    "langchain>=1.1.2",
+    "langchain-community>=0.4.1",
+    "langchain-core>=1.1.1",
+    "langchain-google-genai>=3.2.0",
+    "langchain-groq>=1.1.0",
+    "langchain-nvidia-ai-endpoints>=1.0.0",
+    "langchain-openai>=1.1.0",
+    "langgraph>=1.0.4",
+    "plotly>=6.5.0",
+    "polars>=1.35.2",
+    "pydantic>=2.12.5",
+    "python-dotenv>=1.2.1",
+    "sqlalchemy>=2.0.44",
+    "xlsxwriter>=3.2.9",
 ]
 
 [build-system]
@@ -44,10 +32,10 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["api", "langchain_agents", "utilities", "environment"]
+packages = ["api", "environment", "langchain_agents", "utilities"]
 
 [tool.hatch.build.targets.wheel.sources]
 "api" = "api"
-"utilities" = "utilities"
-"langchain_agents" = "langchain_agents"
 "environment" = "environment"
+"langchain_agents" = "langchain_agents"
+"utilities" = "utilities"

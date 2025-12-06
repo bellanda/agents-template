@@ -1,13 +1,13 @@
+from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import InMemorySaver
-from langgraph.prebuilt import create_react_agent
 
 from environment import api_keys
 from langchain_agents.web_search_agent.tools import web_search
 
 # Configurar o modelo com parâmetros para reduzir repetições
 model = init_chat_model(
-    "moonshotai/Kimi-K2-Instruct-0905",
+    "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
     model_provider="openai",
     base_url="https://llm.chutes.ai/v1",
     api_key=api_keys.CHUTES_API_KEY,
@@ -51,10 +51,10 @@ FORMATO DE RESPOSTA:
 
 checkpointer = InMemorySaver()
 
-root_agent = create_react_agent(
+root_agent = create_agent(
     model=model,
-    tools=[web_search],
-    prompt=SYSTEM_PROMPT,
+    tools=tools,
+    system_prompt="",
     checkpointer=checkpointer,
 )
 

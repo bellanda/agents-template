@@ -1,6 +1,6 @@
+from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.prebuilt import create_react_agent
 
 from environment import api_keys
 from langchain_agents.weather_agent.tools import get_weather
@@ -46,7 +46,12 @@ FORMATO DE RESPOSTA:
 checkpointer = MemorySaver()
 
 # Criar o agente usando LangGraph
-root_agent = create_react_agent(model, tools, prompt=SYSTEM_PROMPT, checkpointer=checkpointer)
+root_agent = create_agent(
+    model=model,
+    tools=tools,
+    system_prompt=SYSTEM_PROMPT,
+    checkpointer=checkpointer,
+)
 
 # Metadata for the discovery system
 AGENT_NAME = "weather_agent"
