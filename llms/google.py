@@ -3,7 +3,7 @@ from typing import Union
 
 from google import genai
 
-from constants import api_keys
+from environment import api_keys
 
 client = genai.Client(api_key=api_keys.GOOGLE_API_KEY)
 

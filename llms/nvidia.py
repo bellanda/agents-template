@@ -4,7 +4,7 @@ from typing import Union
 
 from openai import OpenAI
 
-from constants import api_keys
+from environment import api_keys
 
 client = OpenAI(base_url="https://integrate.api.nvidia.com/v1", api_key=api_keys.NVIDIA_API_KEY)
 

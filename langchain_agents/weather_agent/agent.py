@@ -1,12 +1,19 @@
-from langchain_groq import ChatGroq
+from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
-from constants import api_keys
+from environment import api_keys
 from langchain_agents.weather_agent.tools import get_weather
 
-# Configurar o modelo
-llm = ChatGroq(model="llama3-70b-8192", api_key=api_keys.GROQ_API_KEY)
+# Configurar o modelo com parâmetros para reduzir repetições
+model = init_chat_model(
+    "groq:openai/gpt-oss-20b",
+    api_key=api_keys.GROQ_API_KEY,
+    temperature=0.1,
+    max_tokens=8000,
+    verbose=True,
+    streaming=True,
+)
 
 # Configurar as tools disponíveis
 tools = [get_weather]
@@ -39,7 +46,7 @@ FORMATO DE RESPOSTA:
 checkpointer = MemorySaver()
 
 # Criar o agente usando LangGraph
-root_agent = create_react_agent(llm, tools, prompt=SYSTEM_PROMPT, checkpointer=checkpointer)
+root_agent = create_react_agent(model, tools, prompt=SYSTEM_PROMPT, checkpointer=checkpointer)
 
 # Metadata for the discovery system
 AGENT_NAME = "weather_agent"

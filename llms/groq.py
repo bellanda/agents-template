@@ -4,7 +4,7 @@ from typing import Union
 
 from groq import Groq
 
-from constants import api_keys
+from environment import api_keys
 
 client = Groq(api_key=api_keys.GROQ_API_KEY)
 

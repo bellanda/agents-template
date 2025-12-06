@@ -4,7 +4,7 @@ from typing import Union
 
 from openai import OpenAI
 
-from constants import api_keys
+from environment import api_keys
 
 client = OpenAI(
     base_url="https://openrouter.ai/api/v1",

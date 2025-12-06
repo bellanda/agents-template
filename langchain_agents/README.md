@@ -26,7 +26,7 @@ from langchain_groq import ChatGroq
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
-from constants import api_keys
+from environment import api_keys
 from langchain_agents.your_agent.tools import your_tool
 
 # Configure the LLM
@@ -207,7 +207,7 @@ from langchain_groq import ChatGroq
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
-from constants import api_keys
+from environment import api_keys
 from langchain_agents.web_search_agent.tools import web_search
 
 llm = ChatGroq(
@@ -246,7 +246,7 @@ from langchain_groq import ChatGroq
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.prebuilt import create_react_agent
 
-from constants import api_keys
+from environment import api_keys
 from langchain_agents.weather_agent.tools import get_weather
 
 llm = ChatGroq(model="llama3-70b-8192", api_key=api_keys.GROQ_API_KEY)
@@ -387,7 +387,7 @@ Once configured, agents are available at:
 
 1. **Separate Files**: Keep each tool in its own file
 2. **Proper Exports**: Use `__init__.py` to export tools
-3. **Constants**: Use the constants module for API keys
+3. **Environment**: Use the Environment module for API keys
 4. **Utilities**: Leverage existing utilities when possible
 
 ## Debugging and Testing

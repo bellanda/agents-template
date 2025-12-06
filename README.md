@@ -31,7 +31,7 @@ agents-template/
 │   ├── excel/                # Excel operations
 │   ├── server/               # Server utilities
 │   └── web_search/           # Web search utilities
-├── constants/                 # Configuration constants
+├── environment/                 # Configuration environment
 │   ├── api_keys.py           # API key configurations
 │   └── paths.py              # Path configurations
 ├── data/                     # Data files and datasets

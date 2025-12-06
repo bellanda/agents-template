@@ -4,7 +4,7 @@ import time
 import requests
 from bs4 import BeautifulSoup
 
-from api.utils.tools import generate_error_message, generate_result_message
+from api.services.agents.tools import generate_error_message, generate_result_message
 
 
 def scrape_url(url: str) -> str:

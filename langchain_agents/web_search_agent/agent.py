@@ -2,14 +2,16 @@ from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import InMemorySaver
 from langgraph.prebuilt import create_react_agent
 
-from constants import api_keys
+from environment import api_keys
 from langchain_agents.web_search_agent.tools import web_search
 
 # Configurar o modelo com parâmetros para reduzir repetições
 model = init_chat_model(
-    "groq:openai/gpt-oss-20b",
-    api_key=api_keys.GROQ_API_KEY,
-    temperature=0.1,
+    "moonshotai/Kimi-K2-Instruct-0905",
+    model_provider="openai",
+    base_url="https://llm.chutes.ai/v1",
+    api_key=api_keys.CHUTES_API_KEY,
+    temperature=0.7,
     max_tokens=8000,
     verbose=True,
     streaming=True,

@@ -1,7 +1,12 @@
 from langchain.tools import tool
 from pydantic import BaseModel, Field
 
-from api.utils.tools import generate_error_message, generate_result_message, generate_status_message, generate_step_message
+from api.services.agents.tools import (
+    generate_error_message,
+    generate_result_message,
+    generate_status_message,
+    generate_step_message,
+)
 from utilities.web_search import search
 
 # Controle global para evitar buscas duplas na mesma sessão

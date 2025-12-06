@@ -15,7 +15,7 @@ O sistema funciona em duas partes:
 
 ```python
 # Backend
-from api.utils.tools import generate_progress_message
+from api.services.agents.tools import generate_progress_message
 message = generate_progress_message(75.0, "Analisando documentos...")
 # Resultado: [PROGRESS:75.0:Analisando documentos...]
 ```
@@ -26,7 +26,7 @@ message = generate_progress_message(75.0, "Analisando documentos...")
 
 ```python
 # Backend
-from api.utils.tools import generate_tool_start_message
+from api.services.agents.tools import generate_tool_start_message
 message = generate_tool_start_message("web_search", {"query": "Python tutorial"})
 # Resultado: [TOOL_START:busca_web:Pesquisando na internet: 'Python tutorial'...]
 ```
@@ -37,7 +37,7 @@ message = generate_tool_start_message("web_search", {"query": "Python tutorial"}
 
 ```python
 # Backend
-from api.utils.tools import generate_tool_end_message
+from api.services.agents.tools import generate_tool_end_message
 message = generate_tool_end_message("web_search", success=True)
 # Resultado: [TOOL_END:busca_web:Operação concluída com sucesso]
 ```
@@ -48,7 +48,7 @@ message = generate_tool_end_message("web_search", success=True)
 
 ```python
 # Backend
-from api.utils.tools import generate_status_message
+from api.services.agents.tools import generate_status_message
 message = generate_status_message("processing", "Processando informações...")
 # Resultado: [STATUS:processing:Processando informações...]
 ```
@@ -59,7 +59,7 @@ message = generate_status_message("processing", "Processando informações...")
 
 ```python
 # Backend
-from api.utils.tools import generate_thinking_message
+from api.services.agents.tools import generate_thinking_message
 message = generate_thinking_message("Analisando a melhor abordagem...")
 # Resultado: [THINKING:Analisando a melhor abordagem...]
 ```
@@ -70,7 +70,7 @@ message = generate_thinking_message("Analisando a melhor abordagem...")
 
 ```python
 # Backend
-from api.utils.tools import generate_result_message
+from api.services.agents.tools import generate_result_message
 message = generate_result_message("success", "Operação concluída com sucesso")
 # Resultado: [RESULT:success:Operação concluída com sucesso]
 ```
@@ -81,7 +81,7 @@ message = generate_result_message("success", "Operação concluída com sucesso"
 
 ```python
 # Backend
-from api.utils.tools import generate_highlight_message
+from api.services.agents.tools import generate_highlight_message
 message = generate_highlight_message("texto importante")
 # Resultado: [HIGHLIGHT:texto importante]
 ```
@@ -90,7 +90,7 @@ message = generate_highlight_message("texto importante")
 
 ```python
 # Backend
-from api.utils.tools import generate_warning_message
+from api.services.agents.tools import generate_warning_message
 message = generate_warning_message("Atenção: verificar configuração")
 # Resultado: [WARNING:Atenção: verificar configuração]
 ```
@@ -99,7 +99,7 @@ message = generate_warning_message("Atenção: verificar configuração")
 
 ```python
 # Backend
-from api.utils.tools import generate_error_message
+from api.services.agents.tools import generate_error_message
 message = generate_error_message("Erro ao conectar com o servidor")
 # Resultado: [ERROR:Erro ao conectar com o servidor]
 ```
@@ -108,7 +108,7 @@ message = generate_error_message("Erro ao conectar com o servidor")
 
 ```python
 # Backend
-from api.utils.tools import generate_code_message
+from api.services.agents.tools import generate_code_message
 message = generate_code_message("javascript", "console.log('hello')")
 # Resultado: [CODE:javascript:console.log('hello')]
 ```
@@ -117,7 +117,7 @@ message = generate_code_message("javascript", "console.log('hello')")
 
 ```python
 # Backend
-from api.utils.tools import generate_step_message
+from api.services.agents.tools import generate_step_message
 message = generate_step_message(1, "Conectando ao servidor")
 # Resultado: [STEP:1:Conectando ao servidor]
 ```
@@ -127,7 +127,7 @@ message = generate_step_message(1, "Conectando ao servidor")
 ### 1. Importar as Funções
 
 ```python
-from api.utils.tools import (
+from api.services.agents.tools import (
     generate_progress_message,
     generate_tool_start_message,
     generate_tool_end_message,
