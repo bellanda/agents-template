@@ -21,7 +21,7 @@ def _chunk(completion_id: str, requested_model: str, current_timestamp: int, con
     return f"data: {json.dumps(payload)}\n\n"
 
 
-async def stream_langchain_agent(
+async def stream_agent(
     agent_info: Dict,
     query: str,
     user_id: str,
@@ -31,8 +31,8 @@ async def stream_langchain_agent(
     requested_model: str,
     verbose: bool = False,
 ):
-    """Stream LangChain/LangGraph events with lightweight, user-facing updates."""
-    agent = agent_info["agent"]  # AgentExecutor / LangGraph app
+    """Stream agent events with lightweight, user-facing updates."""
+    agent = agent_info["agent"]
 
     try:
         async for event in agent.astream_events(
@@ -70,3 +70,25 @@ async def stream_langchain_agent(
     except Exception as e:
         error_msg = f"❌ Streaming error: {str(e)}"
         yield _chunk(completion_id, requested_model, current_timestamp, error_msg)
+
+
+async def stream_ai_sdk_agent(agent_info: Dict, query: str, session_id: str):
+    """
+    Stream raw text chunks from an agent for the AI SDK UI format.
+    Yields plain text fragments (no SSE framing).
+    """
+    agent = agent_info["agent"]  # AgentExecutor / LangGraph app
+    try:
+        async for event in agent.astream_events(
+            {"messages": [{"role": "user", "content": query}]},
+            version="v1",
+            config={"configurable": {"thread_id": session_id}},
+        ):
+            event_type = event.get("event")
+            if event_type == "on_chat_model_stream":
+                chunk = event["data"].get("chunk")
+                content = getattr(chunk, "content", None)
+                if content:
+                    yield content
+    except Exception as e:
+        yield f"❌ Streaming error: {str(e)}"

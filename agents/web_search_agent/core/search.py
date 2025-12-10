@@ -4,14 +4,14 @@ from concurrent.futures import ThreadPoolExecutor, as_completed
 
 sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 
+from agents.web_search_agent.core.duckduckgo import search as search_duckduckgo
+from agents.web_search_agent.core.scrapper import scrape_url
 from api.services.agents.tools import (
     generate_error_message,
     generate_result_message,
     generate_status_message,
     generate_step_message,
 )
-from utilities.web_search.duckduckgo import search as search_duckduckgo
-from utilities.web_search.scrapper import scrape_url
 
 
 def search(query: str) -> str:

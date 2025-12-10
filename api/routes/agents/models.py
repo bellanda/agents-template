@@ -7,7 +7,7 @@ from api.services.agents.registry import get_agents_registry
 router = APIRouter()
 
 
-@router.get("/v1/models")
+@router.get("/")
 async def list_models(agents_registry: dict = Depends(get_agents_registry)):
     """List available models in OpenAI format."""
     models = []

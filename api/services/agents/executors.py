@@ -18,8 +18,8 @@ def _extract_message_content(agent_response: Any) -> str:
     return str(agent_response)
 
 
-async def execute_langchain_agent(agent_info: Dict, query: str, session_id: str) -> str:
-    """Execute LangChain/LangGraph agent and return the final response."""
+async def execute_agent(agent_info: Dict, query: str, session_id: str) -> str:
+    """Execute agent and return the final response."""
     agent = agent_info["agent"]  # AgentExecutor / LangGraph app
     try:
         response = await agent.ainvoke(
@@ -28,7 +28,7 @@ async def execute_langchain_agent(agent_info: Dict, query: str, session_id: str)
         )
         return _extract_message_content(response)
     except Exception as e:
-        print(f"❌ LangChain execution error: {e}")
+        print(f"❌ Agent execution error: {e}")
         return f"❌ Desculpe, ocorreu um erro inesperado: {str(e)}"
 
 
@@ -41,10 +41,10 @@ async def call_agent_async(query: str, session_id: str, model_id: str, agents_re
     agent_info = agents_registry[model_id]
 
     print("\n🤖 === AGENT EXECUTION ===")
-    print(f"📋 Agent: {model_id} ({agent_info.get('type')})")
+    print(f"📋 Agent: {model_id}")
     print(f"💬 User Query: {query}")
 
-    response = await execute_langchain_agent(agent_info, query, session_id)
+    response = await execute_agent(agent_info, query, session_id)
 
     print(f"✅ Final Response: {response[:150]}{'...' if len(response) > 150 else ''}")
     return response

@@ -2,18 +2,15 @@ from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import InMemorySaver
 
+from agents.web_search_agent.tools import web_search
 from environment import api_keys
-from langchain_agents.web_search_agent.tools import web_search
 
 # Configurar o modelo com parâmetros para reduzir repetições
 model = init_chat_model(
-    "Qwen/Qwen3-Coder-480B-A35B-Instruct-FP8",
+    model="MiniMaxAI/MiniMax-M2",
     model_provider="openai",
     base_url="https://llm.chutes.ai/v1",
     api_key=api_keys.CHUTES_API_KEY,
-    temperature=0.7,
-    max_tokens=8000,
-    verbose=True,
     streaming=True,
 )
 
@@ -54,10 +51,10 @@ checkpointer = InMemorySaver()
 root_agent = create_agent(
     model=model,
     tools=tools,
-    system_prompt="",
+    system_prompt=SYSTEM_PROMPT,
     checkpointer=checkpointer,
 )
 
 # Metadata for the discovery system
-AGENT_NAME = "web_search_agent"
-AGENT_DESCRIPTION = "Agente LangGraph com busca na web usando Groq LLM"
+AGENT_NAME = "Agente de Busca Web"
+AGENT_DESCRIPTION = "Agente com busca na web usando DuckDuckGo e MiniMax-M2 (Chutes)"

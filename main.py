@@ -1,19 +1,18 @@
 import uvicorn
-from fastapi import Depends, FastAPI
+from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes.agents import router as agents_router
-from api.services.agents.discovery import discover_agents
-from api.services.agents.registry import get_agents_registry, set_agents_registry
+from api.services.agents.registry import get_agents_registry
 from api.services.agents.tools import (
-    generate_result_message,
     generate_status_message,
-    generate_step_message,
     generate_thinking_message,
 )
 
 # Initialize FastAPI app
 app = FastAPI(title="Multi-Agent LiteLLM Proxy", version="1.0.0")
+
+api_router = APIRouter(prefix="/api/v1")
 
 # CORS middleware for LibreChat compatibility
 app.add_middleware(
@@ -23,25 +22,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-
-# Initialize agents on startup
-@app.on_event("startup")
-async def startup_event():
-    """Initialize agents on startup."""
-    startup_msg = generate_status_message("processing", "Initializing Multi-Agent Proxy...")
-    print(f"🚀 {startup_msg}")
-
-    agents_registry = discover_agents()
-    set_agents_registry(agents_registry)
-
-    agents_loaded_msg = generate_result_message("success", f"Loaded {len(agents_registry)} agents")
-    print(f"✅ {agents_loaded_msg}")
-
-    # Print loaded agents
-    for model_id, agent_info in agents_registry.items():
-        agent_step_msg = generate_step_message(1, f"{model_id} ({agent_info['type']}): {agent_info['name']}")
-        print(f"  - {agent_step_msg}")
 
 
 @app.get("/")
@@ -70,7 +50,8 @@ async def health_check(agents_registry: dict = Depends(get_agents_registry)):
 
 
 # Register routers
-app.include_router(agents_router)
+api_router.include_router(agents_router)
+app.include_router(api_router)
 
 
 if __name__ == "__main__":
@@ -80,4 +61,4 @@ if __name__ == "__main__":
     server_start_msg = generate_status_message("processing", "Starting Multi-Agent Proxy...")
     print(f"🚀 {server_start_msg}")
 
-    uvicorn.run(app, host="0.0.0.0", port=8073)
+    uvicorn.run(app, host="0.0.0.0", port=8000)

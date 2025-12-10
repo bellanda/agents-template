@@ -4,13 +4,13 @@ import time
 import uuid
 from typing import Any, Dict
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Body, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from api.services.agents.executors import call_agent_async
 from api.services.agents.registry import get_agents_registry
-from api.services.agents.streaming import stream_langchain_agent
+from api.services.agents.streaming import stream_agent
 
 router = APIRouter()
 
@@ -19,7 +19,7 @@ class ChatRequest(BaseModel):
     message: str
     user_id: str = "default_user"
     session_id: str = "default_session"
-    model: str = "langchain-web-search-agent"
+    model: str
 
 
 class ChatResponse(BaseModel):
@@ -57,8 +57,8 @@ async def _normalize_request_body(request_body: Any) -> Dict[str, Any]:
     return {}
 
 
-@router.post("/v1/chat/completions")
-async def openai_compatible_chat(request_body: Any, agents_registry: Dict = Depends(get_agents_registry)):
+@router.post("/chat/completions")
+async def openai_compatible_chat(request_body: Any = Body(...), agents_registry: Dict = Depends(get_agents_registry)):
     """OpenAI-compatible endpoint for LibreChat integration (streaming-first)."""
     payload = await _normalize_request_body(request_body)
 
@@ -110,7 +110,7 @@ async def openai_compatible_chat(request_body: Any, agents_registry: Dict = Depe
                 yield f"data: {json.dumps(initial_chunk)}\n\n"
 
                 try:
-                    async for chunk in stream_langchain_agent(
+                    async for chunk in stream_agent(
                         agent_info,
                         user_query,
                         user_id,

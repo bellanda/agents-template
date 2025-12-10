@@ -1,12 +1,12 @@
 import asyncio
 
-from langchain_agents.web_search_agent.agent import root_agent
+from agents.web_search_agent.agent import root_agent
 
 
 async def main():
     # Use astream_events para receber todos os eventos do agente
     async for event in root_agent.astream_events(
-        {"messages": [{"role": "user", "content": "Fale sobre os novos modelos Open Source da OpenAI"}]},
+        {"messages": [{"role": "user", "content": "Quem é Gustavo Bellanda?"}]},
         version="v1",
         config={"configurable": {"thread_id": "1"}},
     ):
