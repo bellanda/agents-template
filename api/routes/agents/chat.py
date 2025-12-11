@@ -1,154 +1,149 @@
+import base64
 import json
-import re
+import mimetypes
 import time
 import uuid
-from typing import Any, Dict
+from typing import Any, Dict, List, Optional
 
-from fastapi import APIRouter, Body, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
 from api.services.agents.executors import call_agent_async
 from api.services.agents.registry import get_agents_registry
 from api.services.agents.streaming import stream_agent
+from api.services.agents.utils import convert_file_to_text
 
 router = APIRouter()
 
 
 class ChatRequest(BaseModel):
-    message: str
-    user_id: str = "default_user"
-    session_id: str = "default_session"
+    messages: List[Dict[str, Any]]
     model: str
+    stream: bool = False
+    session_id: Optional[str] = None
+    user: Optional[str] = None
+    files: Optional[List[str]] = None  # Optional list of file paths to process
 
 
-class ChatResponse(BaseModel):
-    response: str
-    status: str = "success"
+async def _process_files(files: List[str] | None, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+    """
+    Process attached files.
+    - Images: Converted to base64 and added as image_url parts (multimodal).
+    - Documents: Converted to text using MarkItDown and appended to text content.
+    """
+    if not files:
+        return messages
 
+    if not messages:
+        return messages
 
-@router.post("/chat", response_model=ChatResponse)
-async def chat_with_agent(request: ChatRequest, agents_registry: Dict = Depends(get_agents_registry)):
-    """Simple chat endpoint."""
-    try:
-        response = await call_agent_async(
-            query=request.message,
-            session_id=request.session_id,
-            model_id=request.model,
-            agents_registry=agents_registry,
-        )
-        return ChatResponse(response=response)
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+    last_msg = messages[-1]
+    if last_msg.get("role") != "user":
+        # If last message isn't user, append a new user message
+        last_msg = {"role": "user", "content": ""}
+        messages.append(last_msg)
 
+    # Ensure content is a list if we are going to add parts
+    original_content = last_msg.get("content", "")
+    content_parts = []
 
-async def _normalize_request_body(request_body: Any) -> Dict[str, Any]:
-    """Accept dicts (LibreChat proxy) or FastAPI Request objects and normalize to a dict."""
-    if isinstance(request_body, dict):
-        return request_body
-    if hasattr(request_body, "json"):
-        try:
-            body = request_body.json()
-            if hasattr(body, "__await__"):
-                body = await body
-            return body if isinstance(body, dict) else {}
-        except Exception:
-            return {}
-    return {}
+    if isinstance(original_content, str):
+        if original_content:
+            content_parts.append({"type": "text", "text": original_content})
+    elif isinstance(original_content, list):
+        content_parts.extend(original_content)
+
+    for file_path in files:
+        mime_type, _ = mimetypes.guess_type(file_path)
+
+        # Handle Images (Multimodal)
+        if mime_type and mime_type.startswith("image/"):
+            try:
+                with open(file_path, "rb") as image_file:
+                    encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
+                    content_parts.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{encoded_string}"}})
+            except Exception as e:
+                print(f"❌ Error processing image {file_path}: {e}")
+                content_parts.append({"type": "text", "text": f"\n[Error processing image {file_path}: {e}]\n"})
+
+        # Handle Text/Documents (MarkItDown)
+        else:
+            text = convert_file_to_text(file_path)
+            if text:
+                content_parts.append(
+                    {
+                        "type": "text",
+                        "text": f"\n\n--- Conteúdo do arquivo {file_path} ---\n{text}\n-----------------------------------\n",
+                    }
+                )
+
+    # Update the message content
+    # If we have mixed content (text + images), we must use the list format
+    # If we only have text parts, we could join them, but list format is safer for multimodal models
+    if content_parts:
+        last_msg["content"] = content_parts
+
+    return messages
 
 
 @router.post("/chat/completions")
-async def openai_compatible_chat(request_body: Any = Body(...), agents_registry: Dict = Depends(get_agents_registry)):
-    """OpenAI-compatible endpoint for LibreChat integration (streaming-first)."""
-    payload = await _normalize_request_body(request_body)
-
-    print("\n📨 === INCOMING REQUEST ===")
-    print(f"🤖 Model: {payload.get('model', 'unknown')}")
-    print(f"🌊 Stream: {payload.get('stream', False)}")
-
+async def chat_completions(request: ChatRequest, agents_registry: Dict = Depends(get_agents_registry)):
+    """
+    OpenAI-compatible chat endpoint.
+    Supports:
+    - Streaming (stream=True) with XML status tags.
+    - Non-streaming (stream=False).
+    - File processing (via 'files' field).
+    """
     try:
-        messages = payload.get("messages", [])
-        if not messages:
+        # 1. Validation
+        if not request.messages:
             raise HTTPException(status_code=400, detail="No messages provided")
 
+        if request.model not in agents_registry:
+            raise HTTPException(status_code=404, detail=f"Model '{request.model}' not found")
+
+        # 2. File Processing
+        messages = await _process_files(request.files, request.messages)
+
+        # 3. Setup
         user_query = messages[-1].get("content", "")
-        requested_model = payload.get("model", "")
-        stream = payload.get("stream", False)
-        verbose = bool(payload.get("verbose", False))
-
-        if not requested_model:
-            raise HTTPException(status_code=400, detail="No model specified")
-
-        print(f"💬 User Query: {user_query}")
-        print(f"📊 Messages in conversation: {len(messages)}")
-
-        if "Please generate a concise, 5-word-or-less title for the conversation" in user_query:
-            user_query = "Please generate a concise, 5-word-or-less title for the conversation /no_think"
-
-        if requested_model not in agents_registry:
-            available = list(agents_registry.keys())
-            raise HTTPException(status_code=404, detail=f"Model '{requested_model}' not found. Available: {available}")
-
-        agent_info = agents_registry[requested_model]
-        user_id = payload.get("user", "librechat_user")
-        session_id = payload.get("session_id") or f"librechat_session_{requested_model}"
-
-        current_timestamp = int(time.time())
+        agent_info = agents_registry[request.model]
+        session_id = request.session_id or f"session_{uuid.uuid4().hex[:8]}"
+        user_id = request.user or "default_user"
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
+        current_timestamp = int(time.time())
 
-        if stream:
-            print("🌊 Streaming response...")
+        # 4. Streaming Response
+        if request.stream:
 
             async def generate_stream():
-                initial_chunk = {
+                # Initial chunk
+                initial = {
                     "id": completion_id,
                     "object": "chat.completion.chunk",
                     "created": current_timestamp,
-                    "model": requested_model,
-                    "choices": [{"index": 0, "delta": {"role": "assistant"}, "logprobs": None, "finish_reason": None}],
+                    "model": request.model,
+                    "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
                 }
-                yield f"data: {json.dumps(initial_chunk)}\n\n"
+                yield f"data: {json.dumps(initial)}\n\n"
 
-                try:
-                    async for chunk in stream_agent(
-                        agent_info,
-                        user_query,
-                        user_id,
-                        session_id,
-                        completion_id,
-                        current_timestamp,
-                        requested_model,
-                        verbose,
-                    ):
-                        yield chunk
+                # Agent stream
+                async for chunk in stream_agent(
+                    agent_info, user_query, user_id, session_id, completion_id, current_timestamp, request.model, verbose=True
+                ):
+                    yield chunk
 
-                except Exception as error:
-                    print(f"❌ Streaming error: {error}")
-                    error_msg = "❌ Ocorreu um erro durante o processamento. Tentando novamente..."
-                    error_chunk = {
-                        "id": completion_id,
-                        "object": "chat.completion.chunk",
-                        "created": current_timestamp,
-                        "model": requested_model,
-                        "choices": [
-                            {
-                                "index": 0,
-                                "delta": {"content": f"\n> ⚠️ **{error_msg}**\n\n"},
-                                "logprobs": None,
-                                "finish_reason": None,
-                            }
-                        ],
-                    }
-                    yield f"data: {json.dumps(error_chunk)}\n\n"
-
-                final_chunk = {
+                # Final chunk
+                final = {
                     "id": completion_id,
                     "object": "chat.completion.chunk",
                     "created": current_timestamp,
-                    "model": requested_model,
-                    "choices": [{"index": 0, "delta": {}, "logprobs": None, "finish_reason": "stop"}],
+                    "model": request.model,
+                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
                 }
-                yield f"data: {json.dumps(final_chunk)}\n\n"
+                yield f"data: {json.dumps(final)}\n\n"
                 yield "data: [DONE]\n\n"
 
             return StreamingResponse(
@@ -157,58 +152,37 @@ async def openai_compatible_chat(request_body: Any = Body(...), agents_registry:
                 headers={
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
-                    "Content-Type": "text/event-stream; charset=utf-8",
                     "X-Accel-Buffering": "no",
-                    "Transfer-Encoding": "chunked",
                 },
             )
 
-        print("📄 Non-streaming response...")
-        agent_response = await call_agent_async(
+        # 5. Non-streaming Response
+        response_text = await call_agent_async(
             query=user_query,
             session_id=session_id,
-            model_id=requested_model,
+            model_id=request.model,
             agents_registry=agents_registry,
         )
-
-        if "Please generate a concise, 5-word-or-less title for the conversation" in messages[-1].get("content", ""):
-            cleaned_response = re.sub(r"<think>.*?</think>", "", agent_response, flags=re.DOTALL)
-            cleaned_response = re.sub(r"</?think>", "", cleaned_response).strip()
-            if cleaned_response:
-                lines = [line.strip() for line in cleaned_response.split("\n") if line.strip()]
-                if lines:
-                    cleaned_response = lines[-1]
-            agent_response = cleaned_response if cleaned_response else agent_response
-
-        if not agent_response or agent_response.strip() == "":
-            agent_response = "I apologize, but I couldn't generate a proper response. Please try again."
-
-        prompt_tokens = len(user_query.split()) if user_query else 0
-        completion_tokens = len(agent_response.split()) if agent_response else 0
 
         return {
             "id": completion_id,
             "object": "chat.completion",
             "created": current_timestamp,
-            "model": requested_model,
+            "model": request.model,
             "choices": [
                 {
                     "index": 0,
-                    "message": {"role": "assistant", "content": agent_response},
-                    "logprobs": None,
+                    "message": {"role": "assistant", "content": response_text},
                     "finish_reason": "stop",
                 }
             ],
             "usage": {
-                "prompt_tokens": prompt_tokens,
-                "completion_tokens": completion_tokens,
-                "total_tokens": prompt_tokens + completion_tokens,
+                "prompt_tokens": 0,  # Token counting for multimodal/lists is complex, skipping for now
+                "completion_tokens": len(response_text.split()),
+                "total_tokens": len(response_text.split()),
             },
-            "system_fingerprint": None,
         }
 
-    except HTTPException:
-        raise
     except Exception as e:
         print(f"❌ Error: {e}")
-        raise HTTPException(status_code=500, detail=f"Agent error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))

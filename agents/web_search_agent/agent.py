@@ -7,7 +7,7 @@ from environment import api_keys
 
 # Configurar o modelo com parâmetros para reduzir repetições
 model = init_chat_model(
-    model="MiniMaxAI/MiniMax-M2",
+    model="Qwen/Qwen3-VL-235B-A22B-Instruct",
     model_provider="openai",
     base_url="https://llm.chutes.ai/v1",
     api_key=api_keys.CHUTES_API_KEY,

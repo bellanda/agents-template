@@ -42,7 +42,12 @@ async def call_agent_async(query: str, session_id: str, model_id: str, agents_re
 
     print("\n🤖 === AGENT EXECUTION ===")
     print(f"📋 Agent: {model_id}")
-    print(f"💬 User Query: {query}")
+
+    # Avoid printing massive base64 strings if query is a list (multimodal)
+    if isinstance(query, list):
+        print("💬 User Query: [Multimodal Content]")
+    else:
+        print(f"💬 User Query: {query}")
 
     response = await execute_agent(agent_info, query, session_id)
 
