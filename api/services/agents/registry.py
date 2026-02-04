@@ -1,7 +1,7 @@
 import importlib
 from typing import Any, Dict
 
-from environment.paths import BASE_DIR
+from config.paths import BASE_DIR
 
 agents_registry: Dict[str, Any] = {}
 

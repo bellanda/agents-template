@@ -3,7 +3,7 @@ from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import MemorySaver
 
 from agents.weather_agent.tools import get_weather
-from environment import api_keys
+from config import api_keys
 
 # Configurar o modelo com parâmetros para reduzir repetições
 model = init_chat_model(

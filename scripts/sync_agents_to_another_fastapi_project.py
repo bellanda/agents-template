@@ -3,7 +3,7 @@ import pathlib
 import shutil
 import sys
 
-from environment import paths
+from config import paths
 
 """
 uv run scripts/sync_agents_to_another_fastapi_project.py \
@@ -26,7 +26,7 @@ def parse_args() -> argparse.Namespace:
         "--backend-path",
         required=True,
         type=pathlib.Path,
-        help="Caminho da pasta backend de destino (receberá agents/ e environment/).",
+        help="Caminho da pasta backend de destino (receberá agents/ e config/).",
     )
     return parser.parse_args()
 
@@ -41,14 +41,12 @@ def ensure_dir(path: pathlib.Path, label: str) -> pathlib.Path:
     return resolved
 
 
-def replace_tree(src: pathlib.Path, dest: pathlib.Path) -> None:
-    """Replace destination directory with a copy of source."""
+def copy_merge(src: pathlib.Path, dest: pathlib.Path) -> None:
+    """Merge source directory into destination without deleting existing files."""
     if not src.is_dir():
         raise FileNotFoundError(f"Fonte ausente: {src}")
-    if dest.exists():
-        shutil.rmtree(dest)
-    dest.parent.mkdir(parents=True, exist_ok=True)
-    shutil.copytree(src, dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    shutil.copytree(src, dest, dirs_exist_ok=True)
 
 
 def main() -> None:
@@ -62,26 +60,29 @@ def main() -> None:
         sys.exit(1)
 
     try:
-        # 1. Copy Agents
+        # 1. Copy Agents (Merge individual agent folders)
         for dir in (paths.BASE_DIR / "agents").iterdir():
             if dir.is_dir():
-                replace_tree(dir, backend_path / "agents" / dir.name)
-                print(f"✓ Copiado agente: {dir.name}")
+                copy_merge(dir, backend_path / "agents" / dir.name)
+                print(f"✓ Sincronizado agente: {dir.name}")
 
-        # 2. Copy API Routes
-        replace_tree(paths.BASE_DIR / "api" / "routes" / "agents", api_path / "routes" / "agents")
-        print("✓ Copiado routes/agents")
+        # 2. Copy API Routes (Merge files)
+        copy_merge(paths.BASE_DIR / "api" / "routes" / "agents", api_path / "routes" / "agents")
+        print("✓ Sincronizado routes/agents")
 
-        # 3. Copy API Services
-        replace_tree(paths.BASE_DIR / "api" / "services" / "agents", api_path / "services" / "agents")
-        print("✓ Copiado services/agents")
+        # 3. Copy API Services (Merge files)
+        copy_merge(paths.BASE_DIR / "api" / "services" / "agents", api_path / "services" / "agents")
+        print("✓ Sincronizado services/agents")
 
-        # 4. Copy Environment Files
-        env_dest = backend_path / "environment"
+        # 4. Copy Config Files
+        env_dest = backend_path / "config"
         env_dest.mkdir(exist_ok=True)
 
-        shutil.copy(paths.BASE_DIR / "environment" / "api_keys.py", env_dest / "api_keys.py")
-        print("✓ Copiado environment/api_keys.py")
+        for config_file in ["api_keys.py", "agents.py"]:
+            src_file = paths.BASE_DIR / "config" / config_file
+            if src_file.exists():
+                shutil.copy(src_file, env_dest / config_file)
+                print(f"✓ Copiado config/{config_file}")
 
         # 5. Copy Scripts
         (backend_path / "scripts").mkdir(exist_ok=True, parents=True)
@@ -90,6 +91,15 @@ def main() -> None:
             backend_path / "scripts" / "uv_upgrade_pyproject_dependencies.py",
         )
         print("✓ Copiado scripts/uv_upgrade_pyproject_dependencies.py")
+
+        # 6. Copy Cursor Rules
+        rules_dest = backend_path.parent / ".cursor" / "rules"
+        rules_dest.mkdir(exist_ok=True, parents=True)
+        rule_file = "backend-ai-fastapi-langchain.mdc"
+        src_rule = paths.BASE_DIR / ".cursor" / "rules" / rule_file
+        if src_rule.exists():
+            shutil.copy(src_rule, rules_dest / rule_file)
+            print(f"✓ Copiado .cursor/rules/{rule_file}")
 
         print("\n✅ Sincronização concluída com sucesso!")
         print("Lembre-se de instalar as dependências no projeto de destino: markitdown, etc.")

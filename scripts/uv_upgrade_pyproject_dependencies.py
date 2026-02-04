@@ -1,7 +1,7 @@
 import re
 import subprocess
 
-from environment import paths
+from config import paths
 
 # Upgrade do uv.lock
 subprocess.run(["uv", "sync", "--upgrade"], cwd=paths.BASE_DIR)

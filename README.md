@@ -47,8 +47,8 @@ After syncing, follow these steps in your **destination project**:
     - Ensure you have valid API keys.
 
 2.  **Verify Paths**:
-    - Check that `backend/environment/paths.py` exists and defines `BASE_DIR` using `pathlib`.
-    - Confirm that `backend/environment/api_keys.py` is present.
+    - Check that `backend/config/paths.py` exists and defines `BASE_DIR` using `pathlib`.
+    - Confirm that `backend/config/api_keys.py` is present.
 
 3.  **Update Dependencies**:
     - Open the `pyproject.toml` in your target project.

@@ -1,5 +1,4 @@
 import base64
-import json
 import mimetypes
 import time
 import uuid
@@ -87,6 +86,49 @@ async def _process_files(files: List[str] | None, messages: List[Dict[str, Any]]
     return messages
 
 
+def _extract_user_query(messages: List[Dict[str, Any]]) -> str:
+    """Extrai o texto da última mensagem do usuário, suportando múltiplos formatos (OpenAI, Vercel AI SDK parts, etc)."""
+    if not messages:
+        return ""
+
+    # Procurar a última mensagem do usuário (de trás para frente)
+    user_messages = [m for m in messages if m.get("role") == "user"]
+    if not user_messages:
+        last_msg = messages[-1]
+    else:
+        last_msg = user_messages[-1]
+
+    # 1. Tentar extrair de 'parts' (Vercel AI SDK)
+    parts = last_msg.get("parts")
+    if isinstance(parts, list):
+        texts = []
+        for part in parts:
+            if isinstance(part, dict) and part.get("type") == "text":
+                texts.append(part.get("text", ""))
+        return " ".join(texts).strip()
+
+    # 2. Tentar extrair de 'content' ou 'text' (OpenAI / Simples)
+    content = last_msg.get("content") or last_msg.get("text") or ""
+
+    if isinstance(content, str):
+        return content
+
+    if isinstance(content, dict):
+        return content.get("text", "")
+
+    if isinstance(content, list):
+        texts = []
+        for part in content:
+            if isinstance(part, dict):
+                if part.get("type") == "text":
+                    texts.append(part.get("text", ""))
+                elif "text" in part and part.get("type") is None:
+                    texts.append(part.get("text", ""))
+        return " ".join(texts).strip()
+
+    return ""
+
+
 @router.post("/chat/completions")
 async def chat_completions(request: ChatRequest, agents_registry: Dict = Depends(get_agents_registry)):
     """
@@ -108,7 +150,10 @@ async def chat_completions(request: ChatRequest, agents_registry: Dict = Depends
         messages = await _process_files(request.files, request.messages)
 
         # 3. Setup
-        user_query = messages[-1].get("content", "")
+        user_query = _extract_user_query(messages)
+        if not user_query:
+            raise HTTPException(status_code=400, detail="No user query found")
+
         agent_info = agents_registry[request.model]
         session_id = request.session_id or f"session_{uuid.uuid4().hex[:8]}"
         user_id = request.user or "default_user"
@@ -119,31 +164,12 @@ async def chat_completions(request: ChatRequest, agents_registry: Dict = Depends
         if request.stream:
 
             async def generate_stream():
-                # Initial chunk
-                initial = {
-                    "id": completion_id,
-                    "object": "chat.completion.chunk",
-                    "created": current_timestamp,
-                    "model": request.model,
-                    "choices": [{"index": 0, "delta": {"role": "assistant"}, "finish_reason": None}],
-                }
-                yield f"data: {json.dumps(initial)}\n\n"
-
-                # Agent stream
+                # Agent stream (Now using Data Stream Protocol internally)
                 async for chunk in stream_agent(
                     agent_info, user_query, user_id, session_id, completion_id, current_timestamp, request.model, verbose=True
                 ):
                     yield chunk
 
-                # Final chunk
-                final = {
-                    "id": completion_id,
-                    "object": "chat.completion.chunk",
-                    "created": current_timestamp,
-                    "model": request.model,
-                    "choices": [{"index": 0, "delta": {}, "finish_reason": "stop"}],
-                }
-                yield f"data: {json.dumps(final)}\n\n"
                 yield "data: [DONE]\n\n"
 
             return StreamingResponse(
@@ -153,6 +179,7 @@ async def chat_completions(request: ChatRequest, agents_registry: Dict = Depends
                     "Cache-Control": "no-cache",
                     "Connection": "keep-alive",
                     "X-Accel-Buffering": "no",
+                    "x-vercel-ai-ui-message-stream": "v1",
                 },
             )
 
@@ -183,6 +210,8 @@ async def chat_completions(request: ChatRequest, agents_registry: Dict = Depends
             },
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         print(f"❌ Error: {e}")
         raise HTTPException(status_code=500, detail=str(e))

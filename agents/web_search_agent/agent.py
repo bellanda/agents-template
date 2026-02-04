@@ -1,16 +1,12 @@
 from langchain.agents import create_agent
-from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.memory import InMemorySaver
 
 from agents.web_search_agent.tools import web_search
-from environment import api_keys
+from config.agents import init_chutes_model
 
-# Configurar o modelo com parâmetros para reduzir repetições
-model = init_chat_model(
-    model="Qwen/Qwen3-VL-235B-A22B-Instruct",
-    model_provider="openai",
-    base_url="https://llm.chutes.ai/v1",
-    api_key=api_keys.CHUTES_API_KEY,
+# Configurar o modelo usando a nossa classe customizada do config
+model = init_chutes_model(
+    model="zai-org/GLM-4.7-TEE",
     streaming=True,
 )
 
