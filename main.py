@@ -1,20 +1,35 @@
+from contextlib import asynccontextmanager
+
 import uvicorn
 from fastapi import APIRouter, Depends, FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from api.routes.agents import router as agents_router
-from api.services.agents.registry import get_agents_registry
+from api.services.agents.registry import get_agents_registry, reload_agents_registry
 from api.services.agents.tools import (
     generate_status_message,
     generate_thinking_message,
 )
+from config.checkpointer import close_checkpointer, init_checkpointer
+
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    """Startup / shutdown lifecycle for the application."""
+    # Startup: initialize the shared SQLite checkpointer, then load agents
+    await init_checkpointer()
+    await reload_agents_registry()
+    yield
+    # Shutdown: close the checkpointer connection
+    await close_checkpointer()
+
 
 # Initialize FastAPI app
-app = FastAPI(title="Multi-Agent LiteLLM Proxy", version="1.0.0")
+app = FastAPI(title="Multi-Agent LiteLLM Proxy", version="1.0.0", lifespan=lifespan)
 
 api_router = APIRouter(prefix="/api/v1")
 
-# CORS middleware for LibreChat compatibility
+# CORS middleware for frontend compatibility
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],

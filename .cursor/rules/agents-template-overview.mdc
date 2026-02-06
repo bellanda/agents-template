@@ -1,0 +1,38 @@
+---
+description: "[Agents Template] Overview - architecture, structure, conventions. Copy .cursor/rules/ to other projects."
+alwaysApply: true
+---
+
+# Agents Template – Overview
+
+Multi-agent backend (FastAPI + LangGraph) with dashboard (TanStack Start + Shadcn). Copy this repo or `.cursor/rules/agents-template-*.mdc` to bootstrap new projects.
+
+## Architecture
+
+```
+Backend :8000                    Frontend :3000
+POST /api/v1/agents/chat/completions  ← useChat + DefaultChatTransport
+GET  /api/v1/agents                  ← list agents (id, name, description, mode)
+GET/DELETE /api/v1/agents/threads    ← conversation history (chat-mode only)
+       ↓
+Agent Registry (auto-discovers agents/) → Stream (SSE) → SQLite Checkpointer
+```
+
+## Directory Structure
+
+```
+├── agents/           # One folder per agent; agent.py exports create_root_agent, AGENT_NAME, AGENT_DESCRIPTION, AGENT_MODE
+├── api/routes/agents/   # chat.py, models.py, threads.py
+├── api/services/agents/ # registry.py, streaming.py, executors.py, tools.py, utils.py
+├── config/            # agents.py, api_keys.py, checkpointer.py, paths.py, prompt_cache.py
+├── frontend/src/      # routes/, components/, lib/api.ts
+├── data/              # checkpoints.db (gitignored)
+└── main.py            # FastAPI + lifespan(init_checkpointer, reload_agents_registry)
+```
+
+## Conventions
+
+- **Python**: `uv` only. Type hints on public APIs. `async/await` for I/O.
+- **Frontend**: `bun` only. TypeScript strict. Tailwind only. `@/` → `src/`.
+- **Agent modes**: `chat` (persistent checkpointer) | `single-shot` (no memory).
+- **Streaming**: Vercel AI SDK UI Message Stream (SSE). Header: `x-vercel-ai-ui-message-stream: v1`.

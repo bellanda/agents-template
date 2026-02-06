@@ -1,0 +1,145 @@
+---
+description: "[Agents Template] Frontend - stack, chat UI, agents dashboard, AI Elements, Streamdown markdown"
+globs: frontend/**/*.{ts,tsx}
+alwaysApply: false
+---
+
+# Agents Template – Frontend (chat, dashboard, AI Elements)
+
+Rules for the **agents-template** frontend: stack, chat UI, sidebar/dashboard for agents, AI Elements, Streamdown. Use only when working on frontend in a project that uses this template.
+
+## Stack
+
+- **Runtime:** Bun only. **UI:** Shadcn/ui + Tailwind v4. **Routing:** TanStack Start (file-based). **AI:** `@ai-sdk/react` (useChat) + `ai` (DefaultChatTransport). **Icons:** @phosphor-icons/react, lucide-react.
+- **Paths:** `@/` → `src/`. Vite proxy: `/api` → `localhost:8000`.
+
+## AI Elements (Vercel) – Doc Links
+
+- **Message** (display, branching, actions, markdown): https://elements.ai-sdk.dev/components/message  
+- **Conversation** (scroll, empty state, download): https://elements.ai-sdk.dev/components/conversation  
+- **Reasoning** (collapsible thinking, streaming): https://elements.ai-sdk.dev/components/reasoning  
+- **Chain of Thought** (step-by-step): https://elements.ai-sdk.dev/components/chain-of-thought  
+
+Install with: `npx ai-elements@latest add message conversation reasoning` (then use from `@/components/ai-elements/...`).
+
+## Markdown: Streamdown (required for MessageResponse / rich markdown)
+
+**In `src/styles.css` (required):**
+
+```css
+@source "../node_modules/streamdown/dist/*.js";
+```
+
+Use the **Streamdown** component for assistant text (GFM, code highlight, math, incomplete markdown). Do **not** use a custom regex-based renderer.
+
+```tsx
+import { Streamdown } from "streamdown";
+
+// In message parts loop, for part.type === "text". Include [&_a]:cursor-pointer so AI-generated links show pointer cursor.
+<Streamdown
+  key={`${message.id}-${i}`}
+  className="prose prose-sm dark:prose-invert max-w-none wrap-break-word [&_a]:cursor-pointer [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_code]:break-all"
+  parseIncompleteMarkdown
+>
+  {textContent}
+</Streamdown>
+```
+
+If using AI Elements, use **MessageResponse** for text (it uses Streamdown internally): `<MessageResponse>{part.text}</MessageResponse>`.
+
+## useChat (AI SDK 5.0+)
+
+```tsx
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+
+const [input, setInput] = useState("");
+const { messages, sendMessage, setMessages, status, stop } = useChat({
+  transport: new DefaultChatTransport({
+    api: "/api/v1/agents/chat/completions",
+    body: { model: agentId, stream: true, ...(sessionId ? { session_id: sessionId } : {}) },
+  }),
+});
+
+sendMessage({ text: input });  // NOT { role, content }
+const isStreaming = status === "submitted" || status === "streaming";
+```
+
+## Message parts (reasoning + text)
+
+Sort parts so reasoning is first; render by type. Use Streamdown for `text`; collapsible block for `reasoning` with `isStreaming`, `open`, `onOpenChange` (e.g. `reasoningOpenMap`).
+
+```tsx
+const sortedParts = [...(message.parts ?? [])].sort((a, b) => {
+  const order: Record<string, number> = { reasoning: 0, text: 1 };
+  return (order[a?.type] ?? 2) - (order[b?.type] ?? 2);
+});
+
+sortedParts.map((part, i) => {
+  if (!part || typeof part !== "object") return null;
+  const textContent = "text" in part ? String((part as { text?: string }).text ?? "") : "";
+  switch (part.type) {
+    case "reasoning":
+      return <ReasoningBlock key={...} content={textContent} isStreaming={...} open={...} onOpenChange={...} />;
+    case "text":
+      return <Streamdown key={...} parseIncompleteMarkdown>{textContent}</Streamdown>;
+    default:
+      return null;
+  }
+});
+```
+
+**Reasoning state:** `isStreaming = isStreaming && isLastMessage && !hasTextPart`; `open = reasoningOpenMap[id] ?? (hasTextPart ? false : true)`.
+
+## Full example (AI Elements style)
+
+```tsx
+import { Conversation, ConversationContent, ConversationEmptyState, ConversationScrollButton } from "@/components/ai-elements/conversation";
+import { Message, MessageContent, MessageResponse } from "@/components/ai-elements/message";
+import { Reasoning, ReasoningContent, ReasoningTrigger } from "@/components/ai-elements/reasoning";
+import { Input, PromptInputTextarea, PromptInputSubmit } from "@/components/ai-elements/prompt-input";
+import { useChat } from "@ai-sdk/react";
+import { useState } from "react";
+
+const [input, setInput] = useState("");
+const { messages, sendMessage, status } = useChat({ transport: new DefaultChatTransport({ api: "/api/v1/agents/chat/completions", body: { model: agentId, stream: true } }) });
+
+return (
+  <div className="flex flex-col h-full">
+    <Conversation>
+      <ConversationContent>
+        {messages.length === 0 ? (
+          <ConversationEmptyState title="Start a conversation" description="Type below to begin" />
+        ) : (
+          messages.map((msg) => (
+            <Message from={msg.role} key={msg.id}>
+              <MessageContent>
+                {msg.parts?.map((part, i) => {
+                  if (part?.type === "reasoning") return <Reasoning isStreaming={...}><ReasoningTrigger /><ReasoningContent>{part.text}</ReasoningContent></Reasoning>;
+                  if (part?.type === "text") return <MessageResponse key={i}>{part.text}</MessageResponse>;
+                  return null;
+                })}
+              </MessageContent>
+            </Message>
+          ))
+        )}
+      </ConversationContent>
+      <ConversationScrollButton />
+    </Conversation>
+    <Input onSubmit={(e) => { e.preventDefault(); if (input.trim()) { sendMessage({ text: input }); setInput(""); } }} className="mt-4">
+      <PromptInputTextarea value={input} onChange={(e) => setInput(e.target.value)} placeholder="Say something..." className="pr-12" />
+      <PromptInputSubmit status={status === "streaming" ? "streaming" : "ready"} disabled={!input.trim()} className="absolute bottom-1 right-1" />
+    </Input>
+  </div>
+);
+```
+
+## Chat vs single-shot
+
+- **Chat:** `/chat/$agentId` with `session_id` in search params; `key={sessionId}` on ChatView to remount.
+- **Single-shot:** `/agent/$agentId`; call `setMessages([])` (and reset reasoning state) before each `sendMessage`.
+
+## Routes (agents-template dashboard)
+
+- `__root.tsx`: TooltipProvider → SidebarProvider → AppSidebar, SidebarInset, Outlet.
+- `index.tsx`: Home. `chat/$agentId.tsx`: ChatView with sessionId. `agent/$agentId.tsx`: ChatView singleShot.

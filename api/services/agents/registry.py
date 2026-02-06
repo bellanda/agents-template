@@ -1,19 +1,27 @@
 import importlib
-from typing import Any, Dict
+from typing import Any
 
+from config.checkpointer import get_checkpointer
 from config.paths import BASE_DIR
 
-agents_registry: Dict[str, Any] = {}
+agents_registry: dict[str, Any] = {}
 
 
-def discover_agents() -> Dict[str, Any]:
-    """Discover all LangChain/LangGraph agents located under agents in BASE_DIR."""
-    agents: Dict[str, Any] = {}
+def discover_agents() -> dict[str, Any]:
+    """Discover all LangChain/LangGraph agents located under agents in BASE_DIR.
+
+    Uses a factory pattern: each agent.py must export `create_root_agent(checkpointer)`
+    instead of a pre-built `root_agent`. Chat-mode agents receive the shared checkpointer;
+    single-shot agents receive None.
+    """
+    agents: dict[str, Any] = {}
     agents_path = BASE_DIR / "agents"
 
     if not agents_path.exists():
         print(f"✗ agents directory not found at {agents_path}")
         return agents
+
+    checkpointer = get_checkpointer()
 
     for agent_dir in agents_path.iterdir():
         if agent_dir.is_dir() and (agent_dir / "agent.py").exists():
@@ -21,18 +29,33 @@ def discover_agents() -> Dict[str, Any]:
             try:
                 agent_module = importlib.import_module(module_path)
 
-                if hasattr(agent_module, "root_agent"):
-                    agent = agent_module.root_agent
-                    model_id = f"{agent_dir.name}".replace("_", "-")
-                    agent_name = getattr(agent_module, "AGENT_NAME", agent_dir.name)
-                    agent_description = getattr(agent_module, "AGENT_DESCRIPTION", f"Agent: {agent_dir.name}")
+                # Prefer factory function, fallback to pre-built root_agent
+                factory = getattr(agent_module, "create_root_agent", None)
+                pre_built = getattr(agent_module, "root_agent", None)
 
-                    agents[model_id] = {
-                        "agent": agent,
-                        "name": agent_name,
-                        "description": agent_description,
-                    }
-                    print(f"✓ Agent: {model_id}")
+                if factory is None and pre_built is None:
+                    print(f"✗ Agent {agent_dir.name}: no create_root_agent or root_agent found")
+                    continue
+
+                model_id = f"{agent_dir.name}".replace("_", "-")
+                agent_name = getattr(agent_module, "AGENT_NAME", agent_dir.name)
+                agent_description = getattr(agent_module, "AGENT_DESCRIPTION", f"Agent: {agent_dir.name}")
+                agent_mode = getattr(agent_module, "AGENT_MODE", "single-shot")
+
+                # Build agent: chat agents get the shared checkpointer
+                if factory is not None:
+                    cp = checkpointer if agent_mode == "chat" else None
+                    agent = factory(checkpointer=cp)
+                else:
+                    agent = pre_built
+
+                agents[model_id] = {
+                    "agent": agent,
+                    "name": agent_name,
+                    "description": agent_description,
+                    "mode": agent_mode,
+                }
+                print(f"✓ Agent: {model_id} (mode={agent_mode})")
             except Exception as e:
                 print(f"✗ Failed to load agent {agent_dir.name}: {e}")
 
@@ -47,13 +70,19 @@ def _ensure_agents_loaded() -> None:
     agents_registry = discover_agents()
 
 
-def get_agents_registry() -> Dict[str, Any]:
+async def reload_agents_registry() -> None:
+    """Reload all agents (called at startup after checkpointer is ready)."""
+    global agents_registry
+    agents_registry = discover_agents()
+
+
+def get_agents_registry() -> dict[str, Any]:
     """FastAPI dependency to retrieve the current in-memory agents registry."""
     _ensure_agents_loaded()
     return agents_registry
 
 
-def set_agents_registry(new_registry: Dict[str, Any]) -> None:
+def set_agents_registry(new_registry: dict[str, Any]) -> None:
     """Replace the in-memory registry (used on startup and reload)."""
     global agents_registry
     agents_registry = new_registry

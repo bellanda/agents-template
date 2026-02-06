@@ -1,19 +1,24 @@
 from langchain.agents import create_agent
-from langgraph.checkpoint.memory import InMemorySaver
+from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from agents.web_search_agent.tools import web_search
 from config.agents import init_chutes_model
 
-# Configurar o modelo usando a nossa classe customizada do config
+# Agent metadata for the discovery system
+AGENT_NAME = "Agente de Busca Web"
+AGENT_DESCRIPTION = "Agente com busca na web usando DuckDuckGo e MiniMax-M2 (Chutes)"
+AGENT_MODE = "chat"  # Each search is independent, no conversation memory
+
+# Model configuration (Chutes wrapper with reasoning capture)
 model = init_chutes_model(
     model="zai-org/GLM-4.7-TEE",
     streaming=True,
 )
 
-# Configurar as tools disponíveis
+# Available tools
 tools = [web_search]
 
-# System message para o agente
+# System prompt
 SYSTEM_PROMPT = """Você é um assistente inteligente especializado em busca na web.
 
 🚨 REGRA FUNDAMENTAL: FAÇA APENAS UMA BUSCA POR PERGUNTA! 🚨
@@ -42,15 +47,11 @@ FORMATO DE RESPOSTA:
 - Cite fontes com links clicáveis"""
 
 
-checkpointer = InMemorySaver()
-
-root_agent = create_agent(
-    model=model,
-    tools=tools,
-    system_prompt=SYSTEM_PROMPT,
-    checkpointer=checkpointer,
-)
-
-# Metadata for the discovery system
-AGENT_NAME = "Agente de Busca Web"
-AGENT_DESCRIPTION = "Agente com busca na web usando DuckDuckGo e MiniMax-M2 (Chutes)"
+def create_root_agent(checkpointer: BaseCheckpointSaver | None = None):
+    """Factory function called by the registry with the shared checkpointer."""
+    return create_agent(
+        model=model,
+        tools=tools,
+        system_prompt=SYSTEM_PROMPT,
+        checkpointer=checkpointer,
+    )

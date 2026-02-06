@@ -1,21 +1,26 @@
 from langchain.agents import create_agent
 from langchain.chat_models import init_chat_model
-from langgraph.checkpoint.memory import MemorySaver
+from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from agents.weather_agent.tools import get_weather
 from config import api_keys
 
-# Configurar o modelo com parâmetros para reduzir repetições
+# Agent metadata for the discovery system
+AGENT_NAME = "Agente de Clima"
+AGENT_DESCRIPTION = "Agente com informações meteorológicas usando GPT-OSS-20B (Groq)"
+AGENT_MODE = "chat"  # Persistent conversation with memory
+
+# Model configuration
 model = init_chat_model(
     model="groq:openai/gpt-oss-20b",
     api_key=api_keys.GROQ_API_KEY,
     streaming=True,
 )
 
-# Configurar as tools disponíveis
+# Available tools
 tools = [get_weather]
 
-# System message para o agente
+# System prompt
 SYSTEM_PROMPT = """Você é um assistente inteligente especializado em informações meteorológicas.
 
 🚨 REGRA FUNDAMENTAL: USE SEMPRE A FERRAMENTA GET_WEATHER PARA CONSULTAS DE CLIMA! 🚨
@@ -39,17 +44,12 @@ FORMATO DE RESPOSTA:
 - Seja educado e prestativo
 """
 
-# Configurar memória (checkpointer)
-checkpointer = MemorySaver()
 
-# Criar o agente usando LangGraph
-root_agent = create_agent(
-    model=model,
-    tools=tools,
-    system_prompt=SYSTEM_PROMPT,
-    checkpointer=checkpointer,
-)
-
-# Metadata for the discovery system
-AGENT_NAME = "Agente de Clima"
-AGENT_DESCRIPTION = "Agente com informações meteorológicas usando GPT-OSS-20B (Groq)"
+def create_root_agent(checkpointer: BaseCheckpointSaver | None = None):
+    """Factory function called by the registry with the shared checkpointer."""
+    return create_agent(
+        model=model,
+        tools=tools,
+        system_prompt=SYSTEM_PROMPT,
+        checkpointer=checkpointer,
+    )

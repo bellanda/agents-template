@@ -1,4 +1,4 @@
-from typing import AsyncGenerator, Dict
+from typing import AsyncGenerator
 
 import orjson
 
@@ -19,7 +19,7 @@ def _error_chunk(error_text: str) -> str:
 
 
 async def stream_agent(
-    agent_info: Dict,
+    agent_info: dict,
     query: str,
     user_id: str,
     session_id: str,
@@ -30,17 +30,21 @@ async def stream_agent(
 ) -> AsyncGenerator[str, None]:
     """Stream agent events - Vercel AI SDK Data Stream Protocol."""
     agent = agent_info["agent"]
+    agent_mode = agent_info.get("mode", "single-shot")
 
     yield f"data: {orjson.dumps({'type': 'start', 'messageId': completion_id}).decode('utf-8')}\n\n"
 
     reasoning_started = False
     text_started = False
 
+    # Chat-mode agents use the checkpointer thread_id for memory persistence
+    config: dict = {"configurable": {"thread_id": session_id}}
+
     try:
         async for event in agent.astream_events(
             {"messages": [{"role": "user", "content": query}]},
             version="v1",
-            config={"configurable": {"thread_id": session_id}},
+            config=config,
         ):
             event_type = event.get("event")
 

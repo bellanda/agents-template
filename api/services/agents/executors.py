@@ -1,4 +1,4 @@
-from typing import Any, Dict
+from typing import Any
 
 
 def _extract_message_content(agent_response: Any) -> str:
@@ -18,13 +18,17 @@ def _extract_message_content(agent_response: Any) -> str:
     return str(agent_response)
 
 
-async def execute_agent(agent_info: Dict, query: str, session_id: str) -> str:
+async def execute_agent(agent_info: dict, query: str, session_id: str) -> str:
     """Execute agent and return the final response."""
-    agent = agent_info["agent"]  # AgentExecutor / LangGraph app
+    agent = agent_info["agent"]
+    agent_mode = agent_info.get("mode", "single-shot")
+
+    config: dict = {"configurable": {"thread_id": session_id}}
+
     try:
         response = await agent.ainvoke(
             {"messages": [{"role": "user", "content": query}]},
-            config={"configurable": {"thread_id": session_id}},
+            config=config,
         )
         return _extract_message_content(response)
     except Exception as e:
@@ -32,7 +36,7 @@ async def execute_agent(agent_info: Dict, query: str, session_id: str) -> str:
         return f"❌ Desculpe, ocorreu um erro inesperado: {str(e)}"
 
 
-async def call_agent_async(query: str, session_id: str, model_id: str, agents_registry: Dict) -> str:
+async def call_agent_async(query: str, session_id: str, model_id: str, agents_registry: dict) -> str:
     """Execute agent and return response."""
     if model_id not in agents_registry:
         available = list(agents_registry.keys())
