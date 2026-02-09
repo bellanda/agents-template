@@ -82,8 +82,38 @@ After syncing, follow these steps in your **destination project**:
 
 | Method | Endpoint | Description |
 | :--- | :--- | :--- |
-| `GET` | `/models` | List available agents (OpenAI format). |
+| `GET` | `/models` | List available agents (OpenAI format, includes suggestions). |
 | `POST` | `/chat/completions` | Main chat endpoint (Sync & Streaming). |
+| `GET` | `/threads` | List conversation threads (supports `?agent_id=` and `?user_id=` filters). |
+| `GET` | `/threads/{thread_id}` | Get message history for a specific thread. |
+| `DELETE` | `/threads/{thread_id}` | Delete a conversation thread. |
+
+### 👤 User Persistence
+
+The template supports user-scoped conversation history. By default, it uses a mock user ID stored in `localStorage` (frontend) and filters threads by `user_id` in the backend.
+
+**Frontend:** Uses `useUserId()` hook that returns `"default_user"` by default. The hook is designed to be easily replaced with your auth system - just update `src/hooks/useUserId.ts`.
+
+**Backend:** The `user` field in `ChatRequest` is used to filter threads. If not provided, defaults to `"default_user"`. User ID is stored in checkpoint metadata for filtering.
+
+**To implement real authentication:**
+1. Replace `useUserId()` hook implementation in `src/hooks/useUserId.ts` with your auth provider
+2. The hook signature `(): [string, () => void]` should remain the same
+3. Backend will automatically filter threads by user ID
+
+### 💡 Agent Suggestions
+
+Agents can define suggested prompts via `AGENT_SUGGESTIONS` in their `agent.py`:
+
+```python
+AGENT_SUGGESTIONS = [
+    "What are the latest trends in AI?",
+    "How does machine learning work?",
+    "Explain quantum computing",
+]
+```
+
+These suggestions appear in the chat UI when no messages are present, allowing users to quickly start conversations.
 
 ### 🌊 Streaming & Rich UI Feedback
 

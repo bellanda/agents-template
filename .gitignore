@@ -1,5 +1,6 @@
-# Ignore all files in the data directory
-data/*
+# Ignore all files in the data directory except .gitkeep
+data
+!data/.gitkeep
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
