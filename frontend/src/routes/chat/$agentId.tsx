@@ -1,4 +1,5 @@
 import { ChatView } from "@/components/ChatView";
+import { SidebarLayout } from "@/components/layouts";
 import { createFileRoute } from "@tanstack/react-router";
 
 interface ChatSearch {
@@ -16,8 +17,9 @@ function ChatPage() {
   const { agentId } = Route.useParams();
   const { session } = Route.useSearch();
 
-  // Generate a stable session ID if none provided
-  const sessionId = session ?? `${agentId}_${crypto.randomUUID().slice(0, 8)}`;
-
-  return <ChatView key={sessionId} agentId={agentId} sessionId={sessionId} singleShot={false} />;
+  return (
+    <SidebarLayout>
+      <ChatView agentId={agentId} sessionId={session} singleShot={false} />
+    </SidebarLayout>
+  );
 }

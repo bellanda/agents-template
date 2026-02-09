@@ -1,4 +1,5 @@
 import { ChatView } from "@/components/ChatView";
+import { SidebarLayout } from "@/components/layouts";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/agent/$agentId")({
@@ -8,5 +9,9 @@ export const Route = createFileRoute("/agent/$agentId")({
 function AgentPage() {
   const { agentId } = Route.useParams();
 
-  return <ChatView agentId={agentId} singleShot={true} />;
+  return (
+    <SidebarLayout>
+      <ChatView agentId={agentId} singleShot={true} />
+    </SidebarLayout>
+  );
 }

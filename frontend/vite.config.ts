@@ -1,5 +1,4 @@
-import { devtools } from "@tanstack/devtools-vite";
-import { tanstackStart } from "@tanstack/react-start/plugin/vite";
+import { tanstackRouter } from "@tanstack/router-plugin/vite";
 import viteReact from "@vitejs/plugin-react";
 import { fileURLToPath, URL } from "url";
 import { defineConfig } from "vite";
@@ -22,13 +21,14 @@ const config = defineConfig({
     }
   },
   plugins: [
-    devtools(),
-    // this is the plugin that enables path aliases
+    tanstackRouter({
+      target: "react",
+      autoCodeSplitting: true
+    }),
     viteTsConfigPaths({
       projects: ["./tsconfig.json"]
     }),
     tailwindcss(),
-    tanstackStart(),
     viteReact()
   ]
 });

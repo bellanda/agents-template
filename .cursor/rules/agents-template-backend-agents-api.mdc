@@ -8,9 +8,30 @@ alwaysApply: false
 
 Rules for the **agents-template** backend: agent definitions, streaming protocol, checkpointer, threads API. Use only when working on backend/agents in a project that uses this template.
 
+## ⚠️ Production Warnings
+
+**This template uses development defaults that MUST be adapted for production:**
+
+1. **User Authentication**: Default user is `"default_user"`. Replace with your auth system:
+   - Backend: Extract `user_id` from JWT/session in `ChatRequest.user`
+   - Frontend: Replace `useUserId()` hook with your auth provider
+   - See `frontend/src/hooks/useUserId.ts` for integration example
+
+2. **Database**: Uses SQLite (`data/checkpoints.db` and `data/history.db`) for simplicity:
+   - **Production**: Replace with PostgreSQL, MySQL, or your production database
+   - Update `config/checkpointer.py` to use your database adapter
+   - Update `api/services/agents/history.py` to use your database
+   - SQLite is fine for single-instance deployments, but not for distributed systems
+
+3. **File Paths**: Ensure `config/paths.py` points to correct `BASE_DIR` in your project structure
+
+4. **API Keys**: Store in environment variables, never commit to git. See `config/api_keys.py`
+
+---
+
 ## 1. Agent Definition (agents/*/agent.py)
 
-Each agent is auto-discovered. **Required exports:**
+Each agent is **auto-discovered** by the registry. **Required exports:**
 
 ```python
 from langgraph.prebuilt import create_react_agent
@@ -19,6 +40,10 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 AGENT_NAME = "Human-readable Name"
 AGENT_DESCRIPTION = "What this agent does"
 AGENT_MODE = "chat"  # or "single-shot"
+AGENT_SUGGESTIONS = [  # Optional: suggested prompts for UI
+    "What are the latest trends in AI?",
+    "How does machine learning work?",
+]
 
 def create_root_agent(checkpointer: BaseCheckpointSaver | None = None):
     return create_react_agent(
@@ -29,43 +54,315 @@ def create_root_agent(checkpointer: BaseCheckpointSaver | None = None):
     )
 ```
 
-- **chat**: registry passes shared `AsyncSqliteSaver`; conversations persist.
-- **single-shot**: registry passes `None`; each request is independent.
-- Folder name → model ID: `weather_agent` → `weather-agent`.
+**Discovery Process:**
+- Registry scans `agents/` directory at startup
+- Each folder with `agent.py` is loaded via `importlib`
+- Folder name → model ID: `weather_agent` → `weather-agent` (underscores → hyphens)
+- Registry calls `create_root_agent(checkpointer)` or uses `root_agent` if factory missing
+- **chat mode**: Registry passes shared `AsyncSqliteSaver`; conversations persist via checkpointer
+- **single-shot mode**: Registry passes `None`; each request is independent, no memory
 
-**Models:** Chutes/reasoning → `from config.agents import init_chutes_model`. OpenAI-compatible → `init_chat_model(..., streaming=True)`.
+**Models:**
+- Reasoning models (Chutes, Cerebras): `from config.agents import init_chutes_model, init_cerebras_model`
+- OpenAI-compatible: `from langchain_openai import ChatOpenAI` with `streaming=True`
+- Custom model wrappers in `config/agents.py` extract `reasoning_content` from chunks
 
-**Tools:** `@tool("name", args_schema=PydanticModel)` in `agents/<name>/tools/`.
+**Tools:**
+- Define in `agents/<name>/tools/` directory
+- Use `@tool("name", args_schema=PydanticModel)` decorator
+- Tools are automatically discovered and passed to `create_react_agent`
 
 ---
 
-## 2. Streaming Protocol (api/services/agents/streaming.py)
+## 2. Agent Registry (api/services/agents/registry.py)
 
-SSE compatible with AI SDK `DefaultChatTransport`. **Chunk order:**
+**Auto-discovery at startup:**
+- `discover_agents()` scans `BASE_DIR / "agents"` for folders with `agent.py`
+- Imports module: `agents.{folder_name}.agent`
+- Extracts metadata: `AGENT_NAME`, `AGENT_DESCRIPTION`, `AGENT_MODE`, `AGENT_SUGGESTIONS`
+- Creates agent instance with appropriate checkpointer (chat mode) or None (single-shot)
+- Stores in global `agents_registry` dict keyed by model_id
 
-`start` → [reasoning-start → reasoning-delta* → reasoning-end] → text-start → text-delta* → text-end → finish → `data: [DONE]\n\n`
+**Lifespan integration:**
+- Called once at startup via `reload_agents_registry()` in `main.py` lifespan
+- Registry is cached in memory for fast lookups
+- FastAPI dependency `get_agents_registry()` provides registry to routes
+
+**Error handling:**
+- Failed agent loads are logged but don't crash the app
+- Missing `create_root_agent` or `root_agent` skips the agent
+
+---
+
+## 3. Streaming Protocol (api/services/agents/streaming.py)
+
+**SSE compatible with Vercel AI SDK `DefaultChatTransport`.** 
+
+**Chunk order (strict):**
+```
+start → [reasoning-start → reasoning-delta* → reasoning-end] → text-start → text-delta* → text-end → finish → data: [DONE]\n\n
+```
+
+**Implementation:**
+- Uses LangGraph `agent.astream_events()` with `version="v1"`
+- Extracts `reasoning_content` from `chunk.additional_kwargs.get("reasoning_content", "")`
+- Extracts `content` from chunk for text streaming
+- **Critical**: Reasoning MUST come before text (SDK orders parts by first-seen start)
+- Config includes `thread_id` (session_id) and metadata (`user_id`, `agent_id`)
 
 **Helpers:**
 
 ```python
 def _chunk(type_name: str, id: str, delta: str = "") -> str:
+    """Build a Vercel AI SDK Data Stream Protocol chunk."""
     payload: dict = {"type": type_name, "id": id}
     if delta:
         payload["delta"] = delta
     return f"data: {orjson.dumps(payload).decode('utf-8')}\n\n"
 
 def _error_chunk(error_text: str) -> str:
-    return f"data: {orjson.dumps({'type': 'error', 'errorText': error_text}).decode('utf-8')}\n\n"
+    """Build an error chunk (uses errorText, not delta)."""
+    payload = {"type": "error", "errorText": error_text}
+    return f"data: {orjson.dumps(payload).decode('utf-8')}\n\n"
 ```
 
-**Rules:** Use `orjson.dumps().decode('utf-8')`; no extra fields (strictObject). `start` uses `messageId` not `id`. Response header: `x-vercel-ai-ui-message-stream: v1`. Reasoning from `chunk.additional_kwargs.get("reasoning_content", "")`.
+**Response headers (required):**
+```python
+headers={
+    "Cache-Control": "no-cache",
+    "Connection": "keep-alive",
+    "X-Accel-Buffering": "no",
+    "x-vercel-ai-ui-message-stream": "v1",  # Required for AI SDK
+}
+```
+
+**Rules:**
+- Use `orjson.dumps().decode('utf-8')` for JSON encoding (faster than json)
+- No extra fields in payload (strict object format)
+- `start` chunk uses `messageId` not `id`
+- Final chunk: `data: [DONE]\n\n`
+
+**History saving:**
+- After streaming completes, saves to `history.db` if agent mode is `"chat"`
+- Stores full response and reasoning (if present)
+- Uses `api/services/agents/history.py` functions
 
 ---
 
-## 3. Persistence & Threads
+## 4. Agent Execution (api/services/agents/executors.py)
 
-**Checkpointer:** `config/checkpointer.py` — `aiosqlite.connect(DB_PATH)` + `AsyncSqliteSaver(conn)`; `await conn.setup()`. Lifespan in `main.py`: `init_checkpointer()` → `reload_agents_registry()` → yield → `close_checkpointer()`.
+**Non-streaming execution:**
+- `execute_agent()` calls `agent.ainvoke()` with user query
+- Extracts final message content from LangGraph response
+- Returns plain text string
+- Used when `stream=False` in chat endpoint
 
-**Threads API:** `GET /agents/threads` (optional `?agent_id=`), `GET /agents/threads/{id}`, `DELETE /agents/threads/{id}`. List uses `checkpointer.alist({})`; guard `config`/`configurable` with `getattr` and `isinstance(config, dict)` to avoid KeyError.
+**Streaming execution:**
+- Handled by `stream_agent()` in `streaming.py`
+- Uses `agent.astream_events()` for real-time chunks
+- Processes events asynchronously via async generator
 
-**Prompt cache:** `config/prompt_cache.py` — `should_apply_prompt_cache(model)` and `apply_anthropic_cache_control(messages)` for Anthropic only; OpenAI is automatic; Groq/Chutes/NVIDIA per-request.
+**Error handling:**
+- Exceptions are caught and returned as error chunks (streaming) or error messages (non-streaming)
+- Agent execution errors don't crash the API
+
+---
+
+## 5. API Routes (api/routes/agents/)
+
+### Chat Endpoint (`chat.py`)
+
+**POST `/api/v1/agents/chat/completions`**
+
+OpenAI-compatible endpoint supporting:
+- Streaming (`stream=True`) with SSE
+- Non-streaming (`stream=False`) with JSON response
+- File processing (images → base64, documents → text via MarkItDown)
+- Multimodal messages (text + images)
+
+**Request model:**
+```python
+class ChatRequest(BaseModel):
+    messages: List[Dict[str, Any]]
+    model: str  # Agent model_id
+    stream: bool = False
+    session_id: Optional[str] = None  # Thread ID for chat mode
+    user: Optional[str] = None  # User ID (defaults to "default_user")
+    files: Optional[List[str]] = None  # File paths to process
+```
+
+**File processing:**
+- Images: Converted to base64, added as `image_url` parts (multimodal)
+- Documents: Converted to text using MarkItDown, appended to text content
+- Files are processed before agent execution
+
+**Query extraction:**
+- `_extract_user_query()` handles multiple formats:
+  - OpenAI format: `{"role": "user", "content": "text"}`
+  - Vercel AI SDK parts: `{"role": "user", "parts": [{"type": "text", "text": "..."}]}`
+  - Multimodal: Extracts text from content list
+
+### Models Endpoint (`models.py`)
+
+**GET `/api/v1/agents`**
+
+Returns list of available agents in OpenAI format:
+- `id`: Model ID (folder name with hyphens)
+- `name`: `AGENT_NAME` from agent.py
+- `description`: `AGENT_DESCRIPTION`
+- `mode`: `AGENT_MODE` ("chat" or "single-shot")
+- `suggestions`: `AGENT_SUGGESTIONS` array
+
+### Threads Endpoint (`threads.py`)
+
+**GET `/api/v1/agents/threads`**
+- Lists all threads for a user (filtered by `user_id`)
+- Optional query params: `?agent_id=` and `?user_id=`
+- Returns thread metadata: `thread_id`, `agent_id`, `preview`, `created_at`
+
+**GET `/api/v1/agents/threads/{thread_id}`**
+- Returns full message history for a thread
+- Normalizes roles: `user`, `assistant` (filters out `tool`, `system`)
+- Returns plain text content (multimodal blocks are flattened)
+- Includes `reasoning` field if present
+
+**DELETE `/api/v1/agents/threads/{thread_id}`**
+- Deletes a thread from history database
+
+---
+
+## 6. Persistence & Threads
+
+### Checkpointer (`config/checkpointer.py`)
+
+**SQLite-based persistence for chat-mode agents:**
+- Uses `aiosqlite` for async SQLite operations
+- Database path: `BASE_DIR / "data" / "checkpoints.db"`
+- Shared `AsyncSqliteSaver` instance for all chat-mode agents
+- Connection managed via FastAPI lifespan:
+  - Startup: `await init_checkpointer()` → `await checkpointer.setup()`
+  - Shutdown: `await close_checkpointer()`
+
+**⚠️ Production:** Replace SQLite with PostgreSQL/MySQL adapter. LangGraph supports multiple checkpointers:
+- `PostgresSaver` for PostgreSQL
+- `MemorySaver` for in-memory (no persistence)
+- Custom checkpointer implementing `BaseCheckpointSaver`
+
+### History Database (`api/services/agents/history.py`)
+
+**Simple SQLite database for thread metadata:**
+- Table: `chat_history` with columns: `thread_id`, `user_id`, `agent_id`, `messages` (JSON), `preview`, `updated_at`
+- Used for sidebar display and history hydration
+- Separate from LangGraph checkpointer (which stores agent state)
+
+**Functions:**
+- `init_db()`: Creates table and indexes
+- `save_chat()`: Saves/updates thread with messages
+- `get_user_threads()`: Lists threads for a user
+- `get_chat_messages()`: Gets messages for a thread
+- `delete_chat()`: Deletes a thread
+
+**⚠️ Production:** Replace with your production database. The schema is simple and can be migrated easily.
+
+### User Persistence
+
+**Multi-user support:**
+- `user_id` and `agent_id` stored in checkpoint metadata (see `streaming.py` config)
+- Threads filtered by `user_id` in `threads.py` endpoints
+- Default user: `"default_user"` if `ChatRequest.user` is not provided
+- Frontend passes `user: userId` in `DefaultChatTransport` body
+
+**History Hydration:**
+- Frontend fetches from `/threads/{id}` on mount
+- Backend returns normalized roles (`user`, `assistant`) and plain text content
+- Internal messages (tool, system) are filtered out
+- Ensures UI consistency across reloads
+
+### Prompt Cache (`config/prompt_cache.py`)
+
+**Provider-aware prompt caching:**
+- **OpenAI**: Automatic (prefixes cached at 50% discount, nothing to do)
+- **Anthropic**: Explicit via `cache_control` markers on messages
+  - Use `should_apply_prompt_cache(model)` to check if needed
+  - Use `apply_anthropic_cache_control(messages)` to mark last user message
+- **Groq/Chutes/NVIDIA**: Per-request pricing, no token cache benefit
+
+**Usage:**
+```python
+if should_apply_prompt_cache(model):
+    messages = apply_anthropic_cache_control(messages)
+```
+
+---
+
+## 7. FastAPI Integration (main.py)
+
+**Lifespan management:**
+```python
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
+    init_db()  # Initialize history database
+    await init_checkpointer()  # Initialize LangGraph checkpointer
+    await reload_agents_registry()  # Load all agents
+    yield
+    # Shutdown
+    await close_checkpointer()  # Close checkpointer connection
+```
+
+**Router registration:**
+- Agents router mounted at `/api/v1/agents`
+- CORS middleware configured for frontend compatibility
+
+**Dependencies:**
+- `get_agents_registry()`: FastAPI dependency providing in-memory registry
+- Used by all agent routes for agent lookup
+
+---
+
+## 8. Adapting to Different Backend Structures
+
+**If your project structure differs:**
+
+1. **API Routes Location:**
+   - Template uses: `src/api/routes/agents/`
+   - Adapt: Update import paths in `main.py` and router includes
+   - Ensure routes are accessible via FastAPI router
+
+2. **Services Location:**
+   - Template uses: `src/api/services/agents/`
+   - Adapt: Update imports in routes and services
+   - Registry, streaming, executors must be importable
+
+3. **Config Location:**
+   - Template uses: `config/` at backend root
+   - Adapt: Update `config/paths.py` to point to correct `BASE_DIR`
+   - Ensure all config files are importable
+
+4. **Agents Location:**
+   - Template uses: `agents/` at backend root
+   - Adapt: Update `config/paths.py` or registry discovery logic
+   - Registry scans `BASE_DIR / "agents"` by default
+
+5. **Database Paths:**
+   - Template uses: `data/checkpoints.db` and `data/history.db`
+   - Adapt: Update `config/checkpointer.py` and `api/services/agents/history.py`
+   - Ensure `data/` directory exists or create it programmatically
+
+---
+
+## 9. Dependencies
+
+**Required Python packages:**
+- `langgraph`, `langchain`, `langchain-core`
+- `fastapi`, `uvicorn`
+- `aiosqlite` (for SQLite checkpointer)
+- `orjson` (for fast JSON encoding)
+- `markitdown` (for file processing)
+- Provider SDKs: `langchain-openai`, `langchain-anthropic`, etc.
+
+**Installation:**
+```bash
+uv add langgraph langchain fastapi uvicorn aiosqlite orjson markitdown
+uv add langchain-openai langchain-anthropic  # As needed
+```
