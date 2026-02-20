@@ -1,0 +1,347 @@
+---
+description: AI agents frontend — AI Elements, useChat, streaming UI, chat/single-shot modes, sidebar, history
+globs: ["frontend/**/*.{ts,tsx}"]
+alwaysApply: false
+---
+# AI Agents — Frontend (Chat, Dashboard, AI Elements)
+
+## Directory Structure
+
+```
+frontend/src/
+├── routes/
+│   ├── __root.tsx            # ThemeProvider wrapper
+│   ├── index.tsx             # Home page
+│   ├── chat/$agentId.tsx     # Chat mode route
+│   └── agent/$agentId.tsx    # Single-shot route
+├── components/
+│   ├── ChatView.tsx          # Main chat component
+│   ├── layouts/sidebar-layout.tsx
+│   ├── sidebar/app-sidebar.tsx
+│   ├── ai-elements/          # Vercel AI Elements (auto-generated)
+│   └── ui/                   # Shadcn/ui components
+├── hooks/useUserId.ts        # User ID hook (replace with auth)
+├── lib/api.ts
+└── styles.css                # Global styles + Streamdown
+```
+
+---
+
+## 1. Prerequisites
+
+```bash
+bun add @ai-sdk/react ai streamdown
+bunx ai-elements@latest add message conversation reasoning
+```
+
+**In `src/styles.css` (required for Streamdown/MessageResponse):**
+
+```css
+@source "../node_modules/streamdown/dist/*.js";
+
+.prose a, [class*="prose"] a {
+  cursor: pointer;
+}
+```
+
+---
+
+## 2. AI Elements Component Reference
+
+### Conversation
+- **Conversation** — Container with auto-scroll
+- **ConversationContent** — Message list wrapper
+- **ConversationEmptyState**, **ConversationScrollButton**
+
+### Message
+- **Message** — `from={message.role}` (user/assistant)
+- **MessageContent** — Content wrapper
+- **MessageResponse** — Markdown rendering via Streamdown; use for `part.type === "text"`
+
+### Reasoning
+- **Reasoning** — Collapsible, auto-open during streaming, auto-close when done
+- **ReasoningTrigger** — "Thinking..." shimmer
+- **ReasoningContent** — `children: string`
+
+### Input
+- **PromptInput**, **PromptInputTextarea**, **PromptInputSubmit**
+
+Import from `@/components/ai-elements/...` (auto-generated during install).
+
+**Rule:** AI Elements first for AI UI → Compose with Shadcn → Custom only if impossible.
+
+---
+
+## 3. useChat (AI SDK 5.0+)
+
+```tsx
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+import { useUserId } from "@/hooks/useUserId";
+
+const [userId] = useUserId();
+const { messages, sendMessage, setMessages, status, stop } = useChat({
+  id: sessionId,  // Thread ID for chat mode (undefined for single-shot)
+  transport: new DefaultChatTransport({
+    api: "/api/v1/agents/chat/completions",
+    body: {
+      model: agentId,
+      stream: true,
+      user: userId,
+      ...(sessionId ? { session_id: sessionId } : {}),
+    },
+  }),
+});
+
+sendMessage({ text: input });  // NOT { role, content }
+const isChatStreaming = status === "submitted" || status === "streaming";
+```
+
+**Key points:**
+- `sendMessage({ text })`: AI SDK format, not OpenAI format
+- `status`: `"idle"`, `"submitted"`, `"streaming"`, `"error"`
+- `useUserId()` returns `["default_user", () => {}]` by default — **replace with your auth system**
+
+---
+
+## 4. Message Parts Rendering
+
+Sort parts: reasoning before text. Guard each part.
+
+```tsx
+const sorted = [...(message.parts ?? [])].sort((a, b) => {
+  const order: Record<string, number> = { reasoning: 0, text: 1 };
+  return (order[a?.type] ?? 2) - (order[b?.type] ?? 2);
+});
+
+{sorted.map((part, i) => {
+  if (!part || typeof part !== "object") return null;
+  const textContent = "text" in part ? String((part as { text?: string }).text ?? "") : "";
+  switch (part.type) {
+    case "reasoning":
+      if (isStreaming && isLastMessage) {
+        return (
+          <Reasoning key={`${message.id}-reasoning-${i}`} isStreaming={true}
+            open={reasoningOpenMap[message.id] ?? !hasTextPart}
+            onOpenChange={(open) => setReasoningOpenMap((p) => ({ ...p, [message.id]: open }))}>
+            <ReasoningTrigger />
+            <ReasoningContent>{textContent}</ReasoningContent>
+          </Reasoning>
+        );
+      }
+      return null;  // Hide reasoning after streaming completes
+    case "text":
+      return <MessageResponse key={`${message.id}-text-${i}`}>{textContent}</MessageResponse>;
+    default: return null;
+  }
+})}
+```
+
+**Reasoning control:**
+- `isStreaming`: true ONLY when streaming AND no text part yet
+- `open`: When `hasTextPart` → collapse. Store in `reasoningOpenMap` state. User can reopen via click.
+
+**Streamdown alternative** (if not using AI Elements):
+
+```tsx
+<Streamdown
+  className="prose prose-sm dark:prose-invert max-w-none wrap-break-word [&_a]:cursor-pointer [&_pre]:overflow-x-auto [&_pre]:max-w-full [&_code]:break-all"
+  parseIncompleteMarkdown>
+  {textContent}
+</Streamdown>
+```
+
+---
+
+## 5. Chat vs Single-Shot Modes
+
+### Chat Mode (`/chat/$agentId`)
+
+- Persistent history. Session ID from URL: `?session=thread_123`.
+- History hydration on mount. Sidebar shows threads.
+- `key={sessionId}` on ChatView to remount on session change.
+
+```tsx
+const { session } = Route.useSearch();
+const sessionId = session || `thread_${Date.now()}`;
+
+<ChatView agentId={agentId} sessionId={sessionId} singleShot={false} key={sessionId} />
+```
+
+**History hydration:**
+
+```tsx
+useEffect(() => {
+  if (sessionId && !singleShot) {
+    fetch(`/api/v1/agents/threads/${sessionId}`)
+      .then(res => res.json())
+      .then(data => {
+        const hydrated = data.messages.map((msg: any) => ({
+          id: msg.id || `${msg.role}-${Date.now()}`,
+          role: msg.role,
+          parts: [{ type: "text", text: msg.content }],
+        }));
+        setMessages(hydrated);
+      });
+  }
+}, [sessionId, singleShot]);
+```
+
+### Single-Shot Mode (`/agent/$agentId`)
+
+- Stateless. No history. Call `setMessages([])` before each `sendMessage`.
+
+```tsx
+<ChatView agentId={agentId} sessionId={undefined} singleShot={true} />
+
+// Before sending:
+if (singleShot) { setMessages([]); }
+sendMessage({ text: input });
+```
+
+---
+
+## 6. Persistence — Extract Text for Backend
+
+```tsx
+const extractMessageResponseText = (msg: UIMessage): string => {
+  if (!Array.isArray(msg.parts)) return (msg as { content?: string }).content ?? "";
+  return msg.parts
+    .filter((p) => p?.type === "text")
+    .map((p) => String((p as { text?: string }).text ?? ""))
+    .filter(Boolean).join(" ").trim() || (msg as { content?: string }).content ?? "";
+};
+```
+
+Use `extractMessageResponseText` for saving (text only, not reasoning).
+
+**Persistence flow:**
+
+```tsx
+useEffect(() => {
+  const last = [...messages].reverse().find((m) => m.role === "assistant");
+  if (!last || isChatStreaming || lastStoredIdRef.current === last.id) return;
+  lastStoredIdRef.current = last.id;
+  onAnalysisChange?.(extractMessageResponseText(last));
+}, [messages, isChatStreaming, onAnalysisChange]);
+```
+
+---
+
+## 7. Routes & Layouts
+
+```tsx
+import { SidebarLayout } from "@/components/layouts";
+import { createFileRoute } from "@tanstack/react-router";
+
+export const Route = createFileRoute("/chat/$agentId")({ component: ChatPage });
+
+function ChatPage() {
+  const { agentId } = Route.useParams();
+  const { session } = Route.useSearch();
+  return (
+    <SidebarLayout>
+      <ChatView agentId={agentId} sessionId={session} singleShot={false} />
+    </SidebarLayout>
+  );
+}
+```
+
+**Route structure:**
+- `__root.tsx`: ThemeProvider only. Layouts per-route.
+- `chat/$agentId.tsx`: Chat mode + `SidebarLayout`.
+- `agent/$agentId.tsx`: Single-shot + `SidebarLayout`.
+
+---
+
+## 8. Sidebar (Chat History)
+
+**Component:** `AppSidebar` (`src/components/sidebar/app-sidebar.tsx`)
+
+- Threads grouped by date (Today, Yesterday, 7 days, Older).
+- Filtered by `user_id`. "New Chat" button. Delete on hover.
+- Fixed width `16rem`.
+
+```tsx
+const fetchThreads = async () => {
+  const res = await fetch(`/api/v1/agents/threads?user_id=${userId}`);
+  const data = await res.json();
+  setThreads(data.threads);
+};
+
+const deleteThread = async (threadId: string) => {
+  await fetch(`/api/v1/agents/threads/${threadId}`, { method: "DELETE" });
+  window.dispatchEvent(new CustomEvent("agents:threads:updated"));
+};
+```
+
+**Event system:** `agents:threads:updated` dispatched after thread ops. Sidebar listens + refetches. ChatView dispatches after message completion.
+
+---
+
+## 9. Agent Selector & Suggestions
+
+**ModelSelector** — Dropdown in chat input footer. Only chat-mode agents. Fetches from `/api/v1/agents`.
+
+```tsx
+useEffect(() => {
+  fetch("/api/v1/agents").then(r => r.json()).then(data => {
+    setAgents(data.data.filter((a: Agent) => a.mode === "chat"));
+  });
+}, []);
+
+<ModelSelector agents={agents} value={agentId}
+  onValueChange={(id) => navigate({ to: `/chat/${id}`, search: { session } })} />
+```
+
+**Suggestions** — Shown when empty. Source: `agent.suggestions` from backend.
+
+```tsx
+{messages.length === 0 && suggestions.length > 0 && (
+  <div className="suggestions">
+    {suggestions.map((s, i) => (
+      <button key={i} onClick={() => sendMessage({ text: s })}>{s}</button>
+    ))}
+  </div>
+)}
+```
+
+---
+
+## 10. User Persistence Flow
+
+1. `useUserId()` hook → `["default_user", setter]` (replace with auth).
+2. `AppSidebar` filters threads by `userId`.
+3. `ChatView` passes `user: userId` in `DefaultChatTransport` body.
+4. Backend filters by `user_id` from checkpoint metadata.
+5. History hydration: frontend fetches `/threads/{id}`, backend returns normalized `user`/`assistant` roles + plain text.
+
+---
+
+## 11. Production Warnings
+
+1. **Auth**: Replace `useUserId()` with real auth (JWT, OAuth, session).
+2. **API endpoints**: Vite proxy `/api` → `localhost:8000` for dev. Update for production.
+3. **CORS**: Backend must allow frontend origin.
+
+---
+
+## 12. Integration Checklist
+
+- [ ] Copy routes, components, hooks
+- [ ] Configure `@/` → `src/` in `tsconfig.json` + `vite.config.ts`
+- [ ] Update Vite proxy to backend URL
+- [ ] Replace `useUserId()` with auth system
+- [ ] `bun install` + `bunx ai-elements@latest add message conversation reasoning`
+- [ ] Ensure Streamdown CSS in `styles.css`
+- [ ] Test chat + single-shot modes
+- [ ] Test history hydration + sidebar
+
+## Important Rules
+
+1. **MessageResponse** for AI text (Streamdown markdown), not generic rendering
+2. Sort parts: reasoning before text
+3. Guard `part`: `if (!part || typeof part !== "object") return null`
+4. `extractMessageResponseText` for persistence (text only, not reasoning)
+5. Single-shot regenerate: `setMessages([])` → reset refs → `sendMessage`
+6. `key={sessionId}` on ChatView for remount on session change
