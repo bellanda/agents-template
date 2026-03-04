@@ -1,1 +1,69 @@
-line-length = 130
+target-version = "py313"
+line-length = 140
+
+[format]
+quote-style = "double"
+indent-style = "space"
+line-ending = "lf"
+docstring-code-format = true
+
+[lint]
+# Keep correctness baseline explicit.
+select = ["E4", "E7", "E9", "F"]
+extend-select = [
+    "W",   # Extra style warnings for consistency.
+    "I",   # Import sorting/grouping (isort rules).
+    "N",   # Naming conventions (pep8-naming).
+    "UP",  # Safe Python syntax modernizations.
+    "B",   # Likely bugs and risky patterns (bugbear).
+    "A",   # Builtin shadowing (e.g. list, type, id).
+    "C4",  # More idiomatic comprehensions.
+    "SIM", # Remove redundant conditionals/branches.
+    "RET", # Return-flow consistency checks.
+    "RUF", # Ruff-native quality and cleanup checks.
+    "ARG", # Unused arguments (often real dead code).
+    "C90", # Cyclomatic complexity (mccabe).
+    "PLR", # Pylint refactor/complexity heuristics.
+]
+ignore = [
+    "C901",    # Cyclomatic complexity (mccabe).
+    "E501",    # Line length handled by formatter + 140-char policy.
+    "PLR0911", # Guard-clause style can legitimately use many returns.
+    "PLR0912", # Complex branching appears in endpoint/service orchestration.
+    "PLR0913", # Dependency-injected handlers can require many params.
+    "PLR0915", # Temporarily allow larger functions during refactors.
+    "ARG001",  # Framework callbacks/overrides may require unused args.
+]
+
+[lint.mccabe]
+max-complexity = 10
+
+[lint.pylint]
+max-args = 8
+max-returns = 6
+max-branches = 12
+max-statements = 50
+
+[lint.per-file-ignores]
+"alembic/versions/*.py" = [
+    "N806",    # Alembic templates may use uppercase local identifiers.
+    "ARG001",  # Migration signatures include unused parameters by design.
+    "PLR2004", # Numeric literals are expected in schema operations.
+]
+"*.ipynb" = [
+    "PLR2004", # Permite o uso de valores literais (magic values) em notebooks
+]
+
+[lint.flake8-bugbear]
+# Inform that these FastAPI calls are valid and safe to use as default argument values.
+extend-immutable-calls = [
+    "fastapi.Depends",
+    "fastapi.Query",
+    "fastapi.Path",
+    "fastapi.Body",
+    "fastapi.Header",
+    "fastapi.Cookie",
+    "fastapi.File",
+    "fastapi.Form",
+    "fastapi.Security",
+]

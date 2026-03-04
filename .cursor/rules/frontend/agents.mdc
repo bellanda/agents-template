@@ -1,0 +1,109 @@
+---
+globs: frontend/**
+alwaysApply: false
+---
+
+# Agents — Frontend (AI Elements)
+
+All chat UI primitives come from `src/components/ai-elements/` — components copied from [elements.ai-sdk.dev](https://elements.ai-sdk.dev).
+**Always check the docs before writing any custom chat UI.**
+
+If you need a complete usage example, ask the user to share `src/components/ChatView.tsx`.
+
+---
+
+## Component Docs — elements.ai-sdk.dev
+
+### Chat
+| Component | URL |
+|---|---|
+| Attachments | https://elements.ai-sdk.dev/components/attachments |
+| Chain of Thought | https://elements.ai-sdk.dev/components/chain-of-thought |
+| Checkpoint | https://elements.ai-sdk.dev/components/checkpoint |
+| Confirmation | https://elements.ai-sdk.dev/components/confirmation |
+| Context | https://elements.ai-sdk.dev/components/context |
+| Conversation | https://elements.ai-sdk.dev/components/conversation |
+| Inline Citation | https://elements.ai-sdk.dev/components/inline-citation |
+| Message | https://elements.ai-sdk.dev/components/message |
+| Model Selector | https://elements.ai-sdk.dev/components/model-selector |
+| Plan | https://elements.ai-sdk.dev/components/plan |
+| Prompt Input | https://elements.ai-sdk.dev/components/prompt-input |
+| Queue | https://elements.ai-sdk.dev/components/queue |
+| Reasoning | https://elements.ai-sdk.dev/components/reasoning |
+| Shimmer | https://elements.ai-sdk.dev/components/shimmer |
+| Sources | https://elements.ai-sdk.dev/components/sources |
+| Suggestion | https://elements.ai-sdk.dev/components/suggestion |
+| Task | https://elements.ai-sdk.dev/components/task |
+| Tool | https://elements.ai-sdk.dev/components/tool |
+| Code | https://elements.ai-sdk.dev/components/code |
+
+### Agent
+| Component | URL |
+|---|---|
+| Agent | https://elements.ai-sdk.dev/components/agent |
+| Artifact | https://elements.ai-sdk.dev/components/artifact |
+| Code Block | https://elements.ai-sdk.dev/components/code-block |
+| Commit | https://elements.ai-sdk.dev/components/commit |
+| Environment Variables | https://elements.ai-sdk.dev/components/environment-variables |
+| File Tree | https://elements.ai-sdk.dev/components/file-tree |
+| JSX Preview | https://elements.ai-sdk.dev/components/jsx-preview |
+| Package Info | https://elements.ai-sdk.dev/components/package-info |
+| Sandbox | https://elements.ai-sdk.dev/components/sandbox |
+| Schema Display | https://elements.ai-sdk.dev/components/schema-display |
+| Snippet | https://elements.ai-sdk.dev/components/snippet |
+| Stack Trace | https://elements.ai-sdk.dev/components/stack-trace |
+| Terminal | https://elements.ai-sdk.dev/components/terminal |
+| Test Results | https://elements.ai-sdk.dev/components/test-results |
+| Web Preview | https://elements.ai-sdk.dev/components/web-preview |
+
+### Voice
+| Component | URL |
+|---|---|
+| Audio Player | https://elements.ai-sdk.dev/components/audio-player |
+| Mic Selector | https://elements.ai-sdk.dev/components/mic-selector |
+| Persona | https://elements.ai-sdk.dev/components/persona |
+| Speech Input | https://elements.ai-sdk.dev/components/speech-input |
+| Transcription | https://elements.ai-sdk.dev/components/transcription |
+| Voice Selector | https://elements.ai-sdk.dev/components/voice-selector |
+
+### Workflow
+| Component | URL |
+|---|---|
+| Canvas | https://elements.ai-sdk.dev/components/canvas |
+| Connection | https://elements.ai-sdk.dev/components/connection |
+| Controls | https://elements.ai-sdk.dev/components/controls |
+| Edge | https://elements.ai-sdk.dev/components/edge |
+| Node | https://elements.ai-sdk.dev/components/node |
+| Panel | https://elements.ai-sdk.dev/components/panel |
+| Toolbar | https://elements.ai-sdk.dev/components/toolbar |
+
+### Utilities
+| Component | URL |
+|---|---|
+| Image | https://elements.ai-sdk.dev/components/image |
+| Open In Chat | https://elements.ai-sdk.dev/components/open-in-chat |
+
+---
+
+## Backend Integration
+
+The backend exposes an OpenAI-compatible `/api/v1/agents/chat/completions` endpoint.
+Connect via `useChat` from `@ai-sdk/react` with `DefaultChatTransport`:
+
+```tsx
+import { useChat } from "@ai-sdk/react";
+import { DefaultChatTransport } from "ai";
+
+const transport = useMemo(
+  () =>
+    new DefaultChatTransport({
+      api: "/api/v1/agents/chat/completions",
+      body: () => ({ model: agentIdRef.current, stream: true, user: userId, session_id: sessionId }),
+    }),
+  [userId, sessionId],
+);
+
+const { messages, sendMessage, status, stop } = useChat({ id: sessionId, transport });
+```
+
+Streaming delivers `UIMessage.parts[]` with types `"reasoning"` and `"text"`. Always sort reasoning before text when rendering.

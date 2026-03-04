@@ -1,21 +1,23 @@
-from typing import AsyncGenerator
+from collections.abc import AsyncGenerator
 
 import orjson
+from asyncpg.connection import Connection
 
-from api.services.agents.history import get_chat_messages, save_chat
+from api.models.agents.history import ChatHistoryThread
+from api.repositories.agents.chat_history import get_chat_messages, save_chat
+
+PREVIEW_LENGTH = 200
 
 
-def _chunk(type_name: str, id: str, delta: str = "") -> str:
-    """Build a Vercel AI SDK Data Stream Protocol chunk."""
-    payload: dict = {"type": type_name, "id": id}
+def _chunk(type_name: str, message_id: str, delta: str = "") -> str:
+    """Build SSE chunk for Vercel AI SDK useChat (text/event-stream format)."""
+    payload: dict = {"type": type_name, "id": message_id}
     if delta:
         payload["delta"] = delta
-
     return f"data: {orjson.dumps(payload).decode('utf-8')}\n\n"
 
 
 def _error_chunk(error_text: str) -> str:
-    """Build an error chunk (uses errorText, not delta)."""
     payload = {"type": "error", "errorText": error_text}
     return f"data: {orjson.dumps(payload).decode('utf-8')}\n\n"
 
@@ -28,38 +30,40 @@ async def stream_agent(
     completion_id: str,
     current_timestamp: int,
     requested_model: str,
-    verbose: bool = False,
-) -> AsyncGenerator[str, None]:
-    """Stream agent events - Vercel AI SDK Data Stream Protocol."""
+    conn: Connection | None,
+) -> AsyncGenerator[str]:
+    """Stream agent events - Vercel AI SDK Data Stream Protocol (SSE)."""
     agent = agent_info["agent"]
-    agent_mode = agent_info.get("mode", "single-shot")
+    save_to_db: bool = agent_info.get("save_to_db", True)
 
     yield f"data: {orjson.dumps({'type': 'start', 'messageId': completion_id}).decode('utf-8')}\n\n"
 
     reasoning_started = False
     text_started = False
-
-    # Track full response and reasoning for history saving
     full_response = ""
     full_reasoning = ""
 
-    # Chat-mode agents use the checkpointer thread_id for memory persistence
-    config: dict = {"configurable": {"thread_id": session_id}, "metadata": {"user_id": user_id, "agent_id": requested_model}}
+    langgraph_config: dict = {
+        "configurable": {"thread_id": session_id},
+        "metadata": {"user_id": user_id, "agent_id": requested_model},
+    }
 
     try:
         async for event in agent.astream_events(
             {"messages": [{"role": "user", "content": query}]},
             version="v1",
-            config=config,
+            config=langgraph_config,
         ):
             event_type = event.get("event")
 
             if event_type == "on_chat_model_stream":
                 chunk = event["data"].get("chunk")
-                content = getattr(chunk, "content", "")
-                reasoning_content = chunk.additional_kwargs.get("reasoning_content", "")
+                if chunk is None:
+                    continue
+                content = getattr(chunk, "content", "") or ""
+                additional = getattr(chunk, "additional_kwargs", None) or {}
+                reasoning_content = additional.get("reasoning_content", "") or additional.get("reasoning", "") or ""
 
-                # Reasoning MUST come before text (SDK orders parts by first-seen start)
                 if reasoning_content:
                     if not reasoning_started:
                         yield _chunk("reasoning-start", completion_id)
@@ -75,8 +79,7 @@ async def stream_agent(
                     full_response += content
 
     except Exception as e:
-        error_msg = f"❌ Streaming error: {str(e)}"
-        yield _error_chunk(error_msg)
+        yield _error_chunk(f"Streaming error: {e!s}")
     finally:
         if reasoning_started:
             yield _chunk("reasoning-end", completion_id)
@@ -84,26 +87,30 @@ async def stream_agent(
             yield _chunk("text-start", completion_id)
         yield _chunk("text-end", completion_id)
 
-        # Save to history if in chat mode
-        if agent_mode == "chat":
+        if save_to_db and conn:
             try:
-                # Get existing messages or start new list
-                history = get_chat_messages(session_id)
-                if not history:
-                    history = []
-
-                # Add current exchange
+                history = await get_chat_messages(conn, session_id) or []
                 history.append({"role": "user", "content": query})
 
-                assistant_msg = {"role": "assistant", "content": full_response}
+                assistant_msg: dict = {"role": "assistant", "content": full_response}
                 if full_reasoning:
                     assistant_msg["reasoning"] = full_reasoning
 
                 if full_response or full_reasoning:
                     history.append(assistant_msg)
 
-                save_chat(session_id, user_id, requested_model, history)
-            except Exception as e:
-                print(f"⚠️ Error saving history: {e}")
+                preview_content = full_response or full_reasoning
+                thread = ChatHistoryThread(
+                    thread_id=session_id,
+                    user_id=user_id,
+                    agent_id=requested_model,
+                    messages=history,
+                    preview=(preview_content[:PREVIEW_LENGTH] + "...")
+                    if len(preview_content) > PREVIEW_LENGTH
+                    else (preview_content or None),
+                )
+                await save_chat(conn, thread)
+            except Exception:
+                pass
 
-        yield "data: " + orjson.dumps({"type": "finish"}).decode("utf-8") + "\n\n"
+        yield f"data: {orjson.dumps({'type': 'finish'}).decode('utf-8')}\n\n"

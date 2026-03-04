@@ -1,8 +1,4 @@
 import asyncio
-import pathlib
-import sys
-
-sys.path.append(str(pathlib.Path(__file__).parent.parent.parent))
 
 from agents.web_search_agent.core.duckduckgo import search as search_duckduckgo
 from agents.web_search_agent.core.scrapper import scrape_url

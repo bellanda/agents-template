@@ -2,8 +2,9 @@ import base64
 import mimetypes
 import time
 import uuid
-from typing import Any, Dict, List, Optional
+from typing import Any
 
+from asyncpg.connection import Connection
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
@@ -12,20 +13,21 @@ from api.services.agents.executors import call_agent_async
 from api.services.agents.registry import get_agents_registry
 from api.services.agents.streaming import stream_agent
 from api.services.agents.utils import convert_file_to_text
+from config.database import get_conn
 
 router = APIRouter()
 
 
 class ChatRequest(BaseModel):
-    messages: List[Dict[str, Any]]
+    messages: list[dict[str, Any]]
     model: str
     stream: bool = False
-    session_id: Optional[str] = None
-    user: Optional[str] = None
-    files: Optional[List[str]] = None  # Optional list of file paths to process
+    session_id: str | None = None
+    user: str | None = None
+    files: list[str] | None = None  # Optional list of file paths to process
 
 
-async def _process_files(files: List[str] | None, messages: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+async def _process_files(files: list[str] | None, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
     """
     Process attached files.
     - Images: Converted to base64 and added as image_url parts (multimodal).
@@ -63,7 +65,6 @@ async def _process_files(files: List[str] | None, messages: List[Dict[str, Any]]
                     encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
                     content_parts.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{encoded_string}"}})
             except Exception as e:
-                print(f"❌ Error processing image {file_path}: {e}")
                 content_parts.append({"type": "text", "text": f"\n[Error processing image {file_path}: {e}]\n"})
 
         # Handle Text/Documents (MarkItDown)
@@ -86,19 +87,14 @@ async def _process_files(files: List[str] | None, messages: List[Dict[str, Any]]
     return messages
 
 
-def _extract_user_query(messages: List[Dict[str, Any]]) -> str:
+def _extract_user_query(messages: list[dict[str, Any]]) -> str:
     """Extrai o texto da última mensagem do usuário, suportando múltiplos formatos (OpenAI, Vercel AI SDK parts, etc)."""
     if not messages:
         return ""
 
-    # Procurar a última mensagem do usuário (de trás para frente)
     user_messages = [m for m in messages if m.get("role") == "user"]
-    if not user_messages:
-        last_msg = messages[-1]
-    else:
-        last_msg = user_messages[-1]
+    last_msg = messages[-1] if not user_messages else user_messages[-1]
 
-    # 1. Tentar extrair de 'parts' (Vercel AI SDK)
     parts = last_msg.get("parts")
     if isinstance(parts, list):
         texts = []
@@ -107,7 +103,6 @@ def _extract_user_query(messages: List[Dict[str, Any]]) -> str:
                 texts.append(part.get("text", ""))
         return " ".join(texts).strip()
 
-    # 2. Tentar extrair de 'content' ou 'text' (OpenAI / Simples)
     content = last_msg.get("content") or last_msg.get("text") or ""
 
     if isinstance(content, str):
@@ -119,18 +114,19 @@ def _extract_user_query(messages: List[Dict[str, Any]]) -> str:
     if isinstance(content, list):
         texts = []
         for part in content:
-            if isinstance(part, dict):
-                if part.get("type") == "text":
-                    texts.append(part.get("text", ""))
-                elif "text" in part and part.get("type") is None:
-                    texts.append(part.get("text", ""))
+            if isinstance(part, dict) and (part.get("type") == "text" or ("text" in part and part.get("type") is None)):
+                texts.append(part.get("text", ""))
         return " ".join(texts).strip()
 
     return ""
 
 
 @router.post("/chat/completions")
-async def chat_completions(request: ChatRequest, agents_registry: Dict = Depends(get_agents_registry)):
+async def chat_completions(
+    request: ChatRequest,
+    agents_registry: dict = Depends(get_agents_registry),
+    conn: Connection = Depends(get_conn),
+):
     """
     OpenAI-compatible chat endpoint.
     Supports:
@@ -164,12 +160,17 @@ async def chat_completions(request: ChatRequest, agents_registry: Dict = Depends
         if request.stream:
 
             async def generate_stream():
-                # Agent stream (Now using Data Stream Protocol internally)
                 async for chunk in stream_agent(
-                    agent_info, user_query, user_id, session_id, completion_id, current_timestamp, request.model, verbose=True
+                    agent_info,
+                    user_query,
+                    user_id,
+                    session_id,
+                    completion_id,
+                    current_timestamp,
+                    request.model,
+                    conn=conn,
                 ):
                     yield chunk
-
                 yield "data: [DONE]\n\n"
 
             return StreamingResponse(
@@ -184,8 +185,6 @@ async def chat_completions(request: ChatRequest, agents_registry: Dict = Depends
             )
 
         # 5. Non-streaming Response
-        # Note: Non-streaming mode doesn't persist user_id in metadata currently
-        # For full user persistence, use streaming mode (stream=True)
         response_text = await call_agent_async(
             query=user_query,
             session_id=session_id,
@@ -215,5 +214,4 @@ async def chat_completions(request: ChatRequest, agents_registry: Dict = Depends
     except HTTPException:
         raise
     except Exception as e:
-        print(f"❌ Error: {e}")
-        raise HTTPException(status_code=500, detail=str(e))
+        raise HTTPException(status_code=500, detail=str(e)) from e

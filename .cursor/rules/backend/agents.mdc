@@ -1,0 +1,92 @@
+---
+globs: backend/**
+alwaysApply: false
+---
+
+# Agents — Backend
+
+## Structure
+
+```
+backend/
+├── agents/                        # Auto-discovered at startup
+│   └── my_agent/
+│       ├── agent.py               # Required: config + create_root_agent
+│       └── tools/
+│           ├── __init__.py
+│           └── my_tool.py
+│
+└── src/api/
+    ├── core/agents/               # Model registry, checkpointer, schemas
+    ├── models/agents/             # SQLAlchemy: checkpoints + chat_history tables
+    ├── repositories/agents/       # Chat history CRUD
+    ├── services/agents/           # Registry, streaming, executors
+    └── routes/agents/             # /chat/completions, /models, /threads
+```
+
+Directory name → model ID: `my_agent` → `"my-agent"` (underscores → hyphens).
+
+---
+
+## Creating an Agent
+
+### Tool
+
+```python
+# agents/my_agent/tools/my_tool.py
+from langchain_core.tools import tool
+
+
+@tool
+def my_tool(query: str) -> str:
+    """What this tool does — the LLM reads this to decide when to call it."""
+    return result
+```
+
+```python
+# agents/my_agent/tools/__init__.py
+from agents.my_agent.tools.my_tool import my_tool
+
+__all__ = ["my_tool"]
+```
+
+### Agent
+
+```python
+# agents/my_agent/agent.py
+from langchain.agents import create_agent
+from langgraph.checkpoint.base import BaseCheckpointSaver
+
+from agents.my_agent.tools import my_tool
+from api.core.agents.custom_providers import init_model
+from api.core.agents.models import Models
+from api.core.agents.schemas import AgentConfig
+
+config = AgentConfig(
+    name="My Agent",
+    description="Brief description — shown in the model selector",
+    system_prompt="You are...",
+    model=init_model(Models.Groq.KIMI_K2_INSTRUCT),
+    tools=[my_tool],
+    suggestions=["Try asking...", "What is..."],  # shown in empty chat
+    save_to_db=True,   # False = stateless, no history, no checkpointer
+)
+
+
+def create_root_agent(checkpointer: BaseCheckpointSaver | None = None):
+    return create_agent(
+        model=config.model,
+        tools=config.tools,
+        system_prompt=config.system_prompt,
+        checkpointer=checkpointer,
+    )
+```
+
+Restart → auto-discovered. No registration needed.
+
+---
+
+## Available Models
+
+Check `src/api/core/agents/models.py` for the full list of available models.
+Import: `from api.core.agents.models import models`

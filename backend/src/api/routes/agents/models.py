@@ -26,6 +26,7 @@ async def list_models(agents_registry: dict = Depends(get_agents_registry)):
                 "parent": None,
                 "name": agent_info.get("name", model_id),
                 "description": agent_info.get("description"),
+                "save_to_db": agent_info.get("save_to_db", True),
                 "mode": agent_info.get("mode", "single-shot"),
                 "suggestions": agent_info.get("suggestions", []),
             }

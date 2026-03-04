@@ -14,10 +14,10 @@ import {
   SidebarMenuItem
 } from "@/components/ui/sidebar";
 import { useUserId } from "@/hooks/useUserId";
-import { deleteThread, fetchThreads, type Thread } from "@/lib/api";
+import { deleteThread, fetchThreads, prefetchThreadMessages, type Thread } from "@/lib/api";
 import { PlusIcon, RobotIcon, TrashIcon } from "@phosphor-icons/react";
 import { useNavigate, useRouterState } from "@tanstack/react-router";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 
 export function AppSidebar() {
   const [userId] = useUserId();
@@ -76,6 +76,22 @@ export function AppSidebar() {
       console.error("Failed to delete thread:", err);
     }
   }
+
+  const prefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const handleThreadHover = useCallback((thread: Thread) => {
+    prefetchTimerRef.current = setTimeout(() => {
+      void prefetchThreadMessages(thread.thread_id);
+      prefetchTimerRef.current = null;
+    }, 80);
+  }, []);
+
+  const handleThreadHoverEnd = useCallback(() => {
+    if (prefetchTimerRef.current) {
+      clearTimeout(prefetchTimerRef.current);
+      prefetchTimerRef.current = null;
+    }
+  }, []);
 
   function handleThreadClick(thread: Thread): void {
     navigate({
@@ -160,6 +176,8 @@ export function AppSidebar() {
                         <SidebarMenuButton
                           isActive={currentSession === thread.thread_id}
                           onClick={() => handleThreadClick(thread)}
+                          onMouseEnter={() => handleThreadHover(thread)}
+                          onMouseLeave={handleThreadHoverEnd}
                           className="w-full min-w-0 cursor-pointer"
                         >
                           <span className="block max-w-50 truncate text-sm">{thread.preview || "New conversation"}</span>

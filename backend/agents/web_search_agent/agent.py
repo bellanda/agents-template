@@ -1,49 +1,15 @@
 from langchain.agents import create_agent
-
-# from langchain.chat_models import init_chat_model
 from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from agents.web_search_agent.tools import web_search
-from config.agents import init_cerebras_model
+from api.core.agents.custom_providers import init_model
+from api.core.agents.models import Models
+from api.core.agents.schemas import AgentConfig
 
-# Agent metadata for the discovery system
-AGENT_NAME = "Agente de Busca Web"
-AGENT_DESCRIPTION = "Agente com busca na web usando DuckDuckGo e MiniMax-M2 (Chutes)"
-AGENT_MODE = "chat"  # Each search is independent, no conversation memory
-AGENT_SUGGESTIONS = [
-    "What are the latest trends in AI?",
-    "How does machine learning work?",
-    "Explain quantum computing",
-    "What is the difference between SQL and NoSQL?",
-]
-
-# # Model configuration (Chutes wrapper with reasoning capture)
-# model = init_chutes_model(
-#     model="zai-org/GLM-4.7-TEE",
-#     streaming=True,
-#     max_tokens=4096,
-# )
-
-# Model configuration (Cerebras wrapper with reasoning capture)
-model = init_cerebras_model(
-    model="zai-glm-4.7",
-    temperature=0.7,
-    max_tokens=4096,
-    streaming=True,
-)
-
-# model = init_chat_model(
-#     model="nvidia:openai/gpt-oss-120b",
-#     api_key=api_keys.NVIDIA_API_KEY,
-#     streaming=True,
-#     max_tokens=4096,
-# )
-
-# Available tools
-tools = [web_search]
-
-# System prompt
-SYSTEM_PROMPT = """Você é um assistente inteligente especializado em busca na web.
+config = AgentConfig(
+    name="Agente de Busca Web",
+    description="Agente com busca na web usando DuckDuckGo e MiniMax-M2 (Chutes)",
+    system_prompt="""Você é um assistente inteligente especializado em busca na web.
 
 🚨 REGRA FUNDAMENTAL: FAÇA APENAS UMA BUSCA POR PERGUNTA! 🚨
 
@@ -68,14 +34,24 @@ FORMATO DE RESPOSTA:
 - Use markdown para formatação clara
 - Inclua emojis quando apropriado
 - Organize informações em seções
-- Cite fontes com links clicáveis"""
+- Cite fontes com links clicáveis""",
+    model=init_model(Models.Chutes.GPT_OSS_120B_TEE),
+    tools=[web_search],
+    suggestions=[
+        "What are the latest trends in AI?",
+        "How does machine learning work?",
+        "Explain quantum computing",
+        "What is the difference between SQL and NoSQL?",
+    ],
+    save_to_db=True,
+)
 
 
 def create_root_agent(checkpointer: BaseCheckpointSaver | None = None):
     """Factory function called by the registry with the shared checkpointer."""
     return create_agent(
-        model=model,
-        tools=tools,
-        system_prompt=SYSTEM_PROMPT,
+        model=config.model,
+        tools=config.tools,
+        system_prompt=config.system_prompt,
         checkpointer=checkpointer,
     )

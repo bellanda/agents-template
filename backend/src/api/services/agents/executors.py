@@ -21,7 +21,6 @@ def _extract_message_content(agent_response: Any) -> str:
 async def execute_agent(agent_info: dict, query: str, session_id: str) -> str:
     """Execute agent and return the final response."""
     agent = agent_info["agent"]
-    agent_mode = agent_info.get("mode", "single-shot")
 
     config: dict = {"configurable": {"thread_id": session_id}}
 
@@ -32,8 +31,7 @@ async def execute_agent(agent_info: dict, query: str, session_id: str) -> str:
         )
         return _extract_message_content(response)
     except Exception as e:
-        print(f"❌ Agent execution error: {e}")
-        return f"❌ Desculpe, ocorreu um erro inesperado: {str(e)}"
+        return f"❌ Desculpe, ocorreu um erro inesperado: {e!s}"
 
 
 async def call_agent_async(query: str, session_id: str, model_id: str, agents_registry: dict) -> str:
@@ -43,17 +41,4 @@ async def call_agent_async(query: str, session_id: str, model_id: str, agents_re
         raise Exception(f"Model '{model_id}' not found. Available: {available}")
 
     agent_info = agents_registry[model_id]
-
-    print("\n🤖 === AGENT EXECUTION ===")
-    print(f"📋 Agent: {model_id}")
-
-    # Avoid printing massive base64 strings if query is a list (multimodal)
-    if isinstance(query, list):
-        print("💬 User Query: [Multimodal Content]")
-    else:
-        print(f"💬 User Query: {query}")
-
-    response = await execute_agent(agent_info, query, session_id)
-
-    print(f"✅ Final Response: {response[:150]}{'...' if len(response) > 150 else ''}")
-    return response
+    return await execute_agent(agent_info, query, session_id)

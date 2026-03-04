@@ -1,8 +1,8 @@
 import importlib
 from typing import Any
 
-from config.checkpointer import get_checkpointer
-from config.paths import BASE_DIR
+from api.core.agents.checkpointer import get_checkpointer
+from config import paths
 
 agents_registry: dict[str, Any] = {}
 
@@ -13,7 +13,7 @@ def discover_agents() -> dict[str, Any]:
     This is now called only once at startup for maximum speed.
     """
     agents: dict[str, Any] = {}
-    agents_path = BASE_DIR / "agents"
+    agents_path = paths.BASE_DIR / "agents"
 
     if not agents_path.exists():
         return agents
@@ -21,39 +21,38 @@ def discover_agents() -> dict[str, Any]:
     checkpointer = get_checkpointer()
 
     for agent_dir in agents_path.iterdir():
-        if agent_dir.is_dir() and (agent_dir / "agent.py").exists():
-            module_path = f"agents.{agent_dir.name}.agent"
-            try:
-                agent_module = importlib.import_module(module_path)
+        if not (agent_dir.is_dir() and (agent_dir / "agent.py").exists()):
+            continue
 
-                factory = getattr(agent_module, "create_root_agent", None)
-                pre_built = getattr(agent_module, "root_agent", None)
+        module_path = f"agents.{agent_dir.name}.agent"
+        try:
+            agent_module = importlib.import_module(module_path)
 
-                if factory is None and pre_built is None:
-                    continue
+            factory = getattr(agent_module, "create_root_agent", None)
+            pre_built = getattr(agent_module, "root_agent", None)
 
-                model_id = f"{agent_dir.name}".replace("_", "-")
-                agent_name = getattr(agent_module, "AGENT_NAME", agent_dir.name)
-                agent_description = getattr(agent_module, "AGENT_DESCRIPTION", f"Agent: {agent_dir.name}")
-                agent_mode = getattr(agent_module, "AGENT_MODE", "single-shot")
-                agent_suggestions = getattr(agent_module, "AGENT_SUGGESTIONS", [])
+            if factory is None and pre_built is None:
+                continue
 
-                if factory is not None:
-                    cp = checkpointer if agent_mode == "chat" else None
-                    agent = factory(checkpointer=cp)
-                else:
-                    agent = pre_built
+            agent_config = getattr(agent_module, "config", None)
+            if agent_config is None:
+                continue
 
-                agents[model_id] = {
-                    "agent": agent,
-                    "name": agent_name,
-                    "description": agent_description,
-                    "mode": agent_mode,
-                    "suggestions": agent_suggestions,
-                }
-                print(f"✓ Agent Loaded: {model_id}")
-            except Exception as e:
-                print(f"✗ Failed to load agent {agent_dir.name}: {e}")
+            model_id = agent_dir.name.replace("_", "-")
+
+            # Use the save_to_db flag from the config to decide if we pass a checkpointer
+            cp = checkpointer if (agent_config.save_to_db and factory is not None) else None
+            agent = factory(checkpointer=cp) if factory is not None else pre_built
+
+            agents[model_id] = {
+                "agent": agent,
+                "name": agent_config.name,
+                "description": agent_config.description,
+                "suggestions": agent_config.suggestions,
+                "save_to_db": agent_config.save_to_db,
+            }
+        except Exception:
+            pass
 
     return agents
 

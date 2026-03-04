@@ -12,8 +12,7 @@ function HomePage() {
         <RobotIcon className="size-16 text-primary" weight="duotone" />
         <h1 className="text-3xl font-bold">Agents Template</h1>
         <p className="text-muted-foreground text-center max-w-md">
-          Select an agent from the sidebar to start. Chat agents maintain conversation history, while single-shot agents handle one
-          request at a time.
+          Select an agent from the sidebar to start. Agents with history enabled save conversation context across sessions.
         </p>
         <div className="flex gap-6 mt-4">
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
