@@ -15,16 +15,17 @@ async def save_chat(conn: Connection, chat_history_thread: ChatHistoryThread) ->
     """Save or update a chat thread. Receives Pydantic for validation, returns raw dict to confirm execution."""
     row = await conn.fetchrow(
         """
-        INSERT INTO chat_history (thread_id, user_id, agent_id, messages, preview, updated_at)
-        VALUES ($1, $2, $3, $4, $5, CURRENT_TIMESTAMP)
+        INSERT INTO chat_history (thread_id, user_id, client_id, agent_id, messages, preview, updated_at)
+        VALUES ($1, $2, $3, $4, $5, $6, CURRENT_TIMESTAMP)
         ON CONFLICT(thread_id) DO UPDATE SET
             messages = EXCLUDED.messages,
             preview = EXCLUDED.preview,
             updated_at = CURRENT_TIMESTAMP
-        RETURNING thread_id, user_id, agent_id, messages, preview, updated_at
+        RETURNING thread_id, user_id, client_id, agent_id, messages, preview, updated_at
         """,
         chat_history_thread.thread_id,
         chat_history_thread.user_id,
+        chat_history_thread.client_id,
         chat_history_thread.agent_id,
         chat_history_thread.messages,
         chat_history_thread.preview,
@@ -50,3 +51,18 @@ async def delete_chat(conn: Connection, thread_id: str) -> bool:
     """Delete a chat thread."""
     result = await conn.fetchval("DELETE FROM chat_history WHERE thread_id = $1 RETURNING thread_id", thread_id)
     return bool(result)
+
+
+async def get_threads_by_client(conn: Connection, client_id: str, user_id: str) -> list[dict[str, Any]]:
+    """List chat threads associated with a specific client for a user."""
+    rows = await conn.fetch(
+        """
+        SELECT thread_id, agent_id, preview, updated_at as created_at
+        FROM chat_history
+        WHERE user_id = $1 AND client_id = $2
+        ORDER BY updated_at DESC
+        """,
+        user_id,
+        client_id,
+    )
+    return [dict(row) for row in rows]

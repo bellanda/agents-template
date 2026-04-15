@@ -17,7 +17,7 @@ agent_checkpoints_table = Table(
     Column("type", String, nullable=True),
     Column("checkpoint", JSONB, nullable=False),
     Column("metadata", JSONB, nullable=False, server_default=text("'{}'::jsonb")),
-    Column("created_at", DateTime, nullable=False, server_default=func.now()),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
 )
 
 

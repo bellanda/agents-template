@@ -111,8 +111,8 @@ def print_post_install(target: Path) -> None:
 4. main.py — add to lifespan and router:
 
     from api.core.agents.checkpointer import close_checkpointer, init_checkpointer
+    from api.routes.agents import agents_router
     from api.services.agents.registry import reload_agents_registry
-    from api import agents_router  # or: from api.routes.agents import router as agents_router
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -125,19 +125,14 @@ def print_post_install(target: Path) -> None:
 
     api_router.include_router(agents_router)  # add
 
-5. src/api/__init__.py — ensure agents_router is exported:
-
-    from api.routes.agents import router as agents_router
-    __all__ = ["agents_router"]
-
-6. Alembic — generate and apply migrations for agents tables:
+5. Alembic — generate and apply migrations for agents tables:
 
     uv run alembic revision --autogenerate -m "add agents tables"
     uv run alembic upgrade head
 
     Required tables: checkpoints, checkpoint_writes, checkpoint_blobs, chat_history_threads
 
-7. .env — add AI provider keys you need:
+6. .env — add AI provider keys you need:
 
     # Pick the providers your agents use:
     OPENAI_API_KEY=
@@ -155,7 +150,9 @@ def print_post_install(target: Path) -> None:
 
 
 def main() -> None:
-    parser = argparse.ArgumentParser(description="Sync agents infrastructure to another FastAPI project")
+    parser = argparse.ArgumentParser(
+        description="Sync agents infrastructure to another FastAPI project"
+    )
     parser.add_argument(
         "--target",
         required=True,

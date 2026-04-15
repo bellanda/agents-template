@@ -1,6 +1,7 @@
 import os
 from typing import Any
 
+import dotenv
 from langchain_cerebras import ChatCerebras
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.outputs import ChatGenerationChunk
@@ -10,6 +11,8 @@ from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langchain_openai import ChatOpenAI
 
 from api.core.agents.models import ModelConfig
+
+dotenv.load_dotenv(override=True)
 
 
 class ChatChutes(ChatOpenAI):
@@ -94,13 +97,25 @@ def init_cerebras_model(model: str, streaming: bool = True, **kwargs: Any) -> Ch
     )
 
 
-def init_google_model(model: str, streaming: bool = True, **kwargs: Any) -> ChatGoogleGenerativeAI:
-    return ChatGoogleGenerativeAI(
-        model=model,
-        google_api_key=os.getenv("GOOGLE_API_KEY"),
-        streaming=streaming,
+def init_google_model(
+    model: str,
+    streaming: bool = True,
+    *,
+    include_thoughts: bool | None = None,
+    **kwargs: Any,
+) -> ChatGoogleGenerativeAI:
+    """Gemini thinking models need ``include_thoughts=True`` to stream thought blocks."""
+    params: dict[str, Any] = {
+        "model": model,
+        "google_api_key": os.getenv("GOOGLE_API_KEY"),
+        "streaming": streaming,
         **kwargs,
-    )
+    }
+    if include_thoughts is not None:
+        params["include_thoughts"] = include_thoughts
+    if include_thoughts is True and params.get("thinking_level") is None:
+        params["thinking_level"] = "high"
+    return ChatGoogleGenerativeAI(**params)
 
 
 def init_groq_model(model: str, streaming: bool = True, **kwargs: Any) -> ChatGroq:
@@ -113,33 +128,47 @@ def init_groq_model(model: str, streaming: bool = True, **kwargs: Any) -> ChatGr
 
 
 def init_nvidia_model(model: str, thinking: bool = False, max_tokens: int = 16384, **kwargs: Any) -> ChatNVIDIA:
-    """Initialize NVIDIA model with optional thinking support."""
-    if "model_kwargs" not in kwargs:
-        kwargs["model_kwargs"] = {}
-    kwargs["model_kwargs"]["streaming"] = True
+    """Initialize NVIDIA model with optional thinking support.
 
+    NVIDIA chat/completions expects ``chat_template_kwargs`` on the request body
+    (see integrate.api.nvidia.com). LangChain's ChatNVIDIA merges ``model_kwargs``
+    into that payload — do not use ``extra_body`` (it is not a ChatNVIDIA field
+    and triggers a LangChain warning).
+    """
+    model_kwargs: dict[str, Any] = dict(kwargs.pop("model_kwargs", None) or {})
+    model_kwargs["stream"] = True
     if thinking:
-        kwargs["extra_body"] = kwargs.get("extra_body", {})
-        kwargs["extra_body"]["chat_template_kwargs"] = {
-            "enable_thinking": True,
-            "clear_thinking": False,
-        }
+        model_kwargs["chat_template_kwargs"] = {"enable_thinking": True}
 
     return ChatNVIDIA(
         model=model,
         nvidia_api_key=os.getenv("NVIDIA_API_KEY"),
         max_tokens=max_tokens,
+        model_kwargs=model_kwargs,
         **kwargs,
     )
 
 
-def init_openai_model(model: str, streaming: bool = True, **kwargs: Any) -> ChatOpenAI:
-    return ChatOpenAI(
-        model=model,
-        openai_api_key=os.getenv("OPENAI_API_KEY"),
-        streaming=streaming,
+def init_openai_model(
+    model: str,
+    streaming: bool = True,
+    *,
+    reasoning: bool = False,
+    reasoning_effort: str | None = None,
+    **kwargs: Any,
+) -> ChatOpenAI:
+    """OpenAI GPT-5 family reasoning uses the Responses API (LangChain routes via ``reasoning``)."""
+    effort = reasoning_effort if reasoning_effort is not None else ("xhigh" if reasoning else None)
+    params: dict[str, Any] = {
+        "model": model,
+        "openai_api_key": os.getenv("OPENAI_API_KEY"),
+        "streaming": streaming,
         **kwargs,
-    )
+    }
+    # Responses API only surfaces reasoning to the client when ``summary`` is set (e.g. auto).
+    if effort:
+        params["reasoning"] = {"effort": effort, "summary": "auto"}
+    return ChatOpenAI(**params)
 
 
 def init_model(config: ModelConfig, **overrides: Any) -> BaseChatModel:
@@ -159,13 +188,28 @@ def init_model(config: ModelConfig, **overrides: Any) -> BaseChatModel:
         case "cerebras":
             return init_cerebras_model(config.model_id, **overrides)
         case "google":
-            return init_google_model(config.model_id, **overrides)
+            thinking = overrides.pop("thinking", config.thinking)
+            include_thoughts = overrides.pop("include_thoughts", True if thinking else None)
+            if "max_tokens" in overrides:
+                overrides["max_output_tokens"] = overrides.pop("max_tokens")
+            return init_google_model(
+                config.model_id,
+                include_thoughts=include_thoughts,
+                **overrides,
+            )
         case "groq":
             return init_groq_model(config.model_id, **overrides)
         case "nvidia":
             thinking = overrides.pop("thinking", config.thinking)
             return init_nvidia_model(config.model_id, thinking=thinking, **overrides)
         case "openai":
-            return init_openai_model(config.model_id, **overrides)
+            reasoning = overrides.pop("reasoning", config.reasoning)
+            reasoning_effort = overrides.pop("reasoning_effort", config.reasoning_effort)
+            return init_openai_model(
+                config.model_id,
+                reasoning=reasoning,
+                reasoning_effort=reasoning_effort,
+                **overrides,
+            )
         case _:
             raise ValueError(f"Unknown provider: {config.provider!r}")

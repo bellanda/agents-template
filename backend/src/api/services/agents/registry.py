@@ -2,6 +2,7 @@ import importlib
 from typing import Any
 
 from api.core.agents.checkpointer import get_checkpointer
+from api.core.agents.schemas import serialize_suggestions_for_api
 from config import paths
 
 agents_registry: dict[str, Any] = {}
@@ -48,7 +49,7 @@ def discover_agents() -> dict[str, Any]:
                 "agent": agent,
                 "name": agent_config.name,
                 "description": agent_config.description,
-                "suggestions": agent_config.suggestions,
+                "suggestions": serialize_suggestions_for_api(agent_config.suggestions),
                 "save_to_db": agent_config.save_to_db,
             }
         except Exception:

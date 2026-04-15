@@ -51,7 +51,9 @@ def generate_tool_start_message(tool_name: str, tool_input: dict | None = None) 
     return _tag("tool_start", friendly_name, content)
 
 
-def generate_tool_end_message(tool_name: str, success: bool = True, error_msg: str | None = None) -> str:
+def generate_tool_end_message(
+    tool_name: str, success: bool = True, error_msg: str | None = None
+) -> str:
     """Signal the end of a tool execution."""
     friendly_name = tool_name.replace("_", " ")
     if not success:

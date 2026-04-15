@@ -31,7 +31,7 @@ FORMATO DE RESPOSTA:
 - Organize informações em seções
 - Seja educado e prestativo
 """,
-    model=init_model(Models.Groq.GPT_OSS_20B, max_tokens=5000),
+    model=init_model(Models.Chutes.DEEPSEEK_V3_2_TEE, max_tokens=5000),
     tools=[get_weather],
     save_to_db=True,
 )

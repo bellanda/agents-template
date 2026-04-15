@@ -1,5 +1,5 @@
 target-version = "py313"
-line-length = 140
+line-length = 100
 
 [format]
 quote-style = "double"
@@ -27,7 +27,7 @@ extend-select = [
 ]
 ignore = [
     "C901",    # Cyclomatic complexity (mccabe).
-    "E501",    # Line length handled by formatter + 140-char policy.
+    "E501",    # Line length handled by formatter + 100-char policy.
     "PLR0911", # Guard-clause style can legitimately use many returns.
     "PLR0912", # Complex branching appears in endpoint/service orchestration.
     "PLR0913", # Dependency-injected handlers can require many params.

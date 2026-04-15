@@ -2,6 +2,7 @@ import base64
 import mimetypes
 import time
 import uuid
+from traceback import format_exc
 from typing import Any
 
 from asyncpg.connection import Connection
@@ -11,7 +12,7 @@ from pydantic import BaseModel
 
 from api.services.agents.executors import call_agent_async
 from api.services.agents.registry import get_agents_registry
-from api.services.agents.streaming import stream_agent
+from api.services.agents.streaming import sse_error_chunk, stream_agent
 from api.services.agents.utils import convert_file_to_text
 from config.database import get_conn
 
@@ -25,6 +26,8 @@ class ChatRequest(BaseModel):
     session_id: str | None = None
     user: str | None = None
     files: list[str] | None = None  # Optional list of file paths to process
+    realtor_id: int | None = None
+    active_client_id: str | None = None
 
 
 async def _process_files(files: list[str] | None, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
@@ -63,7 +66,12 @@ async def _process_files(files: list[str] | None, messages: list[dict[str, Any]]
             try:
                 with open(file_path, "rb") as image_file:
                     encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
-                    content_parts.append({"type": "image_url", "image_url": {"url": f"data:{mime_type};base64,{encoded_string}"}})
+                    content_parts.append(
+                        {
+                            "type": "image_url",
+                            "image_url": {"url": f"data:{mime_type};base64,{encoded_string}"},
+                        }
+                    )
             except Exception as e:
                 content_parts.append({"type": "text", "text": f"\n[Error processing image {file_path}: {e}]\n"})
 
@@ -156,21 +164,28 @@ async def chat_completions(
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
         current_timestamp = int(time.time())
 
+        print(f"[chat_completions] model={request.model!r} session_id={session_id!r} agent_name={agent_info.get('name')!r}")
         # 4. Streaming Response
         if request.stream:
 
             async def generate_stream():
-                async for chunk in stream_agent(
-                    agent_info,
-                    user_query,
-                    user_id,
-                    session_id,
-                    completion_id,
-                    current_timestamp,
-                    request.model,
-                    conn=conn,
-                ):
-                    yield chunk
+                try:
+                    async for chunk in stream_agent(
+                        agent_info,
+                        user_query,
+                        user_id,
+                        session_id,
+                        completion_id,
+                        current_timestamp,
+                        request.model,
+                        conn=conn,
+                        realtor_id=request.realtor_id,
+                        active_client_id=request.active_client_id,
+                    ):
+                        yield chunk
+                except Exception as e:
+                    print(f"[chat_completions] stream iteration failed session_id={session_id!r} model={request.model!r}\n{format_exc()}")
+                    yield sse_error_chunk(f"Stream interrupted: {e!s}")
                 yield "data: [DONE]\n\n"
 
             return StreamingResponse(

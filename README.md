@@ -141,7 +141,7 @@ uv sync --upgrade
 ```python
 from api.core.agents.checkpointer import close_checkpointer, init_checkpointer
 from api.services.agents.registry import reload_agents_registry
-from api.routes.agents import router as agents_router
+from api.routes.agents import agents_router
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):

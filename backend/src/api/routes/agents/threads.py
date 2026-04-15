@@ -42,6 +42,7 @@ async def get_thread(
         try:
             role = msg.get("role")
             content = msg.get("content", "")
+            parts = msg.get("parts")
 
             if role in ("human", "user"):
                 role = "user"
@@ -50,12 +51,18 @@ async def get_thread(
             else:
                 continue
 
-            if not content:
+            if not content and not parts:
                 continue
 
-            msg_data = {"role": role, "content": content, "id": msg.get("id") or f"{role}-{idx}"}
+            msg_data: dict[str, Any] = {
+                "role": role,
+                "content": content,
+                "id": msg.get("id") or f"{role}-{idx}",
+            }
             if msg.get("reasoning"):
                 msg_data["reasoning"] = msg.get("reasoning")
+            if isinstance(parts, list) and parts:
+                msg_data["parts"] = parts
 
             serialized_messages.append(msg_data)
         except Exception:

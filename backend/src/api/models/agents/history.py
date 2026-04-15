@@ -12,17 +12,25 @@ chat_history_table = Table(
     metadata,
     Column("thread_id", String(128), primary_key=True),
     Column("user_id", String(255), nullable=False, index=True),
+    Column("client_id", String(255), nullable=True, index=True),
     Column("agent_id", String(255), nullable=False, index=True),
     Column("messages", JSONB, nullable=False, server_default=text("'[]'::jsonb")),
     Column("preview", Text, nullable=True),
-    Column("created_at", DateTime, nullable=False, server_default=func.now()),
-    Column("updated_at", DateTime, nullable=False, server_default=func.now(), onupdate=func.now()),
+    Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
+    Column(
+        "updated_at",
+        DateTime(timezone=True),
+        nullable=False,
+        server_default=func.now(),
+        onupdate=func.now(),
+    ),
 )
 
 
 class ChatHistoryThread(BaseModel):
     thread_id: str
     user_id: str
+    client_id: str | None = None
     agent_id: str
     messages: list[dict[str, Any]] = Field(default_factory=list)
     preview: str | None = None
