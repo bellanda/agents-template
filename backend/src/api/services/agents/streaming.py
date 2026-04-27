@@ -7,8 +7,11 @@ from typing import Any
 import orjson
 from asyncpg.connection import Connection
 
+from api.core.agents.models import compute_cost_usd, find_model_config
 from api.models.agents.history import ChatHistoryThread
+from api.models.agents.usage import AgentMessageUsage
 from api.repositories.agents.chat_history import get_chat_messages, save_chat
+from api.repositories.agents.usage import insert_agent_message_usage
 from api.services.agents.executors import (
     extract_thinking_from_content,
     normalize_chunk_text,
@@ -126,6 +129,9 @@ async def stream_agent(
     full_reasoning = ""
     tool_parts_by_call_id: dict[str, dict[str, Any]] = {}
     tool_call_order: list[str] = []
+    last_usage: dict[str, Any] | None = None
+    last_provider: str | None = None
+    last_model_id: str | None = None
 
     langgraph_config: dict = {
         "configurable": {
@@ -295,6 +301,19 @@ async def stream_agent(
                         yield _chunk("reasoning-delta", completion_id, pending)
                         full_reasoning += pending
 
+                # Capture token usage and the actual provider/model that just answered.
+                if out is not None:
+                    usage = getattr(out, "usage_metadata", None)
+                    if usage:
+                        last_usage = dict(usage)
+                    rm = getattr(out, "response_metadata", None) or {}
+                    provider = rm.get("model_provider")
+                    model_id = rm.get("model_name") or rm.get("model")
+                    if provider:
+                        last_provider = str(provider)
+                    if model_id:
+                        last_model_id = str(model_id)
+
         if _agent_stream_debug():
             print(
                 f"[stream_agent] stream loop finished OK chunks={_stream_chunk_i} "
@@ -340,6 +359,29 @@ async def stream_agent(
                 if assistant_parts:
                     assistant_msg["parts"] = assistant_parts
 
+                # Embed token/cost snapshot so the thread JSONB carries it for context
+                # (the agent_message_usage table is the source of truth for analytics).
+                cost_usd = 0.0
+                if last_usage:
+                    cfg = (
+                        find_model_config(last_provider, last_model_id)
+                        if last_provider and last_model_id
+                        else None
+                    )
+                    cost_usd = compute_cost_usd(last_usage, cfg) if cfg else 0.0
+                    in_det = last_usage.get("input_token_details") or {}
+                    out_det = last_usage.get("output_token_details") or {}
+                    assistant_msg["usage"] = {
+                        "provider": last_provider,
+                        "model_id": last_model_id,
+                        "input_tokens": int(last_usage.get("input_tokens") or 0),
+                        "cached_input_tokens": int(in_det.get("cache_read") or 0),
+                        "output_tokens": int(last_usage.get("output_tokens") or 0),
+                        "reasoning_tokens": int(out_det.get("reasoning") or 0),
+                        "total_tokens": int(last_usage.get("total_tokens") or 0),
+                        "cost_usd": cost_usd,
+                    }
+
                 if full_response or full_reasoning or assistant_parts:
                     history.append(assistant_msg)
 
@@ -354,6 +396,31 @@ async def stream_agent(
                     else (preview_content or None),
                 )
                 await save_chat(conn, thread)
+
+                if last_usage and last_provider and last_model_id:
+                    in_det = last_usage.get("input_token_details") or {}
+                    out_det = last_usage.get("output_token_details") or {}
+                    try:
+                        await insert_agent_message_usage(
+                            conn,
+                            AgentMessageUsage(
+                                thread_id=session_id,
+                                message_id=completion_id,
+                                user_id=user_id,
+                                client_id=active_client_id,
+                                agent_id=requested_model,
+                                provider=last_provider,
+                                model_id=last_model_id,
+                                input_tokens=int(last_usage.get("input_tokens") or 0),
+                                cached_input_tokens=int(in_det.get("cache_read") or 0),
+                                output_tokens=int(last_usage.get("output_tokens") or 0),
+                                reasoning_tokens=int(out_det.get("reasoning") or 0),
+                                total_tokens=int(last_usage.get("total_tokens") or 0),
+                                cost_usd=cost_usd,
+                            ),
+                        )
+                    except Exception:
+                        print(f"[stream_agent] failed to persist usage row\n{format_exc()}")
             except Exception:
                 print(f"[stream_agent] failed to persist chat history\n{format_exc()}")
 

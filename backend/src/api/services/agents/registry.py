@@ -1,6 +1,7 @@
 import importlib
 from typing import Any
 
+from api.core.agents.callbacks import usage_recorder
 from api.core.agents.checkpointer import get_checkpointer
 from api.core.agents.schemas import serialize_suggestions_for_api
 from config import paths
@@ -44,6 +45,9 @@ def discover_agents() -> dict[str, Any]:
             # Use the save_to_db flag from the config to decide if we pass a checkpointer
             cp = checkpointer if (agent_config.save_to_db and factory is not None) else None
             agent = factory(checkpointer=cp) if factory is not None else pre_built
+
+            # Single global callback persists agent_message_usage for ANY invocation path.
+            agent = agent.with_config(callbacks=[usage_recorder])
 
             agents[model_id] = {
                 "agent": agent,
