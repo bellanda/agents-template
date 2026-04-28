@@ -31,7 +31,7 @@ agent_message_usage_table = Table(
     Column("output_tokens", Integer, nullable=False, server_default="0"),
     Column("reasoning_tokens", Integer, nullable=False, server_default="0"),
     Column("total_tokens", Integer, nullable=False, server_default="0"),
-    Column("cost_usd", Numeric(14, 8), nullable=False, server_default="0"),
+    Column("cost_usd", Numeric(12, 6), nullable=False, server_default="0"),
     Column("error", Text, nullable=True),
     Column("created_at", DateTime(timezone=True), nullable=False, server_default=func.now()),
     Index("ix_agent_message_usage_created_at", "created_at"),

@@ -3,7 +3,7 @@ from typing import Any
 from asyncpg.connection import Connection
 from langchain_core.messages import AIMessage
 
-from api.core.agents.models import compute_cost_usd, find_model_config
+from api.core.agents.models import canonical_provider, compute_cost_usd, find_model_config
 from api.models.agents.usage import AgentMessageUsage
 
 
@@ -42,7 +42,7 @@ def build_usage_from_ai_message(
         user_id=user_id,
         client_id=client_id,
         agent_id=agent_id,
-        provider=str(provider),
+        provider=canonical_provider(str(provider)),
         model_id=str(model_id),
         input_tokens=int(usage.get("input_tokens") or 0),
         cached_input_tokens=int(in_det.get("cache_read") or 0),

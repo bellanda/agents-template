@@ -54,7 +54,9 @@ def load_table(cur, table_name: str, rows: list[dict], key_columns: list[str]) -
         values = [adapt_value(row_filtered[k]) for k in row_filtered]
         col_list = list(row_filtered.keys())
 
-        where_clause = sql.SQL(" AND ").join(sql.SQL("{} = %s").format(sql.Identifier(k)) for k in key_columns)
+        where_clause = sql.SQL(" AND ").join(
+            sql.SQL("{} = %s").format(sql.Identifier(k)) for k in key_columns
+        )
         cur.execute(
             sql.SQL("SELECT 1 FROM {} WHERE {}").format(
                 sql.Identifier(table_name),
@@ -67,8 +69,12 @@ def load_table(cur, table_name: str, rows: list[dict], key_columns: list[str]) -
         if exists:
             set_cols = [c for c in col_list if c not in key_columns]
             set_values = [adapt_value(row_filtered[c]) for c in set_cols]
-            set_clause = sql.SQL(", ").join(sql.SQL("{} = %s").format(sql.Identifier(c)) for c in set_cols)
-            where_clause = sql.SQL(" AND ").join(sql.SQL("{} = %s").format(sql.Identifier(k)) for k in key_columns)
+            set_clause = sql.SQL(", ").join(
+                sql.SQL("{} = %s").format(sql.Identifier(c)) for c in set_cols
+            )
+            where_clause = sql.SQL(" AND ").join(
+                sql.SQL("{} = %s").format(sql.Identifier(k)) for k in key_columns
+            )
             cur.execute(
                 sql.SQL("UPDATE {} SET {} WHERE {}").format(
                     sql.Identifier(table_name),

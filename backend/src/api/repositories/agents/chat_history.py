@@ -49,11 +49,15 @@ async def get_user_threads(conn: Connection, user_id: str) -> list[dict[str, Any
 
 async def delete_chat(conn: Connection, thread_id: str) -> bool:
     """Delete a chat thread."""
-    result = await conn.fetchval("DELETE FROM chat_history WHERE thread_id = $1 RETURNING thread_id", thread_id)
+    result = await conn.fetchval(
+        "DELETE FROM chat_history WHERE thread_id = $1 RETURNING thread_id", thread_id
+    )
     return bool(result)
 
 
-async def get_threads_by_client(conn: Connection, client_id: str, user_id: str) -> list[dict[str, Any]]:
+async def get_threads_by_client(
+    conn: Connection, client_id: str, user_id: str
+) -> list[dict[str, Any]]:
     """List chat threads associated with a specific client for a user."""
     rows = await conn.fetch(
         """

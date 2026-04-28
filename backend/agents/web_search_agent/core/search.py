@@ -27,7 +27,9 @@ async def search(query: str) -> str:
 
         results = search_duckduckgo(query)
 
-        results_msg = generate_result_message("success", f"Encontrados {len(results)} resultados do DuckDuckGo")
+        results_msg = generate_result_message(
+            "success", f"Encontrados {len(results)} resultados do DuckDuckGo"
+        )
         print(f"📊 [SEARCH] {results_msg}")
 
         if not results:
@@ -37,7 +39,9 @@ async def search(query: str) -> str:
         results = results[:10]
 
         # Passo 2: Fazer scraping das páginas em paralelo
-        scraping_msg = generate_step_message(2, f"Iniciando scraping paralelo de {len(results)} páginas...")
+        scraping_msg = generate_step_message(
+            2, f"Iniciando scraping paralelo de {len(results)} páginas..."
+        )
         print(f"🚀 [SEARCH] {scraping_msg}")
 
         scraped_contents = []
@@ -49,25 +53,31 @@ async def search(query: str) -> str:
         contents = await asyncio.gather(*tasks, return_exceptions=True)
 
         # Processar resultados
-        for i, (content, result) in enumerate(zip(contents, results)):
+        for i, (content, result) in enumerate(zip(contents, results, strict=False)):
             try:
                 if isinstance(content, Exception):
                     raise content
 
                 if content and len(content.strip()) > 100:  # Só aceitar conteúdo substancial
-                    scraped_contents.append(f"=== {result['title']} ===\nURL: {result['url']}\nConteúdo:\n{content}\n\n")
+                    scraped_contents.append(
+                        f"=== {result['title']} ===\nURL: {result['url']}\nConteúdo:\n{content}\n\n"
+                    )
                     successful_scrapes += 1
 
-                    success_msg = generate_result_message("success", f"Página {i + 1} processada: {result['url']}")
+                    success_msg = generate_result_message(
+                        "success", f"Página {i + 1} processada: {result['url']}"
+                    )
                     print(f"✅ [SEARCH] {success_msg}")
                 else:
                     failed_scrapes += 1
-                    fail_msg = generate_status_message("warning", f"Página {i + 1} falhou: {result['url']}")
+                    fail_msg = generate_status_message(
+                        "warning", f"Página {i + 1} falhou: {result['url']}"
+                    )
                     print(f"⚠️ [SEARCH] {fail_msg}")
 
             except Exception as e:
                 failed_scrapes += 1
-                error_msg = generate_error_message(f"Erro na página {i + 1}: {str(e)}")
+                error_msg = generate_error_message(f"Erro na página {i + 1}: {e!s}")
                 print(f"❌ [SEARCH] {error_msg}")
 
         # Passo 3: Consolidar resultados
@@ -76,21 +86,23 @@ async def search(query: str) -> str:
 
             # Limitar tamanho do conteúdo (máximo ~8000 caracteres)
             if len(consolidated_content) > 8000:
-                consolidated_content = consolidated_content[:8000] + "\n\n[Conteúdo truncado devido ao tamanho...]"
+                consolidated_content = (
+                    consolidated_content[:8000] + "\n\n[Conteúdo truncado devido ao tamanho...]"
+                )
 
             summary_msg = generate_result_message(
-                "success", f"Resumo: {successful_scrapes} sucessos, {failed_scrapes} falhas de {len(results)} páginas"
+                "success",
+                f"Resumo: {successful_scrapes} sucessos, {failed_scrapes} falhas de {len(results)} páginas",
             )
             print(f"📈 [SEARCH] {summary_msg}")
 
             return consolidated_content
-        else:
-            return "Não foi possível extrair conteúdo útil das páginas encontradas."
+        return "Não foi possível extrair conteúdo útil das páginas encontradas."
 
     except Exception as e:
-        error_msg = generate_error_message(f"Erro durante a busca: {str(e)}")
+        error_msg = generate_error_message(f"Erro durante a busca: {e!s}")
         print(f"❌ [SEARCH] {error_msg}")
-        return f"Erro durante a busca: {str(e)}"
+        return f"Erro durante a busca: {e!s}"
 
 
 if __name__ == "__main__":

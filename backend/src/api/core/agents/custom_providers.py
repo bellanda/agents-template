@@ -24,7 +24,9 @@ class ChatChutes(ChatOpenAI):
         default_chunk_class: type,
         base_generation_info: dict | None,
     ) -> ChatGenerationChunk | None:
-        gen_chunk = super()._convert_chunk_to_generation_chunk(chunk, default_chunk_class, base_generation_info)
+        gen_chunk = super()._convert_chunk_to_generation_chunk(
+            chunk, default_chunk_class, base_generation_info
+        )
 
         if gen_chunk is None:
             return None
@@ -57,7 +59,9 @@ class ChatCerebrasCustom(ChatCerebras):
             delta = choices[0].get("delta", {})
             raw_reasoning = delta.get("reasoning")
 
-        gen_chunk = super()._convert_chunk_to_generation_chunk(chunk, default_chunk_class, base_generation_info)
+        gen_chunk = super()._convert_chunk_to_generation_chunk(
+            chunk, default_chunk_class, base_generation_info
+        )
 
         if gen_chunk is None:
             return None
@@ -69,7 +73,9 @@ class ChatCerebrasCustom(ChatCerebras):
         return gen_chunk
 
 
-def init_chutes_model(model: str, streaming: bool = True, reasoning: bool = False, **kwargs: Any) -> ChatChutes:
+def init_chutes_model(
+    model: str, streaming: bool = True, reasoning: bool = False, **kwargs: Any
+) -> ChatChutes:
     """Initialize a Chutes model with reasoning support."""
     if reasoning:
         kwargs["extra_body"] = kwargs.get("extra_body", {})
@@ -127,7 +133,9 @@ def init_groq_model(model: str, streaming: bool = True, **kwargs: Any) -> ChatGr
     )
 
 
-def init_nvidia_model(model: str, thinking: bool = False, max_tokens: int = 16384, **kwargs: Any) -> ChatNVIDIA:
+def init_nvidia_model(
+    model: str, thinking: bool = False, max_tokens: int = 16384, **kwargs: Any
+) -> ChatNVIDIA:
     """Initialize NVIDIA model with optional thinking support.
 
     NVIDIA chat/completions expects ``chat_template_kwargs`` on the request body

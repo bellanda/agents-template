@@ -31,14 +31,18 @@ def _scrape_url_sync(url: str) -> str:
         text = " ".join(chunk for chunk in chunks if chunk)
 
         end_time = time.time()
-        success_msg = generate_result_message("success", f"Scraped {url} in {end_time - start_time:.2f}s")
+        success_msg = generate_result_message(
+            "success", f"Scraped {url} in {end_time - start_time:.2f}s"
+        )
         print(f"🔍 {success_msg}")
 
         return text
 
     except Exception as e:
         end_time = time.time()
-        error_msg = generate_error_message(f"Failed to scrape {url} in {end_time - start_time:.2f}s: {str(e)}")
+        error_msg = generate_error_message(
+            f"Failed to scrape {url} in {end_time - start_time:.2f}s: {e!s}"
+        )
         print(f"❌ {error_msg}")
         return ""
 
@@ -56,14 +60,15 @@ async def perform_scraping(url: str) -> str:
         content = await scrape_url(url)
         if content:
             return content
-        else:
-            return f"ERRO_SCRAPING: Não foi possível extrair conteúdo de {url}"
+        return f"ERRO_SCRAPING: Não foi possível extrair conteúdo de {url}"
 
     except Exception as e:
         end_time = time.time()
-        error_msg = generate_error_message(f"Error parsing {url} in {end_time - start_time:.2f}s: {str(e)}")
+        error_msg = generate_error_message(
+            f"Error parsing {url} in {end_time - start_time:.2f}s: {e!s}"
+        )
         print(f"❌ {error_msg}")
-        return f"ERRO_EXCEPTION: {str(e)}"
+        return f"ERRO_EXCEPTION: {e!s}"
 
 
 def smart_strip(text: str) -> str:

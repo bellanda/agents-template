@@ -28,7 +28,11 @@ def extract_thinking_from_content(content: Any) -> str:
     if isinstance(content, dict):
         return _reasoning_summary_text_from_block(content)
     if isinstance(content, list):
-        return "".join(_reasoning_summary_text_from_block(block) for block in content if isinstance(block, dict))
+        return "".join(
+            _reasoning_summary_text_from_block(block)
+            for block in content
+            if isinstance(block, dict)
+        )
     return ""
 
 
@@ -84,7 +88,11 @@ def _extract_message_content(agent_response: Any) -> str:
         messages = agent_response.get("messages") or agent_response.get("output")
         if messages:
             last = messages[-1]
-            raw = getattr(last, "content", None) if not isinstance(last, dict) else last.get("content")
+            raw = (
+                getattr(last, "content", None)
+                if not isinstance(last, dict)
+                else last.get("content")
+            )
             if raw:
                 return normalize_chunk_text(raw)
         return str(agent_response)
@@ -108,7 +116,9 @@ async def execute_agent(agent_info: dict, query: str, session_id: str) -> str:
         return f"❌ Desculpe, ocorreu um erro inesperado: {e!s}"
 
 
-async def call_agent_async(query: str, session_id: str, model_id: str, agents_registry: dict) -> str:
+async def call_agent_async(
+    query: str, session_id: str, model_id: str, agents_registry: dict
+) -> str:
     """Execute agent and return response."""
     if model_id not in agents_registry:
         available = list(agents_registry.keys())

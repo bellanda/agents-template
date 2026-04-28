@@ -1,5 +1,9 @@
+import math
 from dataclasses import dataclass
 from typing import Any
+
+COST_DECIMAL_PLACES = 6
+COST_SCALE = 10**COST_DECIMAL_PLACES
 
 
 @dataclass(frozen=True)
@@ -21,6 +25,7 @@ def compute_cost_usd(usage: dict[str, Any] | None, cfg: ModelConfig) -> float:
 
     Cached tokens are billed at cached_input_price_per_1m; the remainder of input tokens
     at input_price_per_1m. Output tokens (reasoning included) at output_price_per_1m.
+    Always rounds UP to COST_DECIMAL_PLACES (never under-bills).
     """
     if not usage:
         return 0.0
@@ -28,22 +33,46 @@ def compute_cost_usd(usage: dict[str, Any] | None, cfg: ModelConfig) -> float:
     cached = int(in_det.get("cache_read") or 0)
     fresh_input = max(int(usage.get("input_tokens") or 0) - cached, 0)
     output = int(usage.get("output_tokens") or 0)
-    return (
+    raw = (
         fresh_input * cfg.input_price_per_1m
         + cached * cfg.cached_input_price_per_1m
         + output * cfg.output_price_per_1m
     ) / 1_000_000
+    return math.ceil(raw * COST_SCALE) / COST_SCALE
+
+
+# LangChain `response_metadata.model_provider` uses different names than our registry.
+# Map the response value back to the registry's canonical provider key.
+PROVIDER_ALIASES: dict[str, str] = {
+    "google_genai": "google",
+    "google_vertexai": "google",
+    "openai_chat": "openai",
+    "openai_responses": "openai",
+    "chat_openai": "openai",
+    "chat_groq": "groq",
+    "chat_cerebras": "cerebras",
+    "chat_nvidia": "nvidia",
+}
+
+
+def canonical_provider(provider: str) -> str:
+    return PROVIDER_ALIASES.get(provider, provider)
 
 
 def find_model_config(provider: str, model_id: str) -> ModelConfig | None:
-    """Lookup a registered ModelConfig by (provider, model_id). Returns None if not found."""
+    """Lookup a registered ModelConfig by (provider, model_id). Returns None if not found.
+
+    Provider aliases (e.g. `google_genai` -> `google`) are normalized so LangChain's
+    response_metadata names match what's declared in the Models registry.
+    """
+    canonical = canonical_provider(provider)
     for namespace in vars(Models).values():
         if not isinstance(namespace, type):
             continue
         for value in vars(namespace).values():
             if (
                 isinstance(value, ModelConfig)
-                and value.provider == provider
+                and value.provider == canonical
                 and value.model_id == model_id
             ):
                 return value

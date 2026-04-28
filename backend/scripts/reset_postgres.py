@@ -20,9 +20,7 @@ POSTGRES_PASSWORD = database_config.POSTGRES_PASSWORD
 PSQL_CMD = ["sudo", "-i", "-u", "postgres", "psql"]
 PSQL_DB_CMD = ["sudo", "-i", "-u", "postgres", "psql", "-d", POSTGRES_DB]
 
-SQL_TERMINATE_SESSIONS = (
-    f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{POSTGRES_DB}' AND pid <> pg_backend_pid();"
-)
+SQL_TERMINATE_SESSIONS = f"SELECT pg_terminate_backend(pid) FROM pg_stat_activity WHERE datname = '{POSTGRES_DB}' AND pid <> pg_backend_pid();"
 SQL_DROP_DB = f'DROP DATABASE IF EXISTS "{POSTGRES_DB}";'
 SQL_CREATE_OR_UPDATE_USER = f"""
 DO $$
@@ -35,9 +33,7 @@ BEGIN
 END
 $$;
 """
-SQL_CREATE_DB = (
-    f'CREATE DATABASE "{POSTGRES_DB}" OWNER "{POSTGRES_USER}"; GRANT ALL PRIVILEGES ON DATABASE "{POSTGRES_DB}" TO "{POSTGRES_USER}";'
-)
+SQL_CREATE_DB = f'CREATE DATABASE "{POSTGRES_DB}" OWNER "{POSTGRES_USER}"; GRANT ALL PRIVILEGES ON DATABASE "{POSTGRES_DB}" TO "{POSTGRES_USER}";'
 SQL_GRANT_SCHEMA = f'GRANT ALL ON SCHEMA public TO "{POSTGRES_USER}"; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON TABLES TO "{POSTGRES_USER}"; ALTER DEFAULT PRIVILEGES IN SCHEMA public GRANT ALL ON SEQUENCES TO "{POSTGRES_USER}";'
 
 BACKEND_DIR = paths.BASE_DIR
@@ -85,13 +81,21 @@ def main() -> None:
     versions_dir = BACKEND_DIR / "alembic" / "versions"
     if not list(versions_dir.glob("*.py")):
         print("🚀 Generating initial migration...")
-        subprocess.run(["uv", "run", "alembic", "revision", "--autogenerate", "-m", "initial"], cwd=BACKEND_DIR, check=True)
+        subprocess.run(
+            ["uv", "run", "alembic", "revision", "--autogenerate", "-m", "initial"],
+            cwd=BACKEND_DIR,
+            check=True,
+        )
 
     print("🚀 Applying migrations...")
     subprocess.run(["uv", "run", "alembic", "upgrade", "head"], cwd=BACKEND_DIR, check=True)
 
     print("📥 Loading default data...")
-    subprocess.run(["uv", "run", "python", "scripts/load_default_data.py", "offline"], cwd=BACKEND_DIR, check=True)
+    subprocess.run(
+        ["uv", "run", "python", "scripts/load_default_data.py", "offline"],
+        cwd=BACKEND_DIR,
+        check=True,
+    )
 
     print("✅ Database reset and initialized successfully!")
 

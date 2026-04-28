@@ -63,7 +63,9 @@ async def web_search(query: str) -> str:
             or cached_query in query_normalized
             or len(set(query_normalized.split()) & set(cached_query.split())) >= 2
         ):
-            cache_msg = generate_status_message("completed", f"Usando resultado em cache para query similar: '{cached_query}'")
+            cache_msg = generate_status_message(
+                "completed", f"Usando resultado em cache para query similar: '{cached_query}'"
+            )
             print(f"🔄 [TOOL] {cache_msg}")
             return cached_result
 
@@ -76,11 +78,13 @@ async def web_search(query: str) -> str:
         # Armazenar no cache
         _search_cache[query_normalized] = (current_time, result)
 
-        success_msg = generate_result_message("success", f"Busca concluída! Resultado: {len(result) if result else 0} caracteres")
+        success_msg = generate_result_message(
+            "success", f"Busca concluída! Resultado: {len(result) if result else 0} caracteres"
+        )
         print(f"✅ [TOOL] {success_msg}")
         print(f"📄 [TOOL] Primeiros 100 chars: {result[:100] if result else 'VAZIO'}...")
         return result
     except Exception as e:
-        error_msg = generate_error_message(f"Erro inesperado ao realizar a busca na web: {str(e)}")
+        error_msg = generate_error_message(f"Erro inesperado ao realizar a busca na web: {e!s}")
         print(f"❌ [TOOL] {error_msg}")
-        return f"Erro inesperado ao realizar a busca na web: {str(e)}"
+        return f"Erro inesperado ao realizar a busca na web: {e!s}"

@@ -120,6 +120,6 @@ def get_weather(city: str) -> str:
         return result
 
     except requests.RequestException as e:
-        return f"Erro ao obter dados do clima para {city}: {str(e)}"
+        return f"Erro ao obter dados do clima para {city}: {e!s}"
     except Exception as e:
-        return f"Erro inesperado ao consultar clima de {city}: {str(e)}"
+        return f"Erro inesperado ao consultar clima de {city}: {e!s}"

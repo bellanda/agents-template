@@ -30,7 +30,9 @@ class ChatRequest(BaseModel):
     active_client_id: str | None = None
 
 
-async def _process_files(files: list[str] | None, messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+async def _process_files(
+    files: list[str] | None, messages: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
     """
     Process attached files.
     - Images: Converted to base64 and added as image_url parts (multimodal).
@@ -73,7 +75,9 @@ async def _process_files(files: list[str] | None, messages: list[dict[str, Any]]
                         }
                     )
             except Exception as e:
-                content_parts.append({"type": "text", "text": f"\n[Error processing image {file_path}: {e}]\n"})
+                content_parts.append(
+                    {"type": "text", "text": f"\n[Error processing image {file_path}: {e}]\n"}
+                )
 
         # Handle Text/Documents (MarkItDown)
         else:
@@ -122,7 +126,9 @@ def _extract_user_query(messages: list[dict[str, Any]]) -> str:
     if isinstance(content, list):
         texts = []
         for part in content:
-            if isinstance(part, dict) and (part.get("type") == "text" or ("text" in part and part.get("type") is None)):
+            if isinstance(part, dict) and (
+                part.get("type") == "text" or ("text" in part and part.get("type") is None)
+            ):
                 texts.append(part.get("text", ""))
         return " ".join(texts).strip()
 
@@ -164,7 +170,9 @@ async def chat_completions(
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
         current_timestamp = int(time.time())
 
-        print(f"[chat_completions] model={request.model!r} session_id={session_id!r} agent_name={agent_info.get('name')!r}")
+        print(
+            f"[chat_completions] model={request.model!r} session_id={session_id!r} agent_name={agent_info.get('name')!r}"
+        )
         # 4. Streaming Response
         if request.stream:
 
@@ -184,7 +192,9 @@ async def chat_completions(
                     ):
                         yield chunk
                 except Exception as e:
-                    print(f"[chat_completions] stream iteration failed session_id={session_id!r} model={request.model!r}\n{format_exc()}")
+                    print(
+                        f"[chat_completions] stream iteration failed session_id={session_id!r} model={request.model!r}\n{format_exc()}"
+                    )
                     yield sse_error_chunk(f"Stream interrupted: {e!s}")
                 yield "data: [DONE]\n\n"
 

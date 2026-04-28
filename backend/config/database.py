@@ -25,7 +25,9 @@ class DatabaseConfig:
     POSTGRES_POOL_MAX_INACTIVE_CONNECTION_LIFETIME: float = float(
         getenv_or_raise_exception("POSTGRES_POOL_MAX_INACTIVE_CONNECTION_LIFETIME")
     )
-    POSTGRES_POOL_COMMAND_TIMEOUT: float = float(getenv_or_raise_exception("POSTGRES_POOL_COMMAND_TIMEOUT"))
+    POSTGRES_POOL_COMMAND_TIMEOUT: float = float(
+        getenv_or_raise_exception("POSTGRES_POOL_COMMAND_TIMEOUT")
+    )
     POSTGRES_POOL_TIMEOUT: float = float(getenv_or_raise_exception("POSTGRES_POOL_TIMEOUT"))
 
 

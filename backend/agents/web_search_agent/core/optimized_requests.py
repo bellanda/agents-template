@@ -1,7 +1,6 @@
 import atexit
 import random
 import time
-from typing import Dict, Optional, Union
 
 import requests
 from requests.adapters import HTTPAdapter
@@ -33,7 +32,7 @@ class OptimizedSession:
         ]
         return random.choice(user_agents)
 
-    def _get_default_headers(self) -> Dict[str, str]:
+    def _get_default_headers(self) -> dict[str, str]:
         """Retorna headers padrão que navegadores reais enviam."""
         return {
             "User-Agent": self._get_random_user_agent(),
@@ -76,16 +75,17 @@ class OptimizedSession:
         """Converte erros de request em strings descritivas."""
         if isinstance(error, Timeout):
             return f"TIMEOUT_ERROR: {url} - Request timed out"
-        elif isinstance(error, ConnectionError):
+        if isinstance(error, ConnectionError):
             return f"CONNECTION_ERROR: {url} - Failed to connect"
-        elif isinstance(error, HTTPError):
+        if isinstance(error, HTTPError):
             return f"HTTP_ERROR: {url} - HTTP {error.response.status_code}"
-        elif isinstance(error, RequestException):
-            return f"REQUEST_ERROR: {url} - {str(error)}"
-        else:
-            return f"UNKNOWN_ERROR: {url} - {str(error)}"
+        if isinstance(error, RequestException):
+            return f"REQUEST_ERROR: {url} - {error!s}"
+        return f"UNKNOWN_ERROR: {url} - {error!s}"
 
-    def get(self, url: str, delay: Optional[float] = None, timeout: Optional[tuple] = None, **kwargs) -> Union[requests.Response, str]:
+    def get(
+        self, url: str, delay: float | None = None, timeout: tuple | None = None, **kwargs
+    ) -> requests.Response | str:
         """GET request otimizado com timeout baixo e tratamento de erro."""
         if delay:
             time.sleep(delay)
@@ -104,7 +104,9 @@ class OptimizedSession:
         except Exception as e:
             return self._handle_request_error(url, e)
 
-    def post(self, url: str, delay: Optional[float] = None, timeout: Optional[tuple] = None, **kwargs) -> Union[requests.Response, str]:
+    def post(
+        self, url: str, delay: float | None = None, timeout: tuple | None = None, **kwargs
+    ) -> requests.Response | str:
         """POST request otimizado com timeout baixo e tratamento de erro."""
         if delay:
             time.sleep(delay)
@@ -118,8 +120,12 @@ class OptimizedSession:
         kwargs["headers"].update(
             {
                 "User-Agent": self._get_random_user_agent(),
-                "Content-Type": kwargs["headers"].get("Content-Type", "application/x-www-form-urlencoded"),
-                "Origin": kwargs["headers"].get("Origin", url.split("/")[0] + "//" + url.split("/")[2]),
+                "Content-Type": kwargs["headers"].get(
+                    "Content-Type", "application/x-www-form-urlencoded"
+                ),
+                "Origin": kwargs["headers"].get(
+                    "Origin", url.split("/")[0] + "//" + url.split("/")[2]
+                ),
                 "Referer": kwargs["headers"].get("Referer", url),
             }
         )
@@ -130,8 +136,13 @@ class OptimizedSession:
             return self._handle_request_error(url, e)
 
     def request(
-        self, method: str, url: str, delay: Optional[float] = None, timeout: Optional[tuple] = None, **kwargs
-    ) -> Union[requests.Response, str]:
+        self,
+        method: str,
+        url: str,
+        delay: float | None = None,
+        timeout: tuple | None = None,
+        **kwargs,
+    ) -> requests.Response | str:
         """Request genérico otimizado com timeout baixo e tratamento de erro."""
         if delay:
             time.sleep(delay)
@@ -159,7 +170,9 @@ _optimized_session = OptimizedSession(timeout=(2, 3))
 
 
 # Funções de conveniência que usam a sessão otimizada
-def get(url: str, delay: Optional[float] = None, timeout: Optional[tuple] = None, **kwargs) -> Union[requests.Response, str]:
+def get(
+    url: str, delay: float | None = None, timeout: tuple | None = None, **kwargs
+) -> requests.Response | str:
     """GET request otimizado que simula comportamento real de navegador com timeout baixo.
 
     Args:
@@ -174,7 +187,9 @@ def get(url: str, delay: Optional[float] = None, timeout: Optional[tuple] = None
     return _optimized_session.get(url, delay=delay, timeout=timeout, **kwargs)
 
 
-def post(url: str, delay: Optional[float] = None, timeout: Optional[tuple] = None, **kwargs) -> Union[requests.Response, str]:
+def post(
+    url: str, delay: float | None = None, timeout: tuple | None = None, **kwargs
+) -> requests.Response | str:
     """POST request otimizado que simula comportamento real de navegador com timeout baixo.
 
     Args:
@@ -190,8 +205,8 @@ def post(url: str, delay: Optional[float] = None, timeout: Optional[tuple] = Non
 
 
 def request(
-    method: str, url: str, delay: Optional[float] = None, timeout: Optional[tuple] = None, **kwargs
-) -> Union[requests.Response, str]:
+    method: str, url: str, delay: float | None = None, timeout: tuple | None = None, **kwargs
+) -> requests.Response | str:
     """Request genérico otimizado que simula comportamento real de navegador com timeout baixo.
 
     Args:
@@ -219,7 +234,7 @@ def new_session(timeout: tuple = (3, 5)) -> OptimizedSession:
     return OptimizedSession(timeout=timeout)
 
 
-def is_error_response(response: Union[requests.Response, str]) -> bool:
+def is_error_response(response: requests.Response | str) -> bool:
     """Verifica se a resposta é um erro (string) ou sucesso (Response).
 
     Args:
@@ -231,7 +246,7 @@ def is_error_response(response: Union[requests.Response, str]) -> bool:
     return isinstance(response, str)
 
 
-def get_error_message(response: Union[requests.Response, str]) -> Optional[str]:
+def get_error_message(response: requests.Response | str) -> str | None:
     """Extrai mensagem de erro se a resposta for um erro.
 
     Args:

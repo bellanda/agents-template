@@ -51,11 +51,15 @@ def process_revision_directives(context, revision, directives):
         script.upgrade_ops.ops.append(ops.ExecuteSQLOp(trigger_sql))
 
         if script.downgrade_ops:
-            script.downgrade_ops.ops.insert(0, ops.ExecuteSQLOp(f"DROP TRIGGER IF EXISTS {trigger_name} ON {table}"))
+            script.downgrade_ops.ops.insert(
+                0, ops.ExecuteSQLOp(f"DROP TRIGGER IF EXISTS {trigger_name} ON {table}")
+            )
 
     # 3. Drop Function on Downgrade
     if script.downgrade_ops:
-        script.downgrade_ops.ops.append(ops.ExecuteSQLOp("DROP FUNCTION IF EXISTS update_updated_at_column"))
+        script.downgrade_ops.ops.append(
+            ops.ExecuteSQLOp("DROP FUNCTION IF EXISTS update_updated_at_column")
+        )
 
 
 def run_migrations_offline() -> None:

@@ -42,7 +42,7 @@ def upgrade() -> None:
         sa.Column("reasoning_tokens", sa.Integer(), server_default="0", nullable=False),
         sa.Column("total_tokens", sa.Integer(), server_default="0", nullable=False),
         sa.Column(
-            "cost_usd", sa.Numeric(precision=14, scale=8), server_default="0", nullable=False
+            "cost_usd", sa.Numeric(precision=12, scale=6), server_default="0", nullable=False
         ),
         sa.Column("error", sa.Text(), nullable=True),
         sa.Column(

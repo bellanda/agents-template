@@ -50,7 +50,11 @@ def serialize_suggestions_for_api(suggestions: list[Any]) -> list[dict[str, Any]
     out: list[dict[str, Any]] = []
     for item in suggestions:
         if isinstance(item, str):
-            label = item if len(item) <= SUGGESTION_LABEL_MAX_CHARS else (item[: SUGGESTION_LABEL_MAX_CHARS - 3] + "...")
+            label = (
+                item
+                if len(item) <= SUGGESTION_LABEL_MAX_CHARS
+                else (item[: SUGGESTION_LABEL_MAX_CHARS - 3] + "...")
+            )
             out.append(
                 {
                     "kind": "instant",
