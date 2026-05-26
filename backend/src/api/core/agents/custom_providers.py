@@ -5,12 +5,13 @@ import dotenv
 from langchain_cerebras import ChatCerebras
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.outputs import ChatGenerationChunk
+from langchain_deepseek import ChatDeepSeek
 from langchain_google_genai import ChatGoogleGenerativeAI
 from langchain_groq import ChatGroq
 from langchain_nvidia_ai_endpoints import ChatNVIDIA
 from langchain_openai import ChatOpenAI
 
-from api.core.agents.models import ModelConfig
+from api.core.agents.models import ModelConfig, find_model_config_by_id
 
 dotenv.load_dotenv(override=True)
 
@@ -157,6 +158,75 @@ def init_nvidia_model(
     )
 
 
+class ChatDeepSeekRoundtrip(ChatDeepSeek):
+    """ChatDeepSeek que devolve `reasoning_content` no payload da próxima call.
+
+    DeepSeek V4 em thinking mode exige que o `reasoning_content` da AIMessage
+    anterior seja reincluído na request seguinte — caso contrário a API responde
+    400 ``"The reasoning_content in the thinking mode must be passed back to
+    the API."``. O ChatDeepSeek base de langchain-deepseek 1.0.1 não faz esse
+    round-trip; aqui reinjetamos a partir de ``additional_kwargs``.
+    """
+
+    def _get_request_payload(
+        self,
+        input_: Any,
+        *,
+        stop: list[str] | None = None,
+        **kwargs: Any,
+    ) -> dict:
+        payload = super()._get_request_payload(input_, stop=stop, **kwargs)
+
+        source_messages: list[Any] = []
+        if hasattr(input_, "to_messages"):
+            source_messages = list(input_.to_messages())
+        elif isinstance(input_, list):
+            source_messages = list(input_)
+
+        src_iter = iter(source_messages)
+        for out_msg in payload.get("messages", []):
+            if out_msg.get("role") != "assistant":
+                continue
+            src_msg = None
+            for candidate in src_iter:
+                if getattr(candidate, "type", None) == "ai":
+                    src_msg = candidate
+                    break
+            if src_msg is None:
+                break
+            extras = getattr(src_msg, "additional_kwargs", None) or {}
+            reasoning = extras.get("reasoning_content")
+            if reasoning:
+                out_msg["reasoning_content"] = reasoning
+
+        return payload
+
+
+def init_deepseek_model(
+    model: str,
+    streaming: bool = True,
+    *,
+    reasoning_effort: str | None = None,
+    **kwargs: Any,
+) -> ChatDeepSeekRoundtrip:
+    """Initialize a DeepSeek model via langchain-deepseek (with reasoning round-trip).
+
+    `reasoning_effort` (low | high | max) is sent in the OpenAI-compatible request
+    body — DeepSeek V4 reads it from there.
+    """
+    if reasoning_effort is not None:
+        kwargs["extra_body"] = {
+            **kwargs.pop("extra_body", {}),
+            "reasoning_effort": reasoning_effort,
+        }
+    return ChatDeepSeekRoundtrip(
+        model=model,
+        api_key=os.getenv("DEEPSEEK_API_KEY"),
+        streaming=streaming,
+        **kwargs,
+    )
+
+
 def init_openai_model(
     model: str,
     streaming: bool = True,
@@ -195,6 +265,13 @@ def init_model(config: ModelConfig, **overrides: Any) -> BaseChatModel:
             return init_chutes_model(config.model_id, reasoning=reasoning, **overrides)
         case "cerebras":
             return init_cerebras_model(config.model_id, **overrides)
+        case "deepseek":
+            reasoning_effort = overrides.pop("reasoning_effort", config.reasoning_effort)
+            return init_deepseek_model(
+                config.model_id,
+                reasoning_effort=reasoning_effort,
+                **overrides,
+            )
         case "google":
             thinking = overrides.pop("thinking", config.thinking)
             include_thoughts = overrides.pop("include_thoughts", True if thinking else None)
@@ -221,3 +298,15 @@ def init_model(config: ModelConfig, **overrides: Any) -> BaseChatModel:
             )
         case _:
             raise ValueError(f"Unknown provider: {config.provider!r}")
+
+
+def init_model_by_id(model_id: str, **overrides: Any) -> BaseChatModel:
+    """Resolve a registered model_id to a live LangChain model.
+
+    Raises ValueError if the id is not in the Models registry — the org-config
+    layer must only persist ids that exist here.
+    """
+    config = find_model_config_by_id(model_id)
+    if config is None:
+        raise ValueError(f"Unknown model_id: {model_id!r}. Not registered in Models.")
+    return init_model(config, **overrides)

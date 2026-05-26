@@ -100,7 +100,9 @@ def _extract_message_content(agent_response: Any) -> str:
     return str(agent_response)
 
 
-async def execute_agent(agent_info: dict, query: str, session_id: str) -> str:
+async def execute_agent(
+    agent_info: dict, query: "str | list[dict[str, Any]]", session_id: str
+) -> str:
     """Execute agent and return the final response."""
     agent = agent_info["agent"]
 
@@ -117,7 +119,10 @@ async def execute_agent(agent_info: dict, query: str, session_id: str) -> str:
 
 
 async def call_agent_async(
-    query: str, session_id: str, model_id: str, agents_registry: dict
+    query: "str | list[dict[str, Any]]",
+    session_id: str,
+    model_id: str,
+    agents_registry: dict,
 ) -> str:
     """Execute agent and return response."""
     if model_id not in agents_registry:

@@ -37,8 +37,12 @@ from langchain_core.messages import (
 # Tuning knobs — keep them generous enough to preserve recent context, tight
 # enough to stop runaway growth after long sessions.
 # ──────────────────────────────────────────────────────────────────────────────
-MAX_MESSAGES_TO_LLM: int = 24
-MAX_TOKENS_HEURISTIC: int = 30_000
+MAX_MESSAGES_TO_LLM: int = 80
+# 256k é o "padrão moderno" dos LLMs grandes (Claude Sonnet, GPT-4.1, etc.) e
+# fica bem abaixo do 1M do Gemini — equilíbrio entre contexto rico e custo
+# de cache. Como `_content_length / 4` é heurística (subestima JSON), o teto
+# real fica em ~150-200k tokens, dando folga para tool outputs sem estourar.
+MAX_TOKENS_HEURISTIC: int = 256_000
 TOKEN_HEURISTIC_DIVISOR: int = 4
 TOOL_RESULT_PLACEHOLDER: str = (
     "[resultado de turno anterior omitido para economizar contexto — "

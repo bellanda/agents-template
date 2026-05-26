@@ -3,8 +3,11 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from agents.weather_agent.tools import get_weather
 from api.core.agents.custom_providers import init_model
-from api.core.agents.models import Models
+from api.core.agents.history_window import sliding_window_middleware
+from api.core.agents.models import Models, model_capabilities_dict
 from api.core.agents.schemas import AgentConfig
+
+PRIMARY_MODEL = Models.Groq.GPT_OSS_20B
 
 config = AgentConfig(
     name="Agente de Clima",
@@ -31,9 +34,10 @@ FORMATO DE RESPOSTA:
 - Organize informações em seções
 - Seja educado e prestativo
 """,
-    model=init_model(Models.Chutes.DEEPSEEK_V3_2_TEE, max_tokens=5000),
+    model=init_model(PRIMARY_MODEL, max_tokens=5000),
     tools=[get_weather],
     save_to_db=True,
+    capabilities=model_capabilities_dict(PRIMARY_MODEL),
 )
 
 
@@ -43,5 +47,6 @@ def create_root_agent(checkpointer: BaseCheckpointSaver | None = None):
         model=config.model,
         tools=config.tools,
         system_prompt=config.system_prompt,
+        middleware=[sliding_window_middleware],
         checkpointer=checkpointer,
     )

@@ -35,13 +35,25 @@ class APIConfig:
     GRANIAN_WORKERS: int = int(getenv_or_raise_exception("GRANIAN_WORKERS"))
 
     # ----------------------------------------------------------------------------
-    # 📁 UPLOAD PATHS & SIZE LIMITS
+    # 📁 UPLOAD PATHS, SIZE LIMITS & QUOTAS
     # ----------------------------------------------------------------------------
     UPLOADS_DIR = paths.BASE_DIR / "uploads"
     UPLOADS_HTTP_PREFIX: str = f"{API_V1_PREFIX}/uploads"
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
+
+    # Per-file size caps (bytes).
     IMAGE_MAX_BYTES: int = 10 * 1024 * 1024  # 10 MB
     DOCUMENT_MAX_BYTES: int = 20 * 1024 * 1024  # 20 MB
+
+    # Per-thread caps. Counts files currently present in the thread directory —
+    # idempotent uploads (same sha256) don't bump the counter.
+    THREAD_MAX_IMAGES: int = 6
+    THREAD_MAX_DOCUMENTS: int = 8
+    THREAD_MAX_FILES_TOTAL: int = 10
+
+    # Per-user caps (across all threads).
+    USER_MAX_FILES_TOTAL: int = 200
+    USER_MAX_BYTES_TOTAL: int = 500 * 1024 * 1024  # 500 MB
 
 
 api_config = APIConfig()

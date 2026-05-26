@@ -7,7 +7,7 @@ import { routeTree } from "./routeTree.gen";
 export const router = createRouter({
   routeTree,
   defaultPreload: "intent",
-  defaultPreloadStaleTime: 0,
+  defaultPreloadStaleTime: 60_000,
   defaultNotFoundComponent: () => {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">

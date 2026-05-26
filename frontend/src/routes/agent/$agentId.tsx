@@ -1,4 +1,4 @@
-import { ChatView } from "@/components/ChatView";
+import { ChatView } from "@/components/chat";
 import { SidebarLayout } from "@/components/layouts";
 import { createFileRoute } from "@tanstack/react-router";
 

@@ -24,6 +24,7 @@ extend-select = [
     "ARG", # Unused arguments (often real dead code).
     "C90", # Cyclomatic complexity (mccabe).
     "PLR", # Pylint refactor/complexity heuristics.
+    "T20", # flake8-print — bans print() / pprint(). Use structlog (see logging.md).
 ]
 ignore = [
     "C901",    # Cyclomatic complexity (mccabe).
@@ -34,6 +35,7 @@ ignore = [
     "PLR0915", # Temporarily allow larger functions during refactors.
     "ARG001",  # Framework callbacks/overrides may require unused args.
 ]
+exclude = ["*.ipynb"]
 
 [lint.mccabe]
 max-complexity = 10
@@ -45,13 +47,14 @@ max-branches = 12
 max-statements = 50
 
 [lint.per-file-ignores]
-"alembic/versions/*.py" = [
-    "N806",    # Alembic templates may use uppercase local identifiers.
-    "ARG001",  # Migration signatures include unused parameters by design.
-    "PLR2004", # Numeric literals are expected in schema operations.
+"tests/**/*.py" = [
+    "ARG001",  # Pytest fixtures often required by side-effect (monkeypatch, env setup).
+    "ARG002",  # Same rationale applies to method-level fixtures.
+    "PLR2004", # Magic numbers (status codes, sample payload sizes) are expected in tests.
+    "T201",    # print() in tests is fine for debugging assertions.
 ]
-"*.ipynb" = [
-    "PLR2004", # Permite o uso de valores literais (magic values) em notebooks
+"scripts/**/*.py" = [
+    "T201",    # CLI scripts can print directly to stdout.
 ]
 
 [lint.flake8-bugbear]

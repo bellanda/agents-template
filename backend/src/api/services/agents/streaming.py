@@ -1,13 +1,14 @@
+import asyncio
 import contextlib
 import os
 from collections.abc import AsyncGenerator
-from traceback import format_exc
 from typing import Any
 
 import orjson
 from asyncpg.connection import Connection
 
 from api.core.agents.callbacks import usage_recorder
+from api.core.logging import get_logger
 from api.models.agents.history import ChatHistoryThread
 from api.repositories.agents.chat_history import get_chat_messages, save_chat
 from api.repositories.agents.usage import build_usage_from_ai_message
@@ -16,6 +17,23 @@ from api.services.agents.executors import (
     normalize_chunk_text,
     reasoning_from_additional_kwargs,
 )
+from config.database import get_pool
+
+log = get_logger(__name__)
+
+# Strong references to detached save tasks. Without this set, the GC may
+# collect the Task before it runs — classic asyncio.create_task pitfall.
+_DETACHED_TASKS: set[asyncio.Task] = set()
+
+
+def _spawn_detached(coro) -> asyncio.Task:
+    """Fire-and-forget task that survives the current task's cancellation
+    AND keeps a strong reference so the GC can't drop it before completion."""
+    task = asyncio.create_task(coro)
+    _DETACHED_TASKS.add(task)
+    task.add_done_callback(_DETACHED_TASKS.discard)
+    return task
+
 
 PREVIEW_LENGTH = 200
 
@@ -40,6 +58,16 @@ def _chunk(type_name: str, message_id: str, delta: str = "") -> str:
     if delta:
         payload["delta"] = delta
     return f"data: {orjson.dumps(payload).decode('utf-8')}\n\n"
+
+
+async def _safe_get_chat_messages(conn: Connection, session_id: str) -> list[dict] | None:
+    """Wrapper para get_chat_messages que swallow falhas — usado em finally após
+    cancel, onde queremos prosseguir mesmo se a leitura prévia falhar."""
+    try:
+        return await get_chat_messages(conn, session_id)
+    except Exception:
+        log.exception("safe_get_chat_messages_failed", session_id=session_id)
+        return None
 
 
 def _tool_input_chunk(tool_call_id: str, tool_name: str, tool_input: Any) -> str:
@@ -102,7 +130,7 @@ def _reasoning_from_ai_message(msg: Any) -> str:
 
 async def stream_agent(
     agent_info: dict,
-    query: str,
+    query: "str | list[dict[str, Any]]",
     user_id: str,
     session_id: str,
     completion_id: str,
@@ -111,24 +139,73 @@ async def stream_agent(
     conn: Connection | None,
     realtor_id: int | None = None,
     active_client_id: str | None = None,
+    user_file_parts: list[dict[str, Any]] | None = None,
+    user_visible_text: str | None = None,
 ) -> AsyncGenerator[str]:
-    """Stream agent events - Vercel AI SDK Data Stream Protocol (SSE)."""
+    """Stream agent events - Vercel AI SDK Data Stream Protocol (SSE).
+
+    `query` aceita ``str`` (texto puro) ou multimodal ``list[dict]`` no formato
+    OpenAI parts (``[{type:'text', text}, {type:'image_url', image_url}]``) —
+    necessário para suportar imagens anexadas via Vercel AI SDK no front.
+    """
     agent = agent_info["agent"]
     save_to_db: bool = agent_info.get("save_to_db", True)
 
-    print(
-        f"[stream_agent] model={requested_model!r} agent_type={type(agent).__name__} session_id={session_id!r} query_len={len(query)}"
+    if isinstance(query, str):
+        query_text_for_log = query
+    else:
+        text_chunks = [
+            p.get("text", "") for p in query if isinstance(p, dict) and p.get("type") == "text"
+        ]
+        query_text_for_log = " ".join(text_chunks).strip()
+
+    # Visible history: only the text the user typed, never the document
+    # extractions. Attachments are shown as cards via user_file_parts;
+    # duplicating extracted content into the user bubble would be noise.
+    has_files = bool(user_file_parts)
+    if user_visible_text is not None:
+        query_text_for_history = user_visible_text
+    else:
+        query_text_for_history = query_text_for_log
+    if not query_text_for_history and has_files:
+        query_text_for_history = ""
+
+    log.info(
+        "stream_agent_start",
+        model=requested_model,
+        agent_type=type(agent).__name__,
+        session_id=session_id,
+        query_len=len(query_text_for_log),
+        multimodal=not isinstance(query, str),
     )
     yield f"data: {orjson.dumps({'type': 'start', 'messageId': completion_id}).decode('utf-8')}\n\n"
 
     reasoning_started = False
     text_started = False
     stream_failed = False
+    was_cancelled = False
     full_response = ""
     full_reasoning = ""
     tool_parts_by_call_id: dict[str, dict[str, Any]] = {}
-    tool_call_order: list[str] = []
+    # ordered_parts é a single source of truth para a ordem em que o modelo
+    # emitiu cada bloco — texto, reasoning e tool calls aparecem na sequência
+    # real, não num esquema fixo (reasoning→tools→text). Isso garante que a UI
+    # renderize "texto curto, tool, texto resposta" corretamente quando o
+    # modelo intercala chamadas de ferramenta entre parágrafos.
+    ordered_parts: list[dict[str, Any]] = []
     last_ai_message: Any | None = None
+
+    def append_text_part(content: str) -> None:
+        if not ordered_parts or ordered_parts[-1].get("type") != "text":
+            ordered_parts.append({"type": "text", "text": content})
+        else:
+            ordered_parts[-1]["text"] = (ordered_parts[-1].get("text") or "") + content
+
+    def append_reasoning_part(content: str) -> None:
+        if not ordered_parts or ordered_parts[-1].get("type") != "reasoning":
+            ordered_parts.append({"type": "reasoning", "reasoning": content})
+        else:
+            ordered_parts[-1]["reasoning"] = (ordered_parts[-1].get("reasoning") or "") + content
 
     langgraph_config: dict = {
         "configurable": {
@@ -173,54 +250,73 @@ async def stream_agent(
                         dc = 0
                     _stream_chars += dc
                     if _stream_chunk_i == 1 or _stream_chunk_i % 40 == 0:
-                        print(
-                            f"[stream_agent][stream] #{_stream_chunk_i} run={ev_run} "
-                            f"name={ev_name!r} delta_chars={dc} total_chars≈{_stream_chars}",
-                            flush=True,
+                        log.debug(
+                            "stream_chunk",
+                            i=_stream_chunk_i,
+                            run=ev_run,
+                            name=ev_name,
+                            delta_chars=dc,
+                            total_chars=_stream_chars,
                         )
                 elif event_type in ("on_tool_start", "on_tool_end", "on_tool_error"):
-                    print(
-                        f"[stream_agent][tool] {event_type} run={ev_run} name={ev_name!r} input={_dev_preview(data.get('input'), 600)}",
-                        flush=True,
+                    log.debug(
+                        "stream_tool_event",
+                        event=event_type,
+                        run=ev_run,
+                        name=ev_name,
+                        input=_dev_preview(data.get("input"), 600),
                     )
                     if event_type in ("on_tool_end", "on_tool_error"):
-                        print(
-                            f"[stream_agent][tool] {event_type} output={_dev_preview(data.get('output'), 800)}",
-                            flush=True,
+                        log.debug(
+                            "stream_tool_output",
+                            event=event_type,
+                            output=_dev_preview(data.get("output"), 800),
                         )
                     if event_type == "on_tool_error" or err is not None:
-                        print(
-                            f"[stream_agent][tool] ERROR event={event_type!r} err={err!r}",
-                            flush=True,
-                        )
+                        log.debug("stream_tool_error", event=event_type, err=repr(err))
                 elif event_type.startswith("on_chain") or event_type.startswith("on_chat_model"):
-                    print(
-                        f"[stream_agent][ev] {event_type} run={ev_run} name={ev_name!r} data_keys={list(data.keys())}",
-                        flush=True,
+                    log.debug(
+                        "stream_event",
+                        event=event_type,
+                        run=ev_run,
+                        name=ev_name,
+                        data_keys=list(data.keys()),
                     )
                     if err is not None:
-                        print(f"[stream_agent][ev] nested error: {err!r}", flush=True)
+                        log.debug("stream_event_nested_error", err=repr(err))
                 else:
-                    print(
-                        f"[stream_agent][ev] {event_type} run={ev_run} name={ev_name!r} data_keys={list(data.keys())}",
-                        flush=True,
+                    log.debug(
+                        "stream_event",
+                        event=event_type,
+                        run=ev_run,
+                        name=ev_name,
+                        data_keys=list(data.keys()),
                     )
                     if err is not None:
-                        print(f"[stream_agent][ev] error field: {err!r}", flush=True)
+                        log.debug("stream_event_error_field", err=repr(err))
 
             if event_type == "on_tool_start":
                 tool_call_id = str(event.get("run_id") or "")
                 tool_input = data.get("input")
                 if tool_call_id and ev_name:
                     if tool_call_id not in tool_parts_by_call_id:
-                        tool_call_order.append(tool_call_id)
-                    tool_parts_by_call_id[tool_call_id] = {
-                        "type": "dynamic-tool",
-                        "toolName": ev_name,
-                        "toolCallId": tool_call_id,
-                        "state": "input-available",
-                        "input": tool_input,
-                    }
+                        new_part: dict[str, Any] = {
+                            "type": "dynamic-tool",
+                            "toolName": ev_name,
+                            "toolCallId": tool_call_id,
+                            "state": "input-available",
+                            "input": tool_input,
+                        }
+                        tool_parts_by_call_id[tool_call_id] = new_part
+                        ordered_parts.append(new_part)
+                    else:
+                        tool_parts_by_call_id[tool_call_id].update(
+                            {
+                                "toolName": ev_name,
+                                "state": "input-available",
+                                "input": tool_input,
+                            }
+                        )
                     yield _tool_input_chunk(tool_call_id, ev_name, tool_input)
                 continue
 
@@ -234,19 +330,26 @@ async def stream_agent(
                     if isinstance(raw, str):
                         with contextlib.suppress(orjson.JSONDecodeError):
                             raw = orjson.loads(raw)
-                    part = tool_parts_by_call_id.setdefault(
-                        tool_call_id,
-                        {
+                    # Tools com response_format="content_and_artifact" retornam
+                    # (content, artifact) onde `content` é o envelope LLM-only e
+                    # `artifact` carrega o ui_data (image_urls, scores etc.) que o
+                    # frontend precisa para renderizar os cards. Sem esse merge,
+                    # ChatListingCard cai no PLACEHOLDER_IMAGE.
+                    artifact = getattr(output, "artifact", None) if output is not None else None
+                    if isinstance(raw, dict) and isinstance(artifact, dict):
+                        raw = {**raw, "ui_data": artifact}
+                    part = tool_parts_by_call_id.get(tool_call_id)
+                    if part is None:
+                        part = {
                             "type": "dynamic-tool",
                             "toolName": ev_name or "",
                             "toolCallId": tool_call_id,
                             "input": data.get("input"),
-                        },
-                    )
+                        }
+                        tool_parts_by_call_id[tool_call_id] = part
+                        ordered_parts.append(part)
                     part["state"] = "output-available"
                     part["output"] = raw
-                    if tool_call_id not in tool_call_order:
-                        tool_call_order.append(tool_call_id)
                     yield _tool_output_chunk(tool_call_id, raw)
                 continue
 
@@ -254,19 +357,18 @@ async def stream_agent(
                 tool_call_id = str(event.get("run_id") or "")
                 if tool_call_id:
                     error_message = str(err or "Tool failed")
-                    part = tool_parts_by_call_id.setdefault(
-                        tool_call_id,
-                        {
+                    part = tool_parts_by_call_id.get(tool_call_id)
+                    if part is None:
+                        part = {
                             "type": "dynamic-tool",
                             "toolName": ev_name or "",
                             "toolCallId": tool_call_id,
                             "input": data.get("input"),
-                        },
-                    )
+                        }
+                        tool_parts_by_call_id[tool_call_id] = part
+                        ordered_parts.append(part)
                     part["state"] = "output-error"
                     part["errorText"] = error_message
-                    if tool_call_id not in tool_call_order:
-                        tool_call_order.append(tool_call_id)
                     yield _tool_error_chunk(tool_call_id, error_message)
                 continue
 
@@ -286,6 +388,7 @@ async def stream_agent(
                         reasoning_started = True
                     yield _chunk("reasoning-delta", completion_id, reasoning_content)
                     full_reasoning += reasoning_content
+                    append_reasoning_part(reasoning_content)
 
                 if content:
                     if not text_started:
@@ -293,6 +396,7 @@ async def stream_agent(
                         text_started = True
                     yield _chunk("text-delta", completion_id, content)
                     full_response += content
+                    append_text_part(content)
 
             elif event_type == "on_chat_model_end":
                 # Gemini often attaches full thinking blocks only on the final message, not in stream deltas.
@@ -306,49 +410,69 @@ async def stream_agent(
                             reasoning_started = True
                         yield _chunk("reasoning-delta", completion_id, pending)
                         full_reasoning += pending
+                        append_reasoning_part(pending)
 
                 # Capture the last AIMessage so we can persist usage_metadata after the stream.
                 if out is not None and getattr(out, "usage_metadata", None):
                     last_ai_message = out
 
-        if _agent_stream_debug():
-            print(
-                f"[stream_agent] stream loop finished OK chunks={_stream_chunk_i} "
-                f"text_len={len(full_response)} reasoning_len={len(full_reasoning)}",
-                flush=True,
-            )
+        log.debug(
+            "stream_loop_finished",
+            chunks=_stream_chunk_i,
+            text_len=len(full_response),
+            reasoning_len=len(full_reasoning),
+        )
 
+    except asyncio.CancelledError:
+        # Usuário clicou em "parar" no front (ou desconectou). Não re-raise:
+        # deixar o `finally` persistir o que foi gerado até agora com o marker
+        # "interrompido pelo usuário" para preservar contexto da conversa.
+        was_cancelled = True
+        log.info(
+            "stream_cancelled_by_client",
+            session_id=session_id,
+            text_len=len(full_response),
+            reasoning_len=len(full_reasoning),
+            tool_calls=len(tool_parts_by_call_id),
+        )
     except Exception as e:
         stream_failed = True
-        print(
-            f"[stream_agent] ERROR session_id={session_id!r} model={requested_model!r} {type(e).__name__}: {e}\n{format_exc()}"
-        )
+        log.exception("stream_agent_error", session_id=session_id, model=requested_model)
         yield _error_chunk(f"Streaming error: {e!s}")
     finally:
-        if reasoning_started:
-            yield _chunk("reasoning-end", completion_id)
-        if stream_failed:
-            if text_started:
-                yield _chunk("text-end", completion_id)
-        else:
-            if not text_started:
-                yield _chunk("text-start", completion_id)
-            yield _chunk("text-end", completion_id)
-
-        if save_to_db and conn and not stream_failed:
+        # IMPORTANTE: spawn do save tem que rodar ANTES de qualquer `yield`
+        # neste finally. Os yields de tag de fim podem disparar GeneratorExit
+        # /CancelledError quando o consumer fechou o generator (cancel do
+        # cliente). Como esses são BaseException, `contextlib.suppress(Exception)`
+        # NÃO os captura — a exceção propaga e pula tudo abaixo, incluindo o save.
+        if save_to_db and not stream_failed:
             try:
-                history = await get_chat_messages(conn, session_id) or []
-                history.append({"role": "user", "content": query})
+                if was_cancelled:
+                    cancel_marker = "\n\n_Interrompido pelo usuário._"
+                    if ordered_parts and ordered_parts[-1].get("type") == "text":
+                        ordered_parts[-1]["text"] = (
+                            ordered_parts[-1].get("text") or ""
+                        ) + cancel_marker
+                    else:
+                        ordered_parts.append({"type": "text", "text": cancel_marker.lstrip()})
+                    full_response = (full_response or "") + cancel_marker
 
-                assistant_parts: list[dict[str, Any]] = []
-                if full_reasoning:
-                    assistant_parts.append({"type": "reasoning", "reasoning": full_reasoning})
-                for call_id in tool_call_order:
-                    part = tool_parts_by_call_id.get(call_id)
-                    if part:
-                        assistant_parts.append(part)
-                if full_response:
-                    assistant_parts.append({"type": "text", "text": full_response})
+                # História persistida usa texto puro — não infla JSONB com base64
+                # de imagens. Os file parts vêm já saneados (URL servida por
+                # /api/v1/uploads, sem base64) para que o frontend renderize
+                # cards ao recarregar a thread.
+                user_msg: dict[str, Any] = {
+                    "role": "user",
+                    "content": query_text_for_history,
+                }
+                if user_file_parts:
+                    user_parts: list[dict[str, Any]] = []
+                    if query_text_for_history:
+                        user_parts.append({"type": "text", "text": query_text_for_history})
+                    user_parts.extend(user_file_parts)
+                    user_msg["parts"] = user_parts
+
+                assistant_parts: list[dict[str, Any]] = list(ordered_parts)
 
                 assistant_msg: dict = {"role": "assistant", "content": full_response}
                 if full_reasoning:
@@ -378,24 +502,81 @@ async def stream_agent(
                         "cost_usd": usage_row.cost_usd,
                     }
 
-                if full_response or full_reasoning or assistant_parts:
-                    history.append(assistant_msg)
+                # Detached task: read existing + append turn + save in one
+                # scope. When the client cancels, ASGI re-emits cancel on every
+                # await while closing the generator — `asyncio.shield` protects
+                # the inner coroutine but the outer await still re-raises
+                # CancelledError. `create_task` makes a sibling task that
+                # survives the parent's cancellation and runs to completion.
+                async def _detached_save(
+                    sid: str,
+                    uid: str,
+                    aid: str,
+                    new_messages: list[dict[str, Any]],
+                    preview: str,
+                ) -> None:
+                    log.debug("detached_save_started", session_id=sid, new_msgs=len(new_messages))
+                    try:
+                        save_pool = await get_pool()
+                        async with save_pool.acquire() as detached_conn:
+                            existing = await _safe_get_chat_messages(detached_conn, sid)
+                            full_history = list(existing or [])
+                            full_history.extend(new_messages)
+                            saved_thread = ChatHistoryThread(
+                                thread_id=sid,
+                                user_id=uid,
+                                agent_id=aid,
+                                messages=full_history,
+                                preview=(preview[:PREVIEW_LENGTH] + "...")
+                                if len(preview) > PREVIEW_LENGTH
+                                else (preview or None),
+                            )
+                            await save_chat(detached_conn, saved_thread)
+                        log.debug("detached_save_completed", session_id=sid)
+                    except Exception:
+                        log.exception("detached_save_failed", session_id=sid)
 
-                preview_content = full_response or full_reasoning
-                thread = ChatHistoryThread(
-                    thread_id=session_id,
-                    user_id=user_id,
-                    agent_id=requested_model,
-                    messages=history,
-                    preview=(preview_content[:PREVIEW_LENGTH] + "...")
-                    if len(preview_content) > PREVIEW_LENGTH
-                    else (preview_content or None),
+                new_turn_messages: list[dict[str, Any]] = [user_msg]
+                if full_response or full_reasoning or assistant_parts:
+                    new_turn_messages.append(assistant_msg)
+                preview_seed = full_response or full_reasoning or query_text_for_history
+
+                # Sempre fire-and-forget — mesmo no path normal — para evitar
+                # qualquer await que possa ser interceptado por cancel tardio.
+                _spawn_detached(
+                    _detached_save(
+                        session_id,
+                        user_id,
+                        requested_model,
+                        new_turn_messages,
+                        preview_seed,
+                    )
                 )
-                await save_chat(conn, thread)
-            except Exception:
-                print(f"[stream_agent] failed to persist chat history\n{format_exc()}")
+                log.debug("save_task_spawned", session_id=session_id)
+            except BaseException:
+                log.exception("persist_chat_history_failed", session_id=session_id)
+
+        # End-tag yields — DEPOIS do save spawn. Em path normal funcionam; em
+        # path cancelado o consumer fechou, o BaseException é suprimido aqui e
+        # como o save já foi spawnado, o cancelamento desses yields é inofensivo.
+        if reasoning_started:
+            with contextlib.suppress(BaseException):
+                yield _chunk("reasoning-end", completion_id)
+        if stream_failed:
+            if text_started:
+                with contextlib.suppress(BaseException):
+                    yield _chunk("text-end", completion_id)
+        else:
+            if not text_started:
+                with contextlib.suppress(BaseException):
+                    yield _chunk("text-start", completion_id)
+            with contextlib.suppress(BaseException):
+                yield _chunk("text-end", completion_id)
 
         finish_payload: dict = {"type": "finish"}
         if stream_failed:
             finish_payload["finishReason"] = "error"
-        yield f"data: {orjson.dumps(finish_payload).decode('utf-8')}\n\n"
+        elif was_cancelled:
+            finish_payload["finishReason"] = "stop"
+        with contextlib.suppress(BaseException):
+            yield f"data: {orjson.dumps(finish_payload).decode('utf-8')}\n\n"

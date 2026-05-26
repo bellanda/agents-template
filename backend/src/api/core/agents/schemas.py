@@ -40,6 +40,18 @@ class AgentConfig(BaseModel):
     tools: list[BaseTool] = []
     suggestions: list[AgentSuggestion] = []
     save_to_db: bool = True
+    # Capabilities expostas no /agents para o frontend bloquear uploads
+    # incompatíveis (ex.: imagem em modelo só de texto). Helper:
+    # ``model_capabilities_dict(Models.X.Y)`` em api.core.agents.models.
+    capabilities: dict[str, bool] = Field(
+        default_factory=lambda: {
+            "image_input": False,
+            "pdf_input": False,
+            "audio_input": False,
+            "video_input": False,
+            "reasoning": False,
+        }
+    )
 
 
 SUGGESTION_LABEL_MAX_CHARS = 56

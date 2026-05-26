@@ -19,18 +19,20 @@ Metadata esperado em RunnableConfig.metadata:
 
 from __future__ import annotations
 
-from traceback import format_exc
 from typing import Any
 from uuid import UUID
 
 from langchain_core.callbacks import AsyncCallbackHandler
 from langchain_core.outputs import LLMResult
 
+from api.core.logging import get_logger
 from api.repositories.agents.usage import (
     build_usage_from_ai_message,
     insert_agent_message_usage,
 )
 from config import database as database_module
+
+log = get_logger(__name__)
 
 
 class UsageRecorderCallback(AsyncCallbackHandler):
@@ -99,7 +101,9 @@ class UsageRecorderCallback(AsyncCallbackHandler):
             async with pool.acquire() as conn:
                 await insert_agent_message_usage(conn, usage_row)
         except Exception:
-            print(f"[UsageRecorderCallback] insert failed\n{format_exc()}")
+            log.exception(
+                "usage_recorder_insert_failed", thread_id=str(thread_id), agent_id=str(agent_id)
+            )
 
 
 usage_recorder = UsageRecorderCallback()

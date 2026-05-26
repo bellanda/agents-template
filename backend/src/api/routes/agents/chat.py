@@ -1,22 +1,29 @@
 import base64
 import mimetypes
+import os
+import tempfile
 import time
 import uuid
-from traceback import format_exc
+from pathlib import Path
 from typing import Any
+from urllib.parse import urlparse
 
 from asyncpg.connection import Connection
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from api.core.logging import get_logger
 from api.services.agents.executors import call_agent_async
 from api.services.agents.registry import get_agents_registry
 from api.services.agents.streaming import sse_error_chunk, stream_agent
 from api.services.agents.utils import convert_file_to_text
+from api.services.auth import get_auth_context
+from config.api import api_config
 from config.database import get_conn
 
 router = APIRouter()
+log = get_logger(__name__)
 
 
 class ChatRequest(BaseModel):
@@ -24,7 +31,6 @@ class ChatRequest(BaseModel):
     model: str
     stream: bool = False
     session_id: str | None = None
-    user: str | None = None
     files: list[str] | None = None  # Optional list of file paths to process
     realtor_id: int | None = None
     active_client_id: str | None = None
@@ -99,21 +105,223 @@ async def _process_files(
     return messages
 
 
-def _extract_user_query(messages: list[dict[str, Any]]) -> str:
-    """Extrai o texto da última mensagem do usuário, suportando múltiplos formatos (OpenAI, Vercel AI SDK parts, etc)."""
+def _resolve_local_upload(url: str) -> Path | None:
+    """If ``url`` points at our /uploads mount, return the on-disk Path; else None.
+
+    Aceita layout flat antigo (``/api/v1/uploads/<hash>.ext``) e novo layout
+    escopado (``/api/v1/uploads/<user_id>/<thread_id>/<hash>.ext``). Cada
+    componente é sanitizado e o resultado final precisa estar contido em
+    ``UPLOADS_DIR.resolve()``.
+    """
+    if not url:
+        return None
+    parsed = urlparse(url)
+    path = parsed.path or url
+    prefix = api_config.UPLOADS_HTTP_PREFIX
+    if not path.startswith(prefix + "/"):
+        return None
+    raw_relative = path[len(prefix) + 1 :]
+    if not raw_relative:
+        return None
+    safe_segments: list[str] = []
+    for segment in raw_relative.split("/"):
+        if not segment:
+            continue
+        cleaned = Path(segment).name
+        if not cleaned or cleaned in ("..", "."):
+            return None
+        safe_segments.append(cleaned)
+    if not safe_segments:
+        return None
+    base = api_config.UPLOADS_DIR.resolve()
+    target = (api_config.UPLOADS_DIR.joinpath(*safe_segments)).resolve()
+    try:
+        target.relative_to(base)
+    except ValueError:
+        return None
+    if not target.is_file():
+        return None
+    return target
+
+
+def _document_to_text(path: Path) -> str:
+    return convert_file_to_text(str(path)) or ""
+
+
+def _data_url_to_text(url: str, media_type: str) -> str:
+    """Decodifica um data URL e converte para texto via MarkItDown (PDF/DOCX/etc)."""
+    if not url.startswith("data:"):
+        return ""
+    header, _, encoded = url.partition(",")
+    if ";base64" not in header or not encoded:
+        return ""
+    try:
+        raw = base64.b64decode(encoded)
+    except Exception:
+        return ""
+    ext = mimetypes.guess_extension(media_type) or ".bin"
+    with tempfile.NamedTemporaryFile(delete=False, suffix=ext) as fp:
+        fp.write(raw)
+        tmp_path = fp.name
+    try:
+        return convert_file_to_text(tmp_path) or ""
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            log.warning("temp_file_delete_failed", path=tmp_path)
+
+
+def _file_to_data_url(path: Path, media_type: str) -> str:
+    """Read a local upload from disk and return it as a base64 data URL."""
+    encoded = base64.b64encode(path.read_bytes()).decode("utf-8")
+    return f"data:{media_type};base64,{encoded}"
+
+
+def _extract_user_visible_text(messages: list[dict[str, Any]]) -> str:
+    """User-typed text only — no document extractions.
+
+    Used as the visible content for the persisted user message. Document
+    content extracted from PDF/DOCX is sent to the LLM (via
+    ``_extract_user_content``) but must NOT pollute the user's chat bubble;
+    the attachment card already communicates the upload.
+    """
+    if not messages:
+        return ""
+    user_messages = [m for m in messages if m.get("role") == "user"]
+    last_msg = user_messages[-1] if user_messages else messages[-1]
+    parts = last_msg.get("parts")
+    if isinstance(parts, list):
+        chunks: list[str] = []
+        for part in parts:
+            if not isinstance(part, dict):
+                continue
+            if part.get("type") == "text" and part.get("text"):
+                chunks.append(str(part["text"]))
+        return " ".join(c for c in chunks if c).strip()
+    content = last_msg.get("content") or last_msg.get("text") or ""
+    if isinstance(content, str):
+        return content
+    if isinstance(content, dict):
+        return str(content.get("text") or "")
+    if isinstance(content, list):
+        chunks = []
+        for part in content:
+            if isinstance(part, dict) and part.get("type") == "text":
+                chunks.append(str(part.get("text") or ""))
+        return " ".join(c for c in chunks if c).strip()
+    return ""
+
+
+def _extract_user_file_parts(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """File parts saneados (sem base64) prontos para persistir no histórico."""
+    if not messages:
+        return []
+    user_messages = [m for m in messages if m.get("role") == "user"]
+    last_msg = user_messages[-1] if user_messages else messages[-1]
+    parts = last_msg.get("parts")
+    if not isinstance(parts, list):
+        return []
+
+    out: list[dict[str, Any]] = []
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        if part.get("type") not in {"file", "image"}:
+            continue
+        url = (
+            part.get("url")
+            or (part.get("image_url") or {}).get("url")
+            or (part.get("image") or {}).get("url")
+            or ""
+        )
+        media_type = part.get("mediaType") or part.get("media_type") or part.get("mimeType") or ""
+        if url.startswith("data:"):
+            continue
+        filename = part.get("filename") or part.get("name") or ""
+        out.append(
+            {
+                "type": "file",
+                "url": url,
+                "mediaType": media_type,
+                "filename": filename,
+            }
+        )
+    return out
+
+
+def _extract_user_content(messages: list[dict[str, Any]]) -> str | list[dict[str, Any]]:
+    """Extrai o conteúdo da última mensagem do usuário no formato consumível pelo LLM.
+
+    Suporta:
+    - Vercel AI SDK V5: ``parts: [{type:'text'|'file', ...}]``. Imagens viram
+      ``image_url`` (multimodal); documentos viram texto via MarkItDown.
+    - OpenAI clássico: ``content: str | list``.
+
+    Retorna ``str`` simples quando só há texto e ``list[dict]`` multimodal quando
+    há ao menos uma imagem (formato compatível com ChatOpenAI/ChatGoogle/etc).
+    """
     if not messages:
         return ""
 
     user_messages = [m for m in messages if m.get("role") == "user"]
-    last_msg = messages[-1] if not user_messages else user_messages[-1]
+    last_msg = user_messages[-1] if user_messages else messages[-1]
 
     parts = last_msg.get("parts")
     if isinstance(parts, list):
-        texts = []
+        text_chunks: list[str] = []
+        image_parts: list[dict[str, Any]] = []
+        document_chunks: list[str] = []
+
         for part in parts:
-            if isinstance(part, dict) and part.get("type") == "text":
-                texts.append(part.get("text", ""))
-        return " ".join(texts).strip()
+            if not isinstance(part, dict):
+                continue
+            ptype = part.get("type")
+            if ptype == "text":
+                if part.get("text"):
+                    text_chunks.append(str(part["text"]))
+            elif ptype in {"file", "image"}:
+                url = (
+                    part.get("url")
+                    or (part.get("image_url") or {}).get("url")
+                    or (part.get("image") or {}).get("url")
+                    or ""
+                )
+                media_type = (
+                    part.get("mediaType") or part.get("media_type") or part.get("mimeType") or ""
+                )
+                if not url:
+                    continue
+                local_path = _resolve_local_upload(url)
+                if media_type.startswith("image/") or ptype == "image":
+                    if local_path is not None:
+                        effective_media = media_type or (
+                            mimetypes.guess_type(local_path.name)[0] or "image/jpeg"
+                        )
+                        image_url_value = _file_to_data_url(local_path, effective_media)
+                    else:
+                        image_url_value = url
+                    image_parts.append({"type": "image_url", "image_url": {"url": image_url_value}})
+                else:
+                    if local_path is not None:
+                        text = _document_to_text(local_path)
+                    else:
+                        text = _data_url_to_text(url, media_type)
+                    if text:
+                        filename = part.get("filename") or part.get("name") or "arquivo"
+                        document_chunks.append(
+                            f"\n\n--- Conteúdo do arquivo {filename} ---\n{text}\n-----------------------------------\n"
+                        )
+
+        combined_text = " ".join(c for c in text_chunks if c).strip() + "".join(document_chunks)
+
+        if image_parts:
+            multimodal: list[dict[str, Any]] = []
+            if combined_text:
+                multimodal.append({"type": "text", "text": combined_text})
+            multimodal.extend(image_parts)
+            return multimodal
+        return combined_text
 
     content = last_msg.get("content") or last_msg.get("text") or ""
 
@@ -138,6 +346,7 @@ def _extract_user_query(messages: list[dict[str, Any]]) -> str:
 @router.post("/chat/completions")
 async def chat_completions(
     request: ChatRequest,
+    ctx: dict = Depends(get_auth_context),
     agents_registry: dict = Depends(get_agents_registry),
     conn: Connection = Depends(get_conn),
 ):
@@ -157,21 +366,48 @@ async def chat_completions(
             raise HTTPException(status_code=404, detail=f"Model '{request.model}' not found")
 
         # 2. File Processing
+        # `request.files` é caminho legado (server-side paths). O Vercel AI SDK V5
+        # entrega arquivos dentro das `parts` da última user message, então
+        # `_extract_user_content` cuida do caso multimodal moderno.
         messages = await _process_files(request.files, request.messages)
 
         # 3. Setup
-        user_query = _extract_user_query(messages)
-        if not user_query:
+        user_query = _extract_user_content(messages)
+        user_file_parts = _extract_user_file_parts(messages)
+        user_visible_text = _extract_user_visible_text(messages)
+        if not user_query and not user_file_parts:
             raise HTTPException(status_code=400, detail="No user query found")
+
+        # Defesa em profundidade: se o modelo não suporta imagem mas o cliente
+        # enviou parts image_url assim mesmo, retornamos 400 antes de gastar
+        # uma request com erro confuso do provider.
+        agent_caps = agents_registry[request.model].get("capabilities") or {}
+        if (
+            isinstance(user_query, list)
+            and any(p.get("type") == "image_url" for p in user_query)
+            and not agent_caps.get("image_input")
+        ):
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"Model '{request.model}' não aceita imagens. "
+                    "Escolha um modelo com suporte multimodal ou remova os anexos."
+                ),
+            )
 
         agent_info = agents_registry[request.model]
         session_id = request.session_id or f"session_{uuid.uuid4().hex[:8]}"
-        user_id = request.user or "default_user"
+        # Identity comes from the auth seam (header/token), never the request body.
+        user_id = ctx["user_id"]
+        active_client_id = ctx["client_id"] or request.active_client_id
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
         current_timestamp = int(time.time())
 
-        print(
-            f"[chat_completions] model={request.model!r} session_id={session_id!r} agent_name={agent_info.get('name')!r}"
+        log.info(
+            "chat_completions",
+            model=request.model,
+            session_id=session_id,
+            agent_name=agent_info.get("name"),
         )
         # 4. Streaming Response
         if request.stream:
@@ -188,12 +424,16 @@ async def chat_completions(
                         request.model,
                         conn=conn,
                         realtor_id=request.realtor_id,
-                        active_client_id=request.active_client_id,
+                        active_client_id=active_client_id,
+                        user_file_parts=user_file_parts,
+                        user_visible_text=user_visible_text,
                     ):
                         yield chunk
                 except Exception as e:
-                    print(
-                        f"[chat_completions] stream iteration failed session_id={session_id!r} model={request.model!r}\n{format_exc()}"
+                    log.exception(
+                        "chat_stream_iteration_failed",
+                        session_id=session_id,
+                        model=request.model,
                     )
                     yield sse_error_chunk(f"Stream interrupted: {e!s}")
                 yield "data: [DONE]\n\n"

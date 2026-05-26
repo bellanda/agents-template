@@ -18,6 +18,23 @@ class ModelConfig:
     input_price_per_1m: float = 0.0
     cached_input_price_per_1m: float = 0.0
     output_price_per_1m: float = 0.0
+    # Capabilities — usadas pelo frontend para bloquear uploads incompatíveis
+    # (texto/documento sempre suportado via MarkItDown — sem flag).
+    supports_image_input: bool = False
+    supports_pdf_input: bool = False  # PDF nativo (sem MarkItDown)
+    supports_audio_input: bool = False
+    supports_video_input: bool = False
+
+
+def model_capabilities_dict(cfg: "ModelConfig") -> dict[str, bool]:
+    """Snapshot serializável das flags de capacidade para o /agents endpoint."""
+    return {
+        "image_input": cfg.supports_image_input,
+        "pdf_input": cfg.supports_pdf_input,
+        "audio_input": cfg.supports_audio_input,
+        "video_input": cfg.supports_video_input,
+        "reasoning": cfg.reasoning or cfg.thinking,
+    }
 
 
 def compute_cost_usd(usage: dict[str, Any] | None, cfg: ModelConfig) -> float:
@@ -52,6 +69,7 @@ PROVIDER_ALIASES: dict[str, str] = {
     "chat_groq": "groq",
     "chat_cerebras": "cerebras",
     "chat_nvidia": "nvidia",
+    "chat_deepseek": "deepseek",
 }
 
 
@@ -75,6 +93,21 @@ def find_model_config(provider: str, model_id: str) -> ModelConfig | None:
                 and value.provider == canonical
                 and value.model_id == model_id
             ):
+                return value
+    return None
+
+
+def find_model_config_by_id(model_id: str) -> ModelConfig | None:
+    """Lookup a ModelConfig by model_id alone (provider-agnostic).
+
+    The org-configurable attendant stores only a model_id (e.g. "deepseek-v4-flash");
+    this resolves it to the full config so the dispatcher can instantiate it.
+    """
+    for namespace in vars(Models).values():
+        if not isinstance(namespace, type):
+            continue
+        for value in vars(namespace).values():
+            if isinstance(value, ModelConfig) and value.model_id == model_id:
                 return value
     return None
 
@@ -116,6 +149,10 @@ class Models:
             input_price_per_1m=0.50,
             cached_input_price_per_1m=0.05,
             output_price_per_1m=3.00,
+            supports_image_input=True,
+            supports_pdf_input=True,
+            supports_audio_input=True,
+            supports_video_input=True,
         )
 
     class OpenAI:
@@ -127,6 +164,7 @@ class Models:
             input_price_per_1m=0.20,
             cached_input_price_per_1m=0.02,
             output_price_per_1m=1.25,
+            supports_image_input=True,
         )
 
     class Groq:
@@ -145,6 +183,31 @@ class Models:
             output_price_per_1m=0.30,
         )
         LLAMA_4_SCOUT = ModelConfig("meta-llama/llama-4-scout-17b-16e-instruct", "groq")
+
+    class DeepSeek:
+        # Modelos atuais (substituem deepseek-chat / deepseek-reasoner):
+        # ambos suportam tool calling, JSON output e reasoning (thinking mode).
+        # Pricing oficial: https://api-docs.deepseek.com/quick_start/pricing
+        # Context: 1M tokens · max output: 384K tokens.
+        V4_FLASH = ModelConfig(
+            "deepseek-v4-flash",
+            "deepseek",
+            reasoning=True,
+            reasoning_effort="high",
+            input_price_per_1m=0.14,
+            cached_input_price_per_1m=0.0028,
+            output_price_per_1m=0.28,
+        )
+        # V4 Pro: pricing reflete desconto de 75% válido até 2026-05-31.
+        V4_PRO = ModelConfig(
+            "deepseek-v4-pro",
+            "deepseek",
+            reasoning=True,
+            reasoning_effort="high",
+            input_price_per_1m=0.435,
+            cached_input_price_per_1m=0.003625,
+            output_price_per_1m=0.87,
+        )
 
     class NVIDIA:
         NEMOTRON_3_SUPER_120B_A12B = ModelConfig(

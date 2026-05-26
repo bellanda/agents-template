@@ -27,9 +27,9 @@ Covers:
 
 ```bash
 cd backend
-cp ../.env.example ../.env   # fill in API keys + Postgres vars
+cp ../.env.example ../.env   # fill in API keys + Postgres vars (incl. DATABASE_URL)
 uv sync
-uv run alembic upgrade head
+dbmate up
 uv run src/api/main.py
 ```
 
@@ -63,11 +63,17 @@ backend/
 │
 └── src/api/                   # FastAPI app (importable as `api`)
     ├── main.py
-    ├── core/agents/           # Model registry, checkpointer, schemas
-    ├── models/agents/         # SQLAlchemy tables: checkpoints + chat_history
-    ├── repositories/agents/   # Chat history CRUD (asyncpg)
+    ├── core/agents/           # Model registry, checkpointer, schemas, callbacks
+    ├── core/logging.py        # structlog stack (NDJSON prod / console dev)
+    ├── core/exceptions.py     # BadRequestError etc (HTTPException subclasses)
+    ├── middlewares/           # LoggingMiddleware (request_id + http_request line)
+    ├── models/agents/         # Pydantic models: chat_history, usage, checkpoint
+    ├── models/uploads/        # UserUpload + upload_jsonb (user-owned uploads)
+    ├── repositories/agents/   # Chat history + usage CRUD (asyncpg)
+    ├── repositories/uploads/  # UserUploadRepository (asyncpg)
     ├── services/agents/       # Registry, streaming, executors
-    └── routes/agents/         # Endpoints: /chat/completions, /models, /threads
+    ├── services/auth.py       # get_auth_context identity seam
+    └── routes/                # agents/ (chat, models, threads) + uploads.py
 
 frontend/src/
 ├── components/
@@ -85,7 +91,7 @@ frontend/src/
 
 ## Integrating into an Existing FastAPI Project
 
-Your project must already use: asyncpg, SQLAlchemy + Alembic, FastAPI, the same `config/` architecture.
+Your project must already use: asyncpg, dbmate (plain-SQL migrations), FastAPI, the same `config/` architecture.
 
 ### Step 1 — Run the sync script
 
@@ -94,7 +100,7 @@ cd /path/to/this/template/backend
 uv run scripts/sync_agents_to_another_fastapi_project.py --target /path/to/your/backend
 ```
 
-Copies these directories into your project:
+Copies the agents layers (overwrite) into your project:
 
 - `agents/`
 - `src/api/core/agents/`
@@ -102,6 +108,12 @@ Copies these directories into your project:
 - `src/api/repositories/agents/`
 - `src/api/services/agents/`
 - `src/api/routes/agents/`
+
+Plus shared infra the agents layers import (skip-if-exists, so a richer target keeps its own):
+
+- `src/api/middlewares/` (LoggingMiddleware), `src/api/models/uploads/`, `src/api/repositories/uploads/`
+- `src/api/core/logging.py`, `src/api/core/exceptions.py`, `src/api/services/auth.py`, `src/api/routes/uploads.py`, `config/uploads.py`
+- `db/migrations/*.sql` (existing files preserved)
 
 Pass `--optional` to also copy `config/` stubs and `src/api/core/database.py` (skipped if they already exist).
 
@@ -116,6 +128,7 @@ dependencies = [
     "langchain-cerebras>=0.8.2",
     "langchain-community>=0.4.1",
     "langchain-core>=1.2.17",
+    "langchain-deepseek>=1.0.1",
     "langchain-google-genai>=4.2.1",
     "langchain-groq>=1.1.2",
     "langchain-nvidia-ai-endpoints>=1.1.0",
@@ -123,6 +136,9 @@ dependencies = [
     "langgraph>=1.0.10",
     "langgraph-checkpoint-postgres>=3.0.4",
     "markitdown[all]>=0.1.5",
+    "structlog>=25.5.0",                  # core/logging.py
+    "opencv-python-headless>=4.13.0.92",  # config/uploads.py (image→AVIF)
+    "numpy>=2.2.0",                       # config/uploads.py
 ]
 
 [tool.hatch.build.targets.wheel]
@@ -155,14 +171,15 @@ async def lifespan(app: FastAPI):
 api_router.include_router(agents_router)
 ```
 
-### Step 4 — Run Alembic migrations
+### Step 4 — Run dbmate migrations
+
+The agents migration ships in `db/migrations/` (copied by the sync script).
 
 ```bash
-uv run alembic revision --autogenerate -m "add agents tables"
-uv run alembic upgrade head
+dbmate up
 ```
 
-Creates: `checkpoints`, `checkpoint_writes`, `checkpoint_blobs`, `chat_history_threads`.
+Creates: `agent_message_usage`, `chat_history`, `checkpoints`, `checkpoint_writes`, `checkpoint_blobs`, `user_uploads`.
 
 ### Step 5 — Add .env variables
 
@@ -325,11 +342,20 @@ The frontend uses `useChat` from `@ai-sdk/react` with `DefaultChatTransport`. No
 
 ## User Authentication
 
-By default, all requests use `user = "default_user"`.
+Identity is resolved by a single dependency, `get_auth_context`
+(`src/api/services/auth.py`). Every agents/uploads route depends on it, so
+swapping auth is a one-function change. By default it is **open**: identity comes
+from `Authorization: Bearer <token>` → `X-User-Id` header → `user` query param →
+`"default_user"`. `user_id` scopes thread history, usage accounting, and uploads.
 
-**Backend**: the `user` field in `ChatRequest` scopes thread history. Pass it from your auth system — no backend changes needed.
+**Backend**: replace `resolve_identity(token)` in `services/auth.py` with real
+verification — decode the JWT, return `payload["sub"]`, raise
+`AuthenticationError` on invalid tokens. No route changes needed.
 
-**Frontend**: replace the `useUserId()` hook in `src/hooks/useUserId.ts`. Signature must stay:
+**Frontend**: identity flows via the `X-User-Id` header on every agents/uploads
+request (chat transport, `fetchThreads`, `uploadFile`, …). Replace the
+`useUserId()` hook in `src/hooks/useUserId.ts` to return the real id; with a
+token backend, send `Authorization: Bearer` instead. Signature must stay:
 
 ```typescript
 function useUserId(): [string, () => void];

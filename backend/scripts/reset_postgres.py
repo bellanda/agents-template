@@ -78,17 +78,8 @@ def main() -> None:
     print("🔐 Setting permissions...")
     run_psql(PSQL_DB_CMD, SQL_GRANT_SCHEMA)
 
-    versions_dir = BACKEND_DIR / "alembic" / "versions"
-    if not list(versions_dir.glob("*.py")):
-        print("🚀 Generating initial migration...")
-        subprocess.run(
-            ["uv", "run", "alembic", "revision", "--autogenerate", "-m", "initial"],
-            cwd=BACKEND_DIR,
-            check=True,
-        )
-
     print("🚀 Applying migrations...")
-    subprocess.run(["uv", "run", "alembic", "upgrade", "head"], cwd=BACKEND_DIR, check=True)
+    subprocess.run(["dbmate", "up"], cwd=BACKEND_DIR, check=True)
 
     print("📥 Loading default data...")
     subprocess.run(

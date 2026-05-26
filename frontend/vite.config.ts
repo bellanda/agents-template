@@ -12,6 +12,18 @@ const config = defineConfig({
       "@": fileURLToPath(new URL("./src", import.meta.url))
     }
   },
+  optimizeDeps: {
+    include: [
+      "streamdown",
+      "@streamdown/mermaid",
+      "@streamdown/math",
+      "@streamdown/cjk",
+      "@streamdown/code",
+      "shiki",
+      "mermaid",
+      "katex"
+    ]
+  },
   server: {
     proxy: {
       "/api": {

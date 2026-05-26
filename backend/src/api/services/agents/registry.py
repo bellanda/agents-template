@@ -55,6 +55,7 @@ def discover_agents() -> dict[str, Any]:
                 "description": agent_config.description,
                 "suggestions": serialize_suggestions_for_api(agent_config.suggestions),
                 "save_to_db": agent_config.save_to_db,
+                "capabilities": dict(agent_config.capabilities),
             }
         except Exception:
             pass

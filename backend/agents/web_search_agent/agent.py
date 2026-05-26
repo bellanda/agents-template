@@ -3,12 +3,15 @@ from langgraph.checkpoint.base import BaseCheckpointSaver
 
 from agents.web_search_agent.tools import web_search
 from api.core.agents.custom_providers import init_model
-from api.core.agents.models import Models
+from api.core.agents.history_window import sliding_window_middleware
+from api.core.agents.models import Models, model_capabilities_dict
 from api.core.agents.schemas import AgentConfig
+
+PRIMARY_MODEL = Models.Groq.GPT_OSS_120B
 
 config = AgentConfig(
     name="Agente de Busca Web",
-    description="Agente com busca na web usando DuckDuckGo e MiniMax-M2 (Chutes)",
+    description="Agente com busca na web usando DuckDuckGo e GPT-OSS-120B (Groq)",
     system_prompt="""Você é um assistente inteligente especializado em busca na web.
 
 🚨 REGRA FUNDAMENTAL: FAÇA APENAS UMA BUSCA POR PERGUNTA! 🚨
@@ -35,7 +38,7 @@ FORMATO DE RESPOSTA:
 - Inclua emojis quando apropriado
 - Organize informações em seções
 - Cite fontes com links clicáveis""",
-    model=init_model(Models.Chutes.GPT_OSS_120B_TEE),
+    model=init_model(PRIMARY_MODEL),
     tools=[web_search],
     suggestions=[
         "What are the latest trends in AI?",
@@ -44,6 +47,7 @@ FORMATO DE RESPOSTA:
         "What is the difference between SQL and NoSQL?",
     ],
     save_to_db=True,
+    capabilities=model_capabilities_dict(PRIMARY_MODEL),
 )
 
 
@@ -53,5 +57,6 @@ def create_root_agent(checkpointer: BaseCheckpointSaver | None = None):
         model=config.model,
         tools=config.tools,
         system_prompt=config.system_prompt,
+        middleware=[sliding_window_middleware],
         checkpointer=checkpointer,
     )

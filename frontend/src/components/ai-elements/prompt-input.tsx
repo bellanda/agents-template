@@ -441,12 +441,16 @@ export const PromptInput = ({
         .filter(Boolean);
 
       return patterns.some((pattern) => {
-        if (pattern.endsWith("/*")) {
-          // e.g: image/* -> image/
-          const prefix = pattern.slice(0, -1);
-          return f.type.startsWith(prefix);
+        const lower = pattern.toLowerCase();
+        if (lower.startsWith(".")) {
+          return f.name.toLowerCase().endsWith(lower);
         }
-        return f.type === pattern;
+        if (lower.endsWith("/*")) {
+          // e.g: image/* -> image/
+          const prefix = lower.slice(0, -1);
+          return f.type.toLowerCase().startsWith(prefix);
+        }
+        return f.type.toLowerCase() === lower;
       });
     },
     [accept]

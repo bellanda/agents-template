@@ -47,6 +47,16 @@ async def get_user_threads(conn: Connection, user_id: str) -> list[dict[str, Any
     return [dict(row) for row in rows]
 
 
+async def get_chat_owner(conn: Connection, thread_id: str) -> tuple[str, str] | None:
+    """Return ``(user_id, thread_id)`` for the given thread, or None if missing."""
+    row = await conn.fetchrow(
+        "SELECT user_id, thread_id FROM chat_history WHERE thread_id = $1", thread_id
+    )
+    if not row:
+        return None
+    return str(row["user_id"]), str(row["thread_id"])
+
+
 async def delete_chat(conn: Connection, thread_id: str) -> bool:
     """Delete a chat thread."""
     result = await conn.fetchval(
