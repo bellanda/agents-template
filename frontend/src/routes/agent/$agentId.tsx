@@ -3,7 +3,7 @@ import { SidebarLayout } from "@/components/layouts";
 import { createFileRoute } from "@tanstack/react-router";
 
 export const Route = createFileRoute("/agent/$agentId")({
-  component: AgentPage
+  component: AgentPage,
 });
 
 function AgentPage() {

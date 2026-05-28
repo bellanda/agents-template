@@ -5,25 +5,25 @@ import { Toaster } from "sonner";
 import { ThemeProvider } from "@/components/theme";
 
 const queryClient = new QueryClient({
-	defaultOptions: {
-		queries: {
-			staleTime: 60_000,
-			refetchOnWindowFocus: false,
-		},
-	},
+  defaultOptions: {
+    queries: {
+      staleTime: 60_000,
+      refetchOnWindowFocus: false,
+    },
+  },
 });
 
 export const Route = createRootRoute({
-	component: RootComponent,
+  component: RootComponent,
 });
 
 function RootComponent() {
-	return (
-		<QueryClientProvider client={queryClient}>
-			<ThemeProvider defaultTheme="dark">
-				<Outlet />
-				<Toaster position="top-right" />
-			</ThemeProvider>
-		</QueryClientProvider>
-	);
+  return (
+    <QueryClientProvider client={queryClient}>
+      <ThemeProvider defaultTheme="dark">
+        <Outlet />
+        <Toaster position="top-right" />
+      </ThemeProvider>
+    </QueryClientProvider>
+  );
 }

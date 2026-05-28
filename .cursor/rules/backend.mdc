@@ -4,25 +4,25 @@
 
 ## Stack
 
-| Layer         | Tool                                          | Skill / nota                                                                              |
-| ------------- | --------------------------------------------- | ----------------------------------------------------------------------------------------- |
-| Runtime       | **Python 3.13+**                              | Type hints públicos. `list[str]`, `X \| None`.                                            |
-| Server        | **Granian** (prod) / uvicorn (dev `__main__`) | —                                                                                         |
-| Pkg Manager   | **uv** only                                   | `uv add/run/sync`. NUNCA pip/poetry/conda.                                                |
-| Framework     | **FastAPI** + Pydantic V2                     | DI estrita; Pydantic V2 valida input.                                                     |
-| Serialization | **orjson**                                    | `CustomORJSONResponse` default.                                                           |
-| DB Driver     | **asyncpg** + Raw SQL                         | Skill `asyncpg-reference` cobre repo contract, SQL, JSONB.                                |
-| DB Migrations | **dbmate**                                    | Skill `dbmate` + skill `db-schema-discipline` (PK/FK/CHECK/GIN/soft-delete).              |
-| Auth          | **PyJWT + Argon2-cffi**                       | Skill `auth-hardened` cobre tudo de `/auth/*`.                                            |
-| HTTP Client   | **curl_cffi**                                 | Skill `http-client`. NUNCA requests/httpx.                                                |
-| Data          | **Polars**                                    | Pandas é PROIBIDO.                                                                        |
-| Images        | **OpenCV Headless + AVIF**                    | Skill `image-processing`.                                                                 |
-| PDF           | **pikepdf + pypdfium2**                       | Skill `pdf-processing`.                                                                   |
-| Fuzzy         | **RapidFuzz**                                 | —                                                                                         |
-| Logging       | **structlog + stdlib + orjson**               | Ver `logging.md`. Setup: skill `logging-setup`.                                           |
-| Cache         | **Valkey 8 (UDS)**                            | Skill `valkey-cache`. Boundary: cache→Valkey, messaging→NATS.                             |
-| Config        | **YAML + Pydantic**                           | Skill `python-config-bootstrap`. `config/app/{env}.yaml` + `.env`.                        |
-| Concurrency   | **anyio**                                     | Skill `anyio-concurrency`. NUNCA `asyncio.gather/create_task/wait_for/Lock/Queue` direto. |
+| Layer         | Tool                                          | Skill / nota                                                                                                                                   |
+| ------------- | --------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runtime       | **Python 3.13+**                              | Type hints públicos. `list[str]`, `X \| None`.                                                                                                 |
+| Server        | **Granian** (prod) / uvicorn (dev `__main__`) | —                                                                                                                                              |
+| Pkg Manager   | **uv** only                                   | `uv add/run/sync`. NUNCA pip/poetry/conda.                                                                                                     |
+| Framework     | **FastAPI** + Pydantic V2                     | DI estrita; Pydantic V2 valida input.                                                                                                          |
+| Serialization | **orjson**                                    | `CustomORJSONResponse` default.                                                                                                                |
+| DB Driver     | **asyncpg** + Raw SQL                         | Skill `asyncpg-reference` cobre repo contract, SQL, JSONB. asyncpg-only; único driver sync vive em `code/benchmarks/` (comparação sync×async). |
+| DB Migrations | **dbmate**                                    | Skill `dbmate` + skill `db-schema-discipline` (PK/FK/CHECK/GIN/soft-delete).                                                                   |
+| Auth          | **PyJWT + Argon2-cffi**                       | Skill `auth-hardened` cobre tudo de `/auth/*`.                                                                                                 |
+| HTTP Client   | **curl_cffi**                                 | Skill `http-client`. NUNCA requests/httpx.                                                                                                     |
+| Data          | **Polars + DuckDB**                           | Padrão para data science / computação vetorial pesada. Pandas só quando realmente necessário.                                                  |
+| Images        | **OpenCV Headless + AVIF**                    | Skill `image-processing`.                                                                                                                      |
+| PDF           | **pikepdf + pypdfium2**                       | Skill `pdf-processing`. Stack padrão; só adiciona as deps se o app realmente processa PDF.                                                     |
+| Fuzzy         | **RapidFuzz**                                 | —                                                                                                                                              |
+| Logging       | **structlog + stdlib + orjson**               | Ver `logging.md`. Setup: skill `logging-setup`.                                                                                                |
+| Cache         | **Valkey 8 (UDS)**                            | Skill `valkey-cache`. Boundary: cache→Valkey, messaging→NATS.                                                                                  |
+| Config        | **YAML + Pydantic**                           | Skill `python-config-bootstrap`. `config/app/{env}.yaml` + `.env`.                                                                             |
+| Concurrency   | **anyio**                                     | Skill `anyio-concurrency`. NUNCA `asyncio.gather/create_task/wait_for/Lock/Queue` direto.                                                      |
 
 ## Invariantes não negociáveis
 

@@ -8,9 +8,9 @@ interface ChatSearch {
 
 export const Route = createFileRoute("/chat/$agentId")({
   validateSearch: (search: Record<string, unknown>): ChatSearch => ({
-    session: (search.session as string) ?? undefined
+    session: (search.session as string) ?? undefined,
   }),
-  component: ChatPage
+  component: ChatPage,
 });
 
 function ChatPage() {

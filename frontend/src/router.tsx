@@ -10,14 +10,14 @@ export const router = createRouter({
   defaultPreloadStaleTime: 60_000,
   defaultNotFoundComponent: () => {
     return (
-      <div className="flex flex-col items-center justify-center h-full gap-4">
+      <div className="flex h-full flex-col items-center justify-center gap-4">
         <p className="text-muted-foreground">Página não encontrada</p>
         <a href="/" className="text-primary hover:underline">
           Voltar para o início
         </a>
       </div>
     );
-  }
+  },
 });
 
 // Register the router instance for type safety

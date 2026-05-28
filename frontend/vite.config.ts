@@ -9,8 +9,8 @@ import tailwindcss from "@tailwindcss/vite";
 const config = defineConfig({
   resolve: {
     alias: {
-      "@": fileURLToPath(new URL("./src", import.meta.url))
-    }
+      "@": fileURLToPath(new URL("./src", import.meta.url)),
+    },
   },
   optimizeDeps: {
     include: [
@@ -21,28 +21,28 @@ const config = defineConfig({
       "@streamdown/code",
       "shiki",
       "mermaid",
-      "katex"
-    ]
+      "katex",
+    ],
   },
   server: {
     proxy: {
       "/api": {
         target: "http://localhost:8000",
-        changeOrigin: true
-      }
-    }
+        changeOrigin: true,
+      },
+    },
   },
   plugins: [
     tanstackRouter({
       target: "react",
-      autoCodeSplitting: true
+      autoCodeSplitting: true,
     }),
     viteTsConfigPaths({
-      projects: ["./tsconfig.json"]
+      projects: ["./tsconfig.json"],
     }),
     tailwindcss(),
-    viteReact()
-  ]
+    viteReact(),
+  ],
 });
 
 export default config;

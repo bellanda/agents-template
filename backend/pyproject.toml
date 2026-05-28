@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "FastAPI + LangGraph multi-agent infrastructure with streaming, history, and auto-discovery"
 requires-python = ">=3.13"
 dependencies = [
+    "anyio>=4.13.0",
     "asyncpg>=0.31.0",
     "curl-cffi>=0.15.0",
     "duckpy>=2.1.1",
@@ -27,13 +28,15 @@ dependencies = [
     "numpy>=2.2.0",
     "opencv-python-headless>=4.13.0.92",
     "orjson>=3.11.8",
-    "psycopg2-binary>=2.9.12",
     "pydantic>=2.13.3",
     "pymupdf>=1.27.2.3",
     "python-dotenv>=1.2.2",
     "structlog>=25.5.0",
     "uvicorn>=0.46.0",
 ]
+
+[dependency-groups]
+dev = ["pytest>=9.0.3"]
 
 [build-system]
 requires = ["hatchling"]
