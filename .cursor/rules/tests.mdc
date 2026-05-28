@@ -1,27 +1,23 @@
 # Backend Testing
 
-> Aplica-se **quando o user pede** para escrever/rodar testes ou quando você precisa criar regression test para bug que está corrigindo. Não escreva testes especulativos (ver `agent-behavior.md > Restrictions`).
+> Aplica-se **quando o user pede** para escrever/rodar testes ou para criar regression test do bug que está sendo corrigido. Não escreva testes especulativos (ver `agent-behavior.md > Restrictions`).
 
-## Agent-Runnable First
+## Agent-runnable first
 
-- Suite roda com **um comando documentado** (`uv run pytest`, `make test`) — sem seed manual, sem credentials escondidos, sem prompt interativo.
+- Suite roda com **um comando documentado** (`uv run pytest`, `make test`). Sem seed manual, sem credentials escondidos, sem prompt interativo.
 - Output parseável: pass/fail no stdout. Sem TTY dependency.
-- Setup novo? Documenta no `CLAUDE.md` / `AGENTS.md` / `README.md` do projeto. Setup não-documentado = agent não roda = feedback loop quebra.
+- Setup novo → documenta em `CLAUDE.md`/`AGENTS.md`/`README.md` do projeto.
 
 ## F.I.R.S.T
 
-- **Fast** — segundos, não minutos.
-- **Independent** — cada teste isola seu state via transactional rollback ou DB ephemeral. Qualquer ordem passa.
-- **Repeatable** — determinístico. Use unique data para `UNIQUE` fields; nunca valores fixos que colidem entre runs.
-- **Self-validating** — assertions explícitas. Sem "olha o log pra ver se deu certo".
-- **Timely** — junto com o código. Função nova → teste novo. Bug fix → regression test.
+**Fast** (segundos) | **Independent** (qualquer ordem passa via rollback ou DB ephemeral) | **Repeatable** (determinístico — unique data para `UNIQUE` fields) | **Self-validating** (assertions explícitas, sem "olha o log") | **Timely** (junto com o código — bug fix = regression test).
 
 ## Scope
 
-- **Integration-first via HTTP.** Testa comportamento observável e business rules pelo public interface.
+- **Integration-first via HTTP.** Testa comportamento observável pelo public interface.
 - **Unit tests só para lógica pura, sem I/O.** Se integration cobre, não duplica.
-- **DB de teste real** para tudo com persistência, queries, transactions, constraints, serialization, permissions. NUNCA mock DB.
-- Reutiliza fixtures shared (client, auth, base data). Não recria setup pesado por arquivo.
+- **DB de teste real** para persistência/queries/transactions/constraints/serialization/permissions. NUNCA mock DB.
+- Reutiliza fixtures shared (client, auth, base data). Sem recriar setup pesado por arquivo.
 
 ## Structure
 
@@ -29,18 +25,18 @@
 - Arrange / Act / Assert minimalista. Direct assertions.
 - Validação em ordem: `status_code` → main response body → side effects persistidos.
 
-## Coverage Contract per Route
+## Coverage por rota (mínimo)
 
-Mínimo para toda rota nova:
+| Caso                                       | Status             |
+| ------------------------------------------ | ------------------ |
+| Success path                               | 200/201            |
+| Auth ausente/inválido                      | 401 (se aplicável) |
+| Permissão insuficiente                     | 403 (se aplicável) |
+| Resource não encontrado                    | 404 (se aplicável) |
+| Payload inválido / business rule violation | 400 / 409 / 422    |
+| Empty result em list/search                | 200 + empty list   |
 
-- Success path.
-- Auth ausente/inválido → `401` (quando aplicável).
-- Permissão insuficiente → `403` (quando aplicável).
-- Resource não encontrado → `404` (quando aplicável).
-- Payload inválido / business rule violation → `400` / `409` / `422` (quando relevante).
-- Empty result em list/search — empty list não é erro.
-
-## Assertions — Business Outcomes, Not Format
+## Assertions — business outcomes
 
 - Confirme business outcomes: status transitions, dados criados/updated, history, calculations, permissions, associations.
 - **Nunca valide só formato.** "Response tem chave `users`" não é teste.

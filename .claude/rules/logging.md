@@ -19,8 +19,8 @@ log = structlog.get_logger(__name__)
 
 - `print()` PROIBIDO. Lint `T20` falha o build.
 - Event = `snake_case_verb_or_noun`. Context = kwargs. NUNCA f-string a mensagem.
-    - ✅ `log.info("user_login", user_id=42, method="oauth")`
-    - ❌ `log.info(f"user {uid} logged in")`
+  - ✅ `log.info("user_login", user_id=42, method="oauth")`
+  - ❌ `log.info(f"user {uid} logged in")`
 - `log.exception("operation_failed")` dentro de `except`. NUNCA `log.error(str(e))` — perde traceback.
 - Sem file handlers no container. stdout/stderr only. Docker driver rotaciona.
 - `request_id` é contextvar populada pelo `LoggingMiddleware`. Toda linha herda automático.

@@ -4,55 +4,54 @@
 
 - **NEVER** create `.md`, `.txt`, README, or documentation files unless explicitly requested.
 - **NEVER** write tests unless explicitly requested. When asked: `pytest` (Python), `vitest` (TypeScript).
-- **Git policy:**
-  - **Sem prompt** (sempre permitido): `git add`, `git commit`, `git status`, `git diff`, `git log`, `git stash`, `git branch` (listing).
-  - **Com confirmação explícita do user** (mesmo se ele já tiver mencionado antes — sempre confirmar antes do `push`): `git push`.
-  - **Só se o user pedir explicitamente, e ainda assim com confirmação:** `git rebase`, `git merge`, `git reset --hard`, `git push --force`, `git branch -D`, `git checkout` (trocar branch — não confundir com `git checkout -- <file>` para descartar mudanças locais, que também é destrutivo e proibido), `git clean -fd`.
-  - **Sempre proibido** (settings deny): `git push --force/-f`, `git reset --hard`, `git clean -fd`.
+- **Git**: `add/commit/status/diff/log/stash/branch` (listing) sem prompt. `push` SEMPRE confirma antes (mesmo se já mencionado). `rebase/merge/reset --hard/push --force/branch -D/checkout` só com pedido explícito + confirmação. `push --force`, `reset --hard`, `clean -fd` são deny global no settings.
 - **NEVER** install packages/dependencies without explicit instruction. Propose first.
 - **Surgical edits only.** Change the exact lines necessary. NEVER re-output entire files or refactor unrelated code.
-- **`print()` is forbidden in Python code.** Use `structlog.get_logger(__name__)`. Lint `T20` (flake8-print) enforces it. See `logging.md`.
-- Remove `console.log()`, `debugger` before finishing any task.
-- Do not add backwards-compatibility shims, feature flags, or migration paths when the user asks for a direct change.
+- **`print()` é proibido em Python.** Use `structlog.get_logger(__name__)`. Lint `T20` enforces. Ver `logging.md`.
+- Remove `console.log()`, `debugger` antes de finalizar.
+- Sem backwards-compat shims, feature flags, ou migration paths quando o user pede mudança direta.
 
 ## Communication
 
-- Direct and concise. Code + 2–4 sentences max.
-- No sycophancy or filler. No "Here is the updated code", "I understand", "Let me know if you need anything else".
-- Bug fix → state what was wrong, briefly. Proposal → state the trade-off. Unclear → ask one question before assuming.
-- Flag missed or inconsistent details proactively.
-- Code in English (identifiers, comments, docstrings). Chat in Portuguese (pt-BR).
+- Direto e conciso. Code + 2–4 sentenças max.
+- Sem sycophancy/filler ("Here is the updated code", "I understand", "Let me know if...").
+- Bug fix → diga o que estava errado, brevemente. Proposal → state o trade-off. Unclear → pergunte uma coisa antes de assumir.
+- Flag missed/inconsistent details proactively.
+- Code em English (identifiers, comments, docstrings). Chat em pt-BR.
 
 ## Skills — When to Invoke
 
-Invoque ANTES de escrever código quando o trigger bate. Não re-derive padrão que a skill encoda. Se o trigger é ambíguo, invoque — falso positivo custa tokens; falso negativo custa correção.
+Invoque ANTES de escrever código quando o trigger bate. Não re-derive padrão que a skill encoda. Na dúvida, invoque — falso positivo custa tokens; falso negativo custa correção.
 
-| Trigger no código / pedido                                                                    | Skill                                                                                                                      |
-| --------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
-| muda schema (nova coluna/tabela/constraint, alteração de model entidade ↔ tabela), cria/roda/rollback `.sql` migration, `migrate:up`, `DBMATE_*` | `dbmate`                                                                                                                   |
-| escreve / revisa query asyncpg, escolhe entre fetch/fetchrow/fetchval/execute                 | `asyncpg-reference`                                                                                                        |
-| toca `/auth/*`, refresh repository, middleware auth, login/logout/refresh, Argon2, Google OAuth, cookie de auth | `auth-hardened`                                                                                                            |
-| escreve fan-out concorrente, timeout, capacity limiter, memory stream, cancel scope, ou file I/O em handler async | `anyio-concurrency`                                                                                                        |
-| inicia projeto novo, padroniza logs, migra `print()` para logger, configura request_id        | `logging-setup`                                                                                                            |
-| chamada HTTP de Python (substitui requests/httpx)                                             | `http-client`                                                                                                              |
-| processa imagem (decode, resize, AVIF, OpenCV)                                                | `image-processing`                                                                                                         |
-| mexe em PDF (merge, split, render, extract, pikepdf, pypdfium2)                               | `pdf-processing`                                                                                                           |
-| adiciona/remove/debuga shadcn component, registry, preset, Magic UI                           | `shadcn`                                                                                                                   |
-| cria gráfico (line/bar/area/pie) em projeto React                                             | `shadcn` (sub-rule `charts.md`)                                                                                            |
-| escreve/refactora form async, data fetch fora de TanStack Query, optimistic UI, ou `useEffect` que faz fetch / deriva state | `react-19-patterns`                                                                                                        |
-| cria UI com peso estético/de marca — landing, hero, dashboard novo, login flow, scene 3D     | `frontend-design`                                                                                                          |
-| cria landing pública / splash / hero com particles + CTA pra `/login` (rota fora do app shell) | `epic-startup-landing`                                                                                                     |
-| scaffold app shell autenticado (sidebar collapsible-to-icon, breadcrumb header, route split público vs `/app`, `useAuth()`) | `standard-app-shell`                                                                                                       |
-| escreve/integra Three.js / R3F / shaders / scene 3D                                          | `frontend-design` + `ui-ux-pro-max` (referência `data/stacks/threejs.csv`)                                                |
-| usuário relata "fica lento depois de X min", "preciso dar F5", memória cresce, CPU alta idle  | `frontend-performance-ultimate`                                                                                            |
-| escolhe NATS vs Redis vs Kafka vs Celery vs Temporal, desenha event-driven                    | `distributed-infrastructure`                                                                                               |
-| implementa pattern NATS (Pub/Sub, JetStream, KV, Queue Groups)                                | `nats-messaging`                                                                                                           |
-| escreve / revisa código que usa Valkey/Redis (cache, contadores, sliding window, invalidação) | `valkey-cache`                                                                                                             |
-| refactor cirúrgico de código existente (extract, rename, split god class)                     | `code-refactor`                                                                                                            |
-| chart matplotlib/seaborn/plotly de Polars/Pandas                                              | `data-visualization`                                                                                                       |
-| **QUALQUER upload** (arquivo/imagem/doc/mídia/áudio/vídeo/export) em qualquer linguagem (Python/Rust/Go) e storage (local/B2/S3/Azure/GCS), nova `kind`, modelagem entity+file | **OBRIGATÓRIO** `uploads-storage` ANTES de codar — não opcional, não re-derivar (complementa rule `uploads.md`)                                                                          |
-| adiciona/altera config (env-aware) — postgres, cors, valkey, nats, granian etc                | edita TODOS os 3 `config/app/{env}.yaml` + sub-model em `config/settings.py`. Ver `backend.md > Environment & Config`. |
-| adiciona nova secret obrigatória                                                              | adiciona em `.env.example` (vazia) + field `SecretStr` em `Settings`. NUNCA commit valor real.                             |
+| Trigger                                                                                                                | Skill                             |
+| ---------------------------------------------------------------------------------------------------------------------- | --------------------------------- |
+| `.sql` migration (CREATE/ALTER), `migrate:up/down`, `DBMATE_*`                                                         | `dbmate`                          |
+| Migration nova: `CREATE TABLE`, `CREATE INDEX`, FK, VARCHAR enum-like, GIN em JSONB, UNIQUE com soft delete            | `db-schema-discipline`            |
+| Qualquer `*_repository.py`: fetch/fetchrow/fetchval/execute, INSERT/UPDATE/SELECT/DELETE, JSONB, WHERE dinâmico        | `asyncpg-reference`               |
+| Qualquer `/auth/*`, refresh_tokens repo, middleware auth, login/logout/refresh, password hashing, Google OAuth, cookie | `auth-hardened`                   |
+| Fan-out concorrente, timeout, capacity limiter, memory stream, cancel scope, file I/O em handler async                 | `anyio-concurrency`               |
+| Cache TTL, contador, sliding window, rate limit, invalidação event-driven (Valkey/Redis)                               | `valkey-cache`                    |
+| Decisão entre NATS/Redis/Kafka/Celery/Temporal; arquitetura event-driven                                               | `distributed-infrastructure`      |
+| Pattern NATS (Pub/Sub, Request-Reply, Queue Groups, JetStream, KV)                                                     | `nats-messaging`                  |
+| Nova config env-aware, criar `Settings`, nova secret, `compose.override.yaml`, bootstrap inicial                       | `python-config-bootstrap`         |
+| Bootstrap structlog, migrar `print()` para logger, configurar request_id                                               | `logging-setup`                   |
+| Chamada HTTP de Python (substitui requests/httpx)                                                                      | `http-client`                     |
+| Imagem (decode, resize, AVIF, OpenCV)                                                                                  | `image-processing`                |
+| PDF (merge, split, render, extract — pikepdf/pypdfium2)                                                                | `pdf-processing`                  |
+| QUALQUER upload (arquivo/imagem/doc/mídia/áudio/vídeo/export) em qualquer linguagem/storage                            | **OBRIGATÓRIO** `uploads-storage` |
+| Integração Meta (Facebook Login, WhatsApp Cloud, Instagram); webhook Deauth/Data Deletion; HMAC validation             | `meta-app-setup`                  |
+| Form async, data fetch fora de TanStack Query, optimistic UI, `useEffect + fetch`/`useEffect + setState`               | `react-19-patterns`               |
+| Modal/overlay: Dialog vs Sheet vs Drawer vs Popover; confirm; detail view popup                                        | `dialog-first-overlays`           |
+| `useState`/Context/Zustand: onde mora cada state; lifting state; URL vs server vs local                                | `frontend-state-management`       |
+| Setup Tailwind, criar/editar `index.css`, OKLCH tokens, container query, migrar Tailwind 3→4                           | `tailwind-4-setup`                |
+| Three.js / R3F / shader / scene 3D / particles 3D / GLTF                                                               | `threejs-r3f-patterns`            |
+| Shadcn component, Magic UI, Shadcn Charts, registry, preset, `components.json`                                         | `shadcn`                          |
+| Landing pública / splash / hero com particles + CTA pra `/login` (rota fora do app shell)                              | `epic-startup-landing`            |
+| App shell autenticado (sidebar collapsible-to-icon, breadcrumb, route split público vs `/app`, `useAuth()`)            | `standard-app-shell`              |
+| UI com peso estético/de marca — landing, hero, dashboard novo, login flow                                              | `frontend-design`                 |
+| "Fica lento depois de X min", "preciso dar F5", memória cresce, CPU alta idle, regressão de performance                | `frontend-performance-ultimate`   |
+| Chart matplotlib/seaborn/plotly de Polars/Pandas                                                                       | `data-visualization`              |
+| Refactor cirúrgico de código existente (extract, rename, split god class)                                              | `code-refactor`                   |
 
 ## Package Managers
 
@@ -61,19 +60,6 @@ Invoque ANTES de escrever código quando o trigger bate. Não re-derive padrão 
 
 ## Shell Commands
 
-- **NEVER chain commands** com `&&`, `||`, ou `;` em uma só Bash call. Cada comando = invocação separada. O sistema de permissão casa por string completa — comando composto bypassa allow rules e dispara confirmação.
-- Always use modern CLI tools over classic equivalents:
-
-| Use this              | NOT this                    | Why                                                                 |
-| --------------------- | --------------------------- | ------------------------------------------------------------------- |
-| `rg` (ripgrep)        | `grep`                      | Faster, respects `.gitignore`, skips `node_modules`/`target`/`.git` |
-| `fd`                  | `find`                      | Simpler syntax, respects `.gitignore`, parallel execution           |
-| `bat --paging=never`  | `cat`                       | Syntax highlight, line numbers (always `--paging=never` em scripts) |
-| `eza`                 | `ls`                        | Aliased com `--icons`, `--git`, `--group-directories-first`         |
-| `sd 'old' 'new' file` | `sed -i 's/old/new/g' file` | Literal strings by default, sem escape hell                         |
-| `dust`                | `du`                        | Visual tree sorted by size (aliased as `du`)                        |
-| `delta`               | `diff`                      | Side-by-side, syntax-aware (configured as Git pager)                |
-| `tokei`               | `wc -l` / `cloc`            | Lines of code per language                                          |
-| `jq`                  | manual JSON parsing         | Pipe-friendly JSON processing                                       |
-
-Standard build tools (`uv`, `bun`, `cargo`, `make`, `docker compose`, `psql`, `git`, `curl`, etc.) são pre-allowed globalmente. Operações destrutivas (`rm -rf`, `sudo`, `git push --force`, `docker system prune`) são denied — nunca tente.
+- **NEVER chain commands** com `&&`, `||`, `;` em uma só Bash call. Cada comando = invocação separada (sistema de permissão casa por string completa).
+- **Modern CLI sempre**: `rg` (não grep), `fd` (não find), `bat --paging=never` (não cat), `eza` (não ls), `sd` (não sed), `dust` (não du), `delta` (não diff), `tokei` (não wc -l), `jq` (para JSON).
+- Standard build tools (`uv`, `bun`, `cargo`, `make`, `docker compose`, `psql`, `git`, `curl`) pré-allowed. Destrutivas (`rm -rf`, `sudo`, `git push --force`, `docker system prune`) denied — nunca tente.
