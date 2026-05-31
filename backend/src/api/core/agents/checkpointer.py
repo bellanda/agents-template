@@ -1,29 +1,24 @@
-from langgraph.checkpoint.postgres.aio import AsyncPostgresSaver
+"""LangGraph checkpointer lifecycle — asyncpg-backed, shares the app pool."""
 
-from config.database import database_config
+from api.core.agents.asyncpg_saver import AsyncpgCheckpointSaver
+from config.database import get_pool
 
-checkpointer: AsyncPostgresSaver | None = None
-_conn_cm: AsyncPostgresSaver | None = None
+checkpointer: AsyncpgCheckpointSaver | None = None
 
 
-async def init_checkpointer() -> AsyncPostgresSaver:
-    """Initialize the async Postgres checkpointer."""
-    global checkpointer, _conn_cm
-    _conn_cm = AsyncPostgresSaver.from_conn_string(database_config.POSTGRES_DATABASE_URI)
-    checkpointer = await _conn_cm.__aenter__()
-
+async def init_checkpointer() -> AsyncpgCheckpointSaver:
+    """Bind the checkpointer to the app's asyncpg pool (already initialized)."""
+    global checkpointer
+    checkpointer = AsyncpgCheckpointSaver(await get_pool())
     return checkpointer
 
 
 async def close_checkpointer() -> None:
-    """Close the checkpointer connection."""
-    global checkpointer, _conn_cm
-    if _conn_cm is not None:
-        await _conn_cm.__aexit__(None, None, None)
-        _conn_cm = None
+    """Drop the reference; pool lifecycle is owned by close_asyncpg_pool()."""
+    global checkpointer
     checkpointer = None
 
 
-def get_checkpointer() -> AsyncPostgresSaver | None:
+def get_checkpointer() -> AsyncpgCheckpointSaver | None:
     """Return the current shared checkpointer instance."""
     return checkpointer
