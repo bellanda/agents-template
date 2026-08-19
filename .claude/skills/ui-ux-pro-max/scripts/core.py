@@ -238,7 +238,6 @@ CSV_CONFIG = {
 
 STACK_CONFIG = {
     "react": {"file": "stacks/react.csv"},
-    "react-native": {"file": "stacks/react-native.csv"},
     "html-tailwind": {"file": "stacks/html-tailwind.csv"},
     "shadcn": {"file": "stacks/shadcn.csv"},
     "threejs": {"file": "stacks/threejs.csv"},

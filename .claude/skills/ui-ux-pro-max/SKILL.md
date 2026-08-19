@@ -1,13 +1,32 @@
 ---
 name: ui-ux-pro-max
-description: "UI/UX design intelligence focused on the user's stack: React 19, Shadcn/ui, Tailwind 4, Three.js (visual avançado/3D), React Native (mobile nativo opcional), and HTML/Tailwind (vanilla). Includes 50+ styles, 161 color palettes, 57 font pairings, 161 product types, 99 UX guidelines, and 25 chart types. Actions: plan, build, create, design, implement, review, fix, improve, optimize, enhance, refactor, and check UI/UX code. Projects: website, landing page, dashboard, admin panel, e-commerce, SaaS, portfolio, blog, and mobile app. Elements: button, modal, navbar, sidebar, card, table, form, and chart. Styles: glassmorphism, claymorphism, minimalism, brutalism, neumorphism, bento grid, dark mode, responsive, skeuomorphism, and flat design. Topics: color systems, accessibility, animation, layout, typography, font pairing, spacing, interaction states, shadow, and gradient. Integrations: shadcn/ui MCP for component search and examples."
+description: "Base de design consultável (on-demand) para escolher DIREÇÃO ESTÉTICA e rodar um passe de qualidade UX — 50+ estilos, 161 paletas de cor, 57 pareamentos de fonte, 161 tipos de produto, 99 diretrizes de UX e 25 tipos de chart, pesquisável via scripts/search.py. Stack: React 19, Shadcn/ui, Tailwind 4, Three.js (3D), HTML/Tailwind. INVOCAR quando: escolher paleta/tipografia/estilo de marca (landing, hero, dashboard novo, login flow), decidir tipo de chart, ou revisar UX/acessibilidade/contraste/animação. Princípio: evitar a cara genérica de IA (sem gradiente roxo + Inter default + layout template) e respeitar a IDENTIDADE de cada projeto. NÃO é dona de layout/largura/overlay/grid/state — isso vive no portão `frontend`, que roteia pra cá no item 9 (direção estética). Topics: color systems, accessibility, animation, typography, font pairing, spacing, interaction states, shadow, gradient, charts. Integrations: shadcn/ui MCP."
 ---
 
 # UI/UX Pro Max - Design Intelligence
 
-Comprehensive design guide focused on the user's consolidated stack: **React 19, Shadcn/ui, Tailwind 4, Three.js (visual avançado/3D), React Native (mobile nativo opcional), and HTML/Tailwind (vanilla)**. Contains 50+ styles, 161 color palettes, 57 font pairings, 161 product types with reasoning rules, 99 UX guidelines, and 25 chart types. Searchable database with priority-based recommendations.
+Base de design consultável focada na stack do usuário: **React 19, Shadcn/ui, Tailwind 4, Three.js
+(visual avançado/3D), HTML/Tailwind (vanilla)**. Contém 50+ estilos, 161 paletas de cor, 57
+pareamentos de fonte, 161 tipos de produto com regras de raciocínio, 99 diretrizes de UX e 25 tipos
+de chart. Banco pesquisável com recomendações por prioridade.
 
-> **Stack-agnostic content** (colors, fonts, typography, charts, products, UX guidelines, styles, landing patterns) cobre qualquer projeto. **Stack-specific CSVs** (`data/stacks/*.csv`) cobrem só React, React Native, Shadcn, Three.js, HTML/Tailwind. Outros frameworks (Vue, Svelte, Angular, Flutter, SwiftUI, Next.js, Nuxt, Astro, Laravel, Jetpack Compose) foram podados — não fazem parte da stack do usuário.
+> **Escopo — referência estética, NÃO estrutura.** Layout, largura (1440), escolha de overlay (Dialog
+> vs Sheet), grid-vs-stack, state placement e mobile-first vivem no portão **`frontend`** (com suas
+> `references/`). Este skill é a base que o item 9 do portão consulta: **escolher a direção estética**
+> (paleta, tipografia, estilo, motion) e fazer o passe de qualidade UX. Não duplique as regras de
+> layout aqui.
+
+> **Princípio (piso de toda tela).** Evite a cara genérica de IA — nunca o combo clichê de gradiente
+> roxo em fundo branco + `Inter`/`Roboto` como "fonte de marca" + layout template simétrico sem
+> intenção. Comprometa-se com uma direção **bold e específica** e respeite a **IDENTIDADE** de cada
+> projeto (font-family, cores, estilo shadcn são por-projeto — nunca unifique marca entre apps). Tela
+> com peso de marca (landing, hero, dashboard novo, login) merece tom extremo, tipografia display e
+> motion orquestrado; utility puro (table row, form input, dropdown) usa shadcn e segue.
+
+> **Conteúdo stack-agnóstico** (colors, fonts, typography, charts, products, UX guidelines, styles,
+> landing patterns) cobre qualquer projeto. **CSVs stack-specific** (`data/stacks/*.csv`) cobrem só
+> React, Shadcn, Three.js, HTML/Tailwind. Outros frameworks (Vue, Svelte, Angular, Flutter, SwiftUI,
+> Next.js, Nuxt, Astro, Laravel, Jetpack Compose) foram podados — não fazem parte da stack do usuário.
 
 ## When to Apply
 
@@ -351,7 +370,7 @@ Use this skill when the user requests any of the following:
 | **Improve / optimize**          | "Make this faster", "Improve mobile experience"               | Step 3 (domain search: ux, react)  |
 | **Implement dark mode**         | "Add dark mode support"                                       | Step 3 (domain: style "dark mode") |
 | **Add charts / data viz**       | "Add an analytics dashboard chart"                            | Step 3 (domain: chart)             |
-| **Stack best practices**        | "React performance tips", "Three.js scene optimization", "React Native gestures" | Step 4 (stack search)              |
+| **Stack best practices**        | "React performance tips", "Three.js scene optimization", "Shadcn composition"    | Step 4 (stack search)              |
 
 Follow this workflow:
 
@@ -362,7 +381,7 @@ Extract key information from user request:
 - **Product type**: Entertainment (social, video, music, gaming), Tool (scanner, editor, converter), Productivity (task manager, notes, calendar), or hybrid
 - **Target audience**: C-end consumer users; consider age group, usage context (commute, leisure, work)
 - **Style keywords**: playful, vibrant, minimal, dark mode, content-first, immersive, etc.
-- **Stack**: React Native (this project's only tech stack)
+- **Stack**: React 19 + Shadcn/ui + Tailwind 4 (Three.js para 3D, HTML/Tailwind vanilla)
 
 ### Step 2: Generate Design System (REQUIRED)
 
@@ -445,16 +464,16 @@ python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --domain <domain> [-n
 | Alternative fonts        | `typography`   | `--domain typography "elegant luxury"`                |
 | Individual Google Fonts  | `google-fonts` | `--domain google-fonts "sans serif popular variable"` |
 | Landing structure        | `landing`      | `--domain landing "hero social-proof"`                |
-| React Native perf        | `react`        | `--domain react "rerender memo list"`                 |
-| App interface a11y       | `web`          | `--domain web "accessibilityLabel touch safe-areas"`  |
+| React perf               | `react`        | `--domain react "rerender memo list"`                 |
+| App interface a11y       | `web`          | `--domain web "accessibility touch safe-areas"`       |
 | AI prompt / CSS keywords | `prompt`       | `--domain prompt "minimalism"`                        |
 
-### Step 4: Stack Guidelines (React Native)
+### Step 4: Stack Guidelines
 
-Get React Native implementation-specific best practices:
+Get stack-specific implementation best practices (`react`, `shadcn`, `threejs`, `html-tailwind`):
 
 ```bash
-python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack react-native
+python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack react
 ```
 
 ---
@@ -474,14 +493,17 @@ python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack react-native
 | `ux`           | Best practices, anti-patterns                       | animation, accessibility, z-index, loading                  |
 | `google-fonts` | Individual Google Fonts lookup                      | sans serif, monospace, japanese, variable font, popular     |
 | `react`        | React/Next.js performance                           | waterfall, bundle, suspense, memo, rerender, cache          |
-| `web`          | App interface guidelines (iOS/Android/React Native) | accessibilityLabel, touch targets, safe areas, Dynamic Type |
+| `web`          | App interface guidelines (iOS/Android native)       | accessibilityLabel, touch targets, safe areas, Dynamic Type |
 | `prompt`       | AI prompts, CSS keywords                            | (style name)                                                |
 
 ### Available Stacks
 
-| Stack          | Focus                         |
-| -------------- | ----------------------------- |
-| `react-native` | Components, Navigation, Lists |
+| Stack           | Focus                                     |
+| --------------- | ----------------------------------------- |
+| `react`         | React 19 perf, hooks, rerender, lists     |
+| `shadcn`        | Component composition, variants, theming  |
+| `threejs`       | Scene/material/perf for 3D                |
+| `html-tailwind` | Vanilla HTML + Tailwind utility patterns  |
 
 ---
 
@@ -494,7 +516,7 @@ python3 skills/ui-ux-pro-max/scripts/search.py "<keyword>" --stack react-native
 - Product type: Tool (AI search engine)
 - Target audience: C-end users looking for fast, intelligent search
 - Style keywords: modern, minimal, content-first, dark mode
-- Stack: React Native
+- Stack: React 19 + Shadcn
 
 ### Step 2: Generate Design System (REQUIRED)
 
@@ -517,7 +539,7 @@ python3 skills/ui-ux-pro-max/scripts/search.py "search loading animation" --doma
 ### Step 4: Stack Guidelines
 
 ```bash
-python3 skills/ui-ux-pro-max/scripts/search.py "list performance navigation" --stack react-native
+python3 skills/ui-ux-pro-max/scripts/search.py "list performance rerender" --stack react
 ```
 
 **Then:** Synthesize design system + detailed searches and implement the design.
@@ -545,7 +567,7 @@ python3 skills/ui-ux-pro-max/scripts/search.py "fintech crypto" --design-system 
 - Use **multi-dimensional keywords** — combine product + industry + tone + density: `"entertainment social vibrant content-dense"` not just `"app"`
 - Try different keywords for the same need: `"playful neon"` → `"vibrant dark"` → `"content-first minimal"`
 - Use `--design-system` first for full recommendations, then `--domain` to deep-dive any dimension you're unsure about
-- Always add `--stack react-native` for implementation-specific guidance
+- Add `--stack react` (ou `shadcn`/`html-tailwind`/`threejs`) for implementation-specific guidance
 
 ### Common Sticking Points
 
@@ -567,111 +589,3 @@ python3 skills/ui-ux-pro-max/scripts/search.py "fintech crypto" --design-system 
 - Verify behavior with **reduced-motion** enabled and **Dynamic Type** at largest size
 - Check dark mode contrast independently (don't assume light mode values work)
 - Confirm all touch targets ≥44pt and no content hidden behind safe areas
-
----
-
-## Common Rules for Professional UI
-
-These are frequently overlooked issues that make UI look unprofessional:
-Scope notice: The rules below are for native App UI (React Native — and any iOS/Android touch-first surface), not desktop-web interaction patterns.
-
-### Icons & Visual Elements
-
-| Rule                             | Standard                                                                                      | Avoid                                                                              | Why It Matters                                                                                        |
-| -------------------------------- | --------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| **No Emoji as Structural Icons** | Use vector-based icons (e.g., Lucide, react-native-vector-icons, @expo/vector-icons).         | Using emojis (🎨 🚀 ⚙️) for navigation, settings, or system controls.              | Emojis are font-dependent, inconsistent across platforms, and cannot be controlled via design tokens. |
-| **Vector-Only Assets**           | Use SVG or platform vector icons that scale cleanly and support theming.                      | Raster PNG icons that blur or pixelate.                                            | Ensures scalability, crisp rendering, and dark/light mode adaptability.                               |
-| **Stable Interaction States**    | Use color, opacity, or elevation transitions for press states without changing layout bounds. | Layout-shifting transforms that move surrounding content or trigger visual jitter. | Prevents unstable interactions and preserves smooth motion/perceived quality on mobile.               |
-| **Correct Brand Logos**          | Use official brand assets and follow their usage guidelines (spacing, color, clear space).    | Guessing logo paths, recoloring unofficially, or modifying proportions.            | Prevents brand misuse and ensures legal/platform compliance.                                          |
-| **Consistent Icon Sizing**       | Define icon sizes as design tokens (e.g., icon-sm, icon-md = 24pt, icon-lg).                  | Mixing arbitrary values like 20pt / 24pt / 28pt randomly.                          | Maintains rhythm and visual hierarchy across the interface.                                           |
-| **Stroke Consistency**           | Use a consistent stroke width within the same visual layer (e.g., 1.5px or 2px).              | Mixing thick and thin stroke styles arbitrarily.                                   | Inconsistent strokes reduce perceived polish and cohesion.                                            |
-| **Filled vs Outline Discipline** | Use one icon style per hierarchy level.                                                       | Mixing filled and outline icons at the same hierarchy level.                       | Maintains semantic clarity and stylistic coherence.                                                   |
-| **Touch Target Minimum**         | Minimum 44×44pt interactive area (use hitSlop if icon is smaller).                            | Small icons without expanded tap area.                                             | Meets accessibility and platform usability standards.                                                 |
-| **Icon Alignment**               | Align icons to text baseline and maintain consistent padding.                                 | Misaligned icons or inconsistent spacing around them.                              | Prevents subtle visual imbalance that reduces perceived quality.                                      |
-| **Icon Contrast**                | Follow WCAG contrast standards: 4.5:1 for small elements, 3:1 minimum for larger UI glyphs.   | Low-contrast icons that blend into the background.                                 | Ensures accessibility in both light and dark modes.                                                   |
-
-### Interaction (App)
-
-| Rule                            | Do                                                                                                                 | Don't                                                         |
-| ------------------------------- | ------------------------------------------------------------------------------------------------------------------ | ------------------------------------------------------------- |
-| **Tap feedback**                | Provide clear pressed feedback (ripple/opacity/elevation) within 80-150ms                                          | No visual response on tap                                     |
-| **Animation timing**            | Keep micro-interactions around 150-300ms with platform-native easing                                               | Instant transitions or slow animations (>500ms)               |
-| **Accessibility focus**         | Ensure screen reader focus order matches visual order and labels are descriptive                                   | Unlabeled controls or confusing focus traversal               |
-| **Disabled state clarity**      | Use disabled semantics (`disabled`/native disabled props), reduced emphasis, and no tap action                     | Controls that look tappable but do nothing                    |
-| **Touch target minimum**        | Keep tap areas >=44x44pt (iOS) or >=48x48dp (Android), expand hit area when icon is smaller                        | Tiny tap targets or icon-only hit areas without padding       |
-| **Gesture conflict prevention** | Keep one primary gesture per region and avoid nested tap/drag conflicts                                            | Overlapping gestures causing accidental actions               |
-| **Semantic native controls**    | Prefer native interactive primitives (`Button`, `Pressable`, platform equivalents) with proper accessibility roles | Generic containers used as primary controls without semantics |
-
-### Light/Dark Mode Contrast
-
-| Rule                              | Do                                                                                      | Don't                                                |
-| --------------------------------- | --------------------------------------------------------------------------------------- | ---------------------------------------------------- |
-| **Surface readability (light)**   | Keep cards/surfaces clearly separated from background with sufficient opacity/elevation | Overly transparent surfaces that blur hierarchy      |
-| **Text contrast (light)**         | Maintain body text contrast >=4.5:1 against light surfaces                              | Low-contrast gray body text                          |
-| **Text contrast (dark)**          | Maintain primary text contrast >=4.5:1 and secondary text >=3:1 on dark surfaces        | Dark mode text that blends into background           |
-| **Border and divider visibility** | Ensure separators are visible in both themes (not just light mode)                      | Theme-specific borders disappearing in one mode      |
-| **State contrast parity**         | Keep pressed/focused/disabled states equally distinguishable in light and dark themes   | Defining interaction states for one theme only       |
-| **Token-driven theming**          | Use semantic color tokens mapped per theme across app surfaces/text/icons               | Hardcoded per-screen hex values                      |
-| **Scrim and modal legibility**    | Use a modal scrim strong enough to isolate foreground content (typically 40-60% black)  | Weak scrim that leaves background visually competing |
-
-### Layout & Spacing
-
-| Rule                                     | Do                                                                                       | Don't                                                     |
-| ---------------------------------------- | ---------------------------------------------------------------------------------------- | --------------------------------------------------------- |
-| **Safe-area compliance**                 | Respect top/bottom safe areas for all fixed headers, tab bars, and CTA bars              | Placing fixed UI under notch, status bar, or gesture area |
-| **System bar clearance**                 | Add spacing for status/navigation bars and gesture home indicator                        | Let tappable content collide with OS chrome               |
-| **Consistent content width**             | Keep predictable content width per device class (phone/tablet)                           | Mixing arbitrary widths between screens                   |
-| **8dp spacing rhythm**                   | Use a consistent 4/8dp spacing system for padding/gaps/section spacing                   | Random spacing increments with no rhythm                  |
-| **Readable text measure**                | Keep long-form text readable on large devices (avoid edge-to-edge paragraphs on tablets) | Full-width long text that hurts readability               |
-| **Section spacing hierarchy**            | Define clear vertical rhythm tiers (e.g., 16/24/32/48) by hierarchy                      | Similar UI levels with inconsistent spacing               |
-| **Adaptive gutters by breakpoint**       | Increase horizontal insets on larger widths and in landscape                             | Same narrow gutter on all device sizes/orientations       |
-| **Scroll and fixed element coexistence** | Add bottom/top content insets so lists are not hidden behind fixed bars                  | Scroll content obscured by sticky headers/footers         |
-
----
-
-## Pre-Delivery Checklist
-
-Before delivering UI code, verify these items:
-Scope notice: This checklist is for native App UI (React Native — and any iOS/Android touch-first surface).
-
-### Visual Quality
-
-- [ ] No emojis used as icons (use SVG instead)
-- [ ] All icons come from a consistent icon family and style
-- [ ] Official brand assets are used with correct proportions and clear space
-- [ ] Pressed-state visuals do not shift layout bounds or cause jitter
-- [ ] Semantic theme tokens are used consistently (no ad-hoc per-screen hardcoded colors)
-
-### Interaction
-
-- [ ] All tappable elements provide clear pressed feedback (ripple/opacity/elevation)
-- [ ] Touch targets meet minimum size (>=44x44pt iOS, >=48x48dp Android)
-- [ ] Micro-interaction timing stays in the 150-300ms range with native-feeling easing
-- [ ] Disabled states are visually clear and non-interactive
-- [ ] Screen reader focus order matches visual order, and interactive labels are descriptive
-- [ ] Gesture regions avoid nested/conflicting interactions (tap/drag/back-swipe conflicts)
-
-### Light/Dark Mode
-
-- [ ] Primary text contrast >=4.5:1 in both light and dark mode
-- [ ] Secondary text contrast >=3:1 in both light and dark mode
-- [ ] Dividers/borders and interaction states are distinguishable in both modes
-- [ ] Modal/drawer scrim opacity is strong enough to preserve foreground legibility (typically 40-60% black)
-- [ ] Both themes are tested before delivery (not inferred from a single theme)
-
-### Layout
-
-- [ ] Safe areas are respected for headers, tab bars, and bottom CTA bars
-- [ ] Scroll content is not hidden behind fixed/sticky bars
-- [ ] Verified on small phone, large phone, and tablet (portrait + landscape)
-- [ ] Horizontal insets/gutters adapt correctly by device size and orientation
-- [ ] 4/8dp spacing rhythm is maintained across component, section, and page levels
-- [ ] Long-form text measure remains readable on larger devices (no edge-to-edge paragraphs)
-
-### Accessibility
-
-- [ ] All meaningful images/icons have accessibility labels
-- [ ] Form fields have labels, hints, and clear error messages
-- [ ] Color is not the only indicator
-- [ ] Reduced motion and dynamic text size are supported without layout breakage
-- [ ] Accessibility traits/roles/states (selected, disabled, expanded) are announced correctly

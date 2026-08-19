@@ -51,14 +51,14 @@ Magic UI usa **animação CSS + Motion + canvas** dependendo do componente. Cave
 - **Componentes canvas (`<Globe>`, `<Particles>`, `<Meteors>`):** custosos em paint. Limitar a **1 por viewport visível**. Usar `<Suspense>` + lazy import se for abaixo da fold. Em mobile, considerar desativar via media query.
 - **Componentes Motion (`<Marquee>`, `<AnimatedList>`, `<TextReveal>`):** baratos. Cuidar de `key` estável em items de `<AnimatedList>` — sem isso, re-mount a cada update.
 - **Hover-driven (`<MagicCard>`, `<BorderBeam>`):** custo de mousemove listener. OK em até ~10 cards por viewport; muito mais que isso, virar opt-in via `whileInView`.
-- **Recharts overlap:** se a página tem chart Recharts + componente canvas Magic UI, monitorar `chart:mount/unmount` delta (ver skill `frontend-performance-ultimate`). Componente canvas pode invalidar memoization upstream.
+- **Recharts overlap:** se a página tem chart Recharts + componente canvas Magic UI, monitorar `chart:mount/unmount` delta (ver skill `frontend-performance-audit`). Componente canvas pode invalidar memoization upstream.
 
 ## Quando NÃO usar Magic UI
 
 - Background de form de admin — neutro é melhor que "vivo". Magic UI quer atenção.
 - Tabela de dados densa — distração.
 - Loop com 50+ items animados — vai derrubar FPS. Usar `<Marquee>` com `repeat={4}` em vez de listar 200 items.
-- Já tem skill `frontend-design` recomendando aesthetic diferente (brutalist, minimal extremo) — Magic UI é "tech polished" por default, pode bater com a direção estética escolhida.
+- Já tem skill `ui-ux-pro-max` recomendando aesthetic diferente (brutalist, minimal extremo) — Magic UI é "tech polished" por default, pode bater com a direção estética escolhida.
 
 ## Convivência com Shadcn base
 

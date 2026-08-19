@@ -90,7 +90,7 @@ Para escolha de chart por tipo de dado, ver skill `data-visualization` (também 
 
 Recharts internamente usa `<ResponsiveContainer>` que registra um **`ResizeObserver`**. Se o chart re-monta a cada render do parent (props instáveis, parent não memoizado, key mudando), o observer vaza — e o `mount/unmount` desbalanceia.
 
-Sintoma: app degrada após N minutos, memória cresce, CPU alta idle. Ver skill `frontend-performance-ultimate` para diagnóstico completo.
+Sintoma: app degrada após N minutos, memória cresce, CPU alta idle. Ver skill `frontend-performance-audit` para diagnóstico completo.
 
 ### Checklist por chart wrappado
 
@@ -98,7 +98,7 @@ Sintoma: app degrada após N minutos, memória cresce, CPU alta idle. Ver skill 
 - ✅ **`useMemo`** no objeto `data` passado pro chart (não criar inline).
 - ✅ **`useMemo` ou constante de módulo** no `ChartConfig`.
 - ✅ **`useCallback`** em qualquer handler passado (`onClick` do bar, etc.).
-- ✅ Em rotas com polling (TanStack Query `refetchInterval`), garantir que o **polling não vive no route component** — leaf memoizado dono da query (ver `frontend-performance-ultimate > Polling isolation`).
+- ✅ Em rotas com polling (TanStack Query `refetchInterval`), garantir que o **polling não vive no route component** — leaf memoizado dono da query (ver skill `frontend` → ref `performance-preventivo.md`, polling isolation).
 - ✅ **`key` estável** se renderizar lista de charts. ID do dataset, NUNCA index.
 
 ```tsx

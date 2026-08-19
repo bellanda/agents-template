@@ -1,6 +1,6 @@
 ---
 name: python-config-bootstrap
-description: Bootstrap e operação do padrão config env-aware Python/FastAPI — layout `config/app/{local,staging,prod}.yaml` versionado + `.env` (secrets) + `app.yaml` runtime (copy do env-específico) + `Settings` Pydantic com fail-fast no module load. Cobre também `config/docker/compose.{env}.yaml` overrides, shims `config/api.py`/`config/database.py`, regras de `${VAR}` substitution em `compose.yaml` base, e env vars `GRANIAN_*` consumidas pelo Dockerfile CMD. INVOCAR ANTES de — adicionar nova config env-aware (precisa editar OS 3 yamls + sub-model em Settings), adicionar nova secret (`.env.example` + `SecretStr` em Settings), criar `Settings` do zero em projeto novo, criar/alterar `compose.override.yaml`, bootstrap inicial (`cp config/app/local.yaml app.yaml`), tocar `compose.yaml` base com `${VAR}`, ou popular secondary Python process com seu próprio settings.py mínimo. NUNCA commit valor real de secret; NUNCA hardcode env-specific value em `compose.yaml` base (vai pro override).
+description: Bootstrap e operação do padrão config env-aware Python/FastAPI — layout `config/app/{local,staging,prod}.yaml` versionado + `.env` (secrets + `ENVIRONMENT`) + `Settings` Pydantic com fail-fast no module load. A variável `ENVIRONMENT` no `.env` dirige tudo: `compose.yaml` dá `include:` em `config/docker/compose.${ENVIRONMENT}.yaml` e bind-monta `config/app/${ENVIRONMENT}.yaml` em `/app/app.yaml`; host-puro o `settings.py` resolve o yaml direto. Cobre também shims `config/api.py`/`config/database.py`, regras de `${VAR}` substitution em `compose.yaml` base, e env vars `GRANIAN_*` consumidas pelo Dockerfile CMD. INVOCAR ANTES de — adicionar nova config env-aware (precisa editar OS 3 yamls + sub-model em Settings), adicionar nova secret (`.env.example` + `SecretStr` em Settings), criar `Settings` do zero em projeto novo, mexer no resolver `ENVIRONMENT`/`include:`/bind-mount do `app.yaml`, bootstrap inicial de projeto novo, tocar `compose.yaml` base com `${VAR}`, ou popular secondary Python process com seu próprio settings.py mínimo. NUNCA commit valor real de secret; NUNCA hardcode env-specific value em `compose.yaml` base (vai pro override).
 ---
 
 # Python Config Bootstrap — yaml + .env + Pydantic Settings
@@ -11,58 +11,61 @@ Padrão canônico cross-projeto para configuração env-aware (`local` / `stagin
 
 ```
 projeto/
-├── .env                           # SECRETS (gitignored, manual provisioning)
+├── .env                           # SECRETS + ENVIRONMENT=local|staging|prod (gitignored)
 ├── .env.example                   # Template (versionado, valores vazios)
-├── app.yaml                       # Runtime (gitignored, copy do env-específico)
-├── compose.yaml                   # Base Docker (versionado)
-├── compose.override.yaml          # Runtime override (gitignored, copy)
+├── compose.yaml                   # Base Docker (versionado) — include: config/docker/compose.${ENVIRONMENT}.yaml
 └── config/
-    ├── settings.py                # Pydantic Settings (single import surface)
+    ├── settings.py                # Pydantic Settings — resolve o yaml por ENVIRONMENT (single import surface)
     ├── api.py                     # SHIM legado (UPPER_CASE aliases)
     ├── database.py                # SHIM legado (UPPER_CASE aliases)
     ├── tools.py                   # getenv_or_raise_exception helpers
     ├── app/
-    │   ├── local.yaml             # versionado
+    │   ├── local.yaml             # versionado  ← bind-montado em /app/app.yaml no docker
     │   ├── staging.yaml           # versionado
     │   └── prod.yaml              # versionado
     └── docker/
-        ├── compose.local.yaml     # versionado
+        ├── compose.local.yaml     # versionado  ← incluído via ${ENVIRONMENT}
         ├── compose.staging.yaml   # versionado
         └── compose.prod.yaml      # versionado
 ```
 
+Não existe `app.yaml` nem `compose.override.yaml` na raiz: o container recebe
+`/app/app.yaml` por bind-mount de `config/app/${ENVIRONMENT}.yaml`, e o override de
+compose entra por `include:` — ambos dirigidos por `ENVIRONMENT`.
+
 ## Tabela de decisão — onde mora cada coisa
 
-| Categoria                    | Onde vive                                         | Versionado | Lido por                                               |
-| ---------------------------- | ------------------------------------------------- | ---------- | ------------------------------------------------------ |
-| Secrets                      | `.env` (root)                                     | Não        | `getenv_or_raise_exception` em `config/tools.py`       |
-| Config app (env-aware)       | `config/app/{local,staging,prod}.yaml`            | Sim        | `Settings` (Pydantic + PyYAML) em `config/settings.py` |
-| Runtime local                | `app.yaml` (root, copy do pai)                    | Não        | `Settings()` no module load (fail-fast)                |
-| Docker overrides (env-aware) | `config/docker/compose.{env}.yaml`                | Sim        | `cp` para `compose.override.yaml`                      |
-| Compose base                 | `compose.yaml` (root)                             | Sim        | `docker compose up` (junto com override)               |
+| Categoria                       | Onde vive                                         | Versionado | Lido por                                               |
+| ------------------------------- | ------------------------------------------------- | ---------- | ------------------------------------------------------ |
+| Secrets + `ENVIRONMENT`         | `.env` (root)                                     | Não        | `getenv_or_raise_exception` em `config/tools.py`       |
+| Config app (env-aware)          | `config/app/{local,staging,prod}.yaml`            | Sim        | `Settings` (Pydantic + PyYAML) em `config/settings.py` |
+| Runtime (resolvido p/ ENV)      | docker: `config/app/${ENVIRONMENT}.yaml` bind-montado em `/app/app.yaml`; host: `config/app/{env}.yaml` direto | Sim | `Settings()` no module load (fail-fast) |
+| Docker override (env-aware)     | `config/docker/compose.{env}.yaml`                | Sim        | `include:` em `compose.yaml` via `${ENVIRONMENT}`      |
+| Compose base                    | `compose.yaml` (root)                             | Sim        | `docker compose up` (com o include do env)             |
 
 ## Bootstrap por ambiente
 
+Não há `cp`: o `.env` declara `ENVIRONMENT` e tudo deriva dele.
+
 ```bash
-# Local development
-cp config/app/local.yaml app.yaml
-cp config/docker/compose.local.yaml compose.override.yaml
-# .env: provisionado manualmente (cofre / 1Password / scp)
-
-# Staging
-cp config/app/staging.yaml app.yaml
-cp config/docker/compose.staging.yaml compose.override.yaml
-
-# Production
-cp config/app/prod.yaml app.yaml
-cp config/docker/compose.prod.yaml compose.override.yaml
+# .env (gitignored) — provisionar secrets + escolher o ambiente
+ENVIRONMENT=local        # local | staging | prod
+POSTGRES_PASSWORD=...
+JWT_SECRET_KEY=...
 ```
 
-Esses `cp` são as únicas operações env-aware no host. Container runtime lê só `app.yaml` + `.env`, sem conhecer o nome do env.
+- **Docker:** `compose.yaml` dá `include: config/docker/compose.${ENVIRONMENT}.yaml`
+  e bind-monta `./config/app/${ENVIRONMENT}.yaml:/app/app.yaml:ro`. Um só `docker compose up`.
+- **Host-puro** (uvicorn em dev): `settings.py` lê `ENVIRONMENT` e resolve
+  `config/app/{env}.yaml` direto — sem Docker.
+
+Mudar de ambiente = trocar `ENVIRONMENT` no `.env`. O container vê só `/app/app.yaml`
++ `.env`, sem conhecer o nome do env.
 
 ## `config/settings.py` — fail-fast pattern
 
 ```python
+import os
 import pathlib
 import yaml
 from pydantic import BaseModel, SecretStr
@@ -111,24 +114,38 @@ class Settings(BaseSettings):
         env_file_encoding = "utf-8"
 
 
+def _resolve_app_yaml_path() -> pathlib.Path:
+    # Override explícito (CI/scripts) > docker (/app/app.yaml bind-montado) > host por ENVIRONMENT.
+    if explicit := os.getenv("APP_YAML_PATH"):
+        return pathlib.Path(explicit)
+    docker_path = pathlib.Path("/app/app.yaml")
+    if docker_path.is_file():
+        return docker_path
+    env = os.getenv("ENVIRONMENT", "local")
+    return pathlib.Path(__file__).resolve().parent.parent / "config" / "app" / f"{env}.yaml"
+
+
+APP_YAML_PATH = _resolve_app_yaml_path()
+
+
 def _load() -> Settings:
-    yaml_path = pathlib.Path(__file__).parent.parent / "app.yaml"
-    if not yaml_path.exists():
+    if not APP_YAML_PATH.is_file():
+        env = os.getenv("ENVIRONMENT", "local")
         raise RuntimeError(
-            f"app.yaml not found at {yaml_path}. "
-            f"Run: cp config/app/local.yaml app.yaml"
+            f"app yaml não encontrado em {APP_YAML_PATH} (ENVIRONMENT={env}). "
+            "Confira que config/app/{ENVIRONMENT}.yaml existe e ENVIRONMENT no .env é local/staging/prod."
         )
-    yaml_data = yaml.safe_load(yaml_path.read_text())
+    yaml_data = yaml.safe_load(APP_YAML_PATH.read_text())
     return Settings(**yaml_data)
 
 
-# Import-time fail-fast: app explodes on startup if config is bad.
+# Import-time fail-fast: app explode no startup se a config for inválida.
 settings = _load()
 ```
 
 Critical:
 
-- `settings = _load()` roda **no import** — não em runtime. App não sobe sem `app.yaml` válido + secrets obrigatórias no `.env`.
+- `settings = _load()` roda **no import** — não em runtime. App não sobe sem o yaml resolvido (`config/app/{ENVIRONMENT}.yaml`, ou `/app/app.yaml` no docker) válido + secrets obrigatórias no `.env`.
 - Cada secret é `SecretStr` (logging não vaza). Acesso: `settings.jwt_secret_key.get_secret_value()`.
 - Sub-models (`JwtConfig`, `CookiesConfig`, etc.) — um por seção do yaml. NUNCA flat dict.
 
@@ -165,7 +182,7 @@ class Settings(BaseSettings):
     new_feature: NewFeatureConfig
 ```
 
-3. **`cp config/app/local.yaml app.yaml`** novamente em dev (ou deixa o entrypoint do container fazer no deploy).
+3. **Nada a copiar** — `settings.py` relê `config/app/{ENVIRONMENT}.yaml` no próximo boot (host), e o compose re-monta o yaml no container. Só garanta `ENVIRONMENT` setado no `.env`.
 
 ## Como adicionar NOVA secret (2 passos)
 
@@ -272,17 +289,28 @@ Constantes (`--interface asgi`, `--host 0.0.0.0`) ficam no `compose.yaml` base v
 
 Cron-worker, NATS subscriber, batch processor que compartilham o mesmo deploy:
 
-- Montam o mesmo `app.yaml` via volume Docker (`./app.yaml:/app/app.yaml:ro`).
-- Têm seu próprio `settings.py` mínimo — pode ser sem Pydantic se o subset for trivial:
+- Montam o mesmo yaml via volume Docker (`./config/app/${ENVIRONMENT}.yaml:/app/app.yaml:ro`) — igual ao serviço principal.
+- Têm seu próprio `settings.py` mínimo — pode ser sem Pydantic se o subset for trivial. Resolve o path com a mesma ordem do app (`APP_YAML_PATH` > `/app/app.yaml` > host por `ENVIRONMENT`):
 
 ```python
 # worker/settings.py
+import os
 import pathlib
 import yaml
 
-_data = yaml.safe_load(
-    (pathlib.Path(__file__).parent.parent / "app.yaml").read_text()
-)
+
+def _resolve_app_yaml_path() -> pathlib.Path:
+    if explicit := os.getenv("APP_YAML_PATH"):
+        return pathlib.Path(explicit)
+    docker_path = pathlib.Path("/app/app.yaml")
+    if docker_path.is_file():
+        return docker_path
+    env = os.getenv("ENVIRONMENT", "local")
+    # parents[N] = repo root — ajuste N à profundidade do settings.py do worker.
+    return pathlib.Path(__file__).resolve().parents[1] / "config" / "app" / f"{env}.yaml"
+
+
+_data = yaml.safe_load(_resolve_app_yaml_path().read_text())
 NATS_URL = _data["nats"]["url"]
 WORKER_CONCURRENCY = _data["worker"]["concurrency"]
 ```
@@ -297,4 +325,4 @@ Sem dup de Pydantic se a leveza justificar. Mas se há validação não-trivial,
 - **NUNCA** lê env var direto em business code (`os.getenv(...)`). Sempre via `settings`.
 - **NUNCA** commit valor real de secret. `.env.example` tem valores vazios; `.env` é gitignored.
 - **NUNCA** acesse `.env` de Python além de `tools.py`/`settings.py`. Layer único de boundary.
-- **NUNCA** assume que `app.yaml` existe — `_load()` checa explicitamente e levanta com mensagem útil.
+- **NUNCA** assume que o yaml resolvido existe — `_load()` checa explicitamente (`APP_YAML_PATH`/`/app/app.yaml`/`config/app/{ENVIRONMENT}.yaml`) e levanta com mensagem útil.

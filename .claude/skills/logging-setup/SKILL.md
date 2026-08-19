@@ -1,13 +1,13 @@
 ---
 name: logging-setup
-description: Bootstrap or audit the structlog + stdlib + orjson + QueueHandler logging stack in a Python/FastAPI/Granian backend. INVOKE ONLY for setup tasks — setting up logging in a new project, migrating print() to logger, fixing log rotation in Docker, configuring request_id correlation, ConsoleRenderer vs JSONRenderer pipeline, NDJSON serialization, dictConfig for Granian/uvicorn, banimento de print() via ruff T20. For DAILY logging usage (which level to pick, snake_case event names, kwargs not f-string) follow logging.md rule directly — do not invoke this skill.
+description: Bootstrap or audit the structlog + stdlib + orjson + QueueHandler logging stack in a Python/FastAPI/Granian backend. INVOKE ONLY for setup tasks — setting up logging in a new project, migrating print() to logger, fixing log rotation in Docker, configuring request_id correlation, ConsoleRenderer vs JSONRenderer pipeline, NDJSON serialization, dictConfig for Granian/uvicorn, banimento de print() via ruff T20. For DAILY logging usage (which level to pick, snake_case event names, kwargs not f-string) follow the `logs.md` rule directly — do not invoke this skill.
 ---
 
 # logging-setup
 
 Bootstrap one-shot do stack de logging padrão dos projetos. Stack fixo: **structlog + stdlib `logging` + orjson + QueueHandler/QueueListener**, NDJSON em prod, ConsoleRenderer em dev (TTY-aware), `request_id` via contextvar correlacionado com `X-Request-ID` do nginx.
 
-Ler primeiro a rule global `~/.claude/rules/logging.md` (ou `.claude/rules/logging.md` do projeto) — ela é a fonte canônica do padrão. Esta skill é o **runbook de aplicação**.
+Ler primeiro a rule global `~/.claude/rules/logs.md` (ou `.claude/rules/logs.md` do projeto) — ela é a fonte canônica do padrão. Esta skill é o **runbook de aplicação**.
 
 ## Quando usar este skill
 
@@ -105,7 +105,7 @@ Adicionar `"T20"` em `extend-select` e usar **glob negativo** para escopar só e
 ```toml
 extend-select = [
     # ...resto...
-    "T20", # flake8-print — bans print() / pprint(). Use structlog (see logging.md).
+    "T20", # flake8-print — bans print() / pprint(). Use structlog (see logs.md).
 ]
 
 [lint.per-file-ignores]

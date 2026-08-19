@@ -4,7 +4,7 @@ NDJSON in prod, ConsoleRenderer in dev (TTY-aware), QueueHandler async-safe.
 Third-party libs (asyncpg, granian, uvicorn, nats) flow through the same
 ProcessorFormatter, so every line — app or lib — has the same shape.
 
-See `.claude/rules/logging.md` for the full spec.
+See `.claude/rules/logs.md` for the full spec.
 """
 
 import logging

@@ -20,7 +20,7 @@ O que NÃO muda entre linguagens nem entre backends de storage:
 | **Filename**         | `{slug}-{uuid4}.{ext}` — slug NFKD ASCII ≤60, uuid4 hyphenated, ext lowercase.                          |
 | **Modes**            | `raw` (bytes as-is) · `image` (→AVIF, resize por profile, sem upscale) · `document` (MIME whitelist + ext preservada). |
 | **Visibility**       | `public` (UUID4 122-bit é a auth) · `tenant` · `private` + `metadata.acl`.                              |
-| **StorageBackend**   | `save_bytes` / `delete_file` / `delete_tree` / `build_url` / `presigned_url`. Costura local↔object.     |
+| **StorageBackend**   | `save_bytes` / `delete_file` / `delete_tree` / `build_url` / `presigned_url` / `key_from_url` + flag `is_remote` + hint `public` (bucket routing). Costura local↔object. |
 | **Referência**       | FK single-instance OU join table multi-instance → `org_uploads(id)` / `user_uploads(id)`. URL inline solta = proibido. |
 | **Layout em disk/key** | `orgs/{org_id}/{domain}/{entity_id}/...` ou `users/{user_id}/{domain}/{entity_id}/...`.               |
 
@@ -28,30 +28,39 @@ Decisões rápidas:
 - **org vs user** → o arquivo é da organização (logo, foto de veículo, banner de evento) ou do usuário antes de existir org (KYC do organizador, avatar)? Org → `org_uploads`; user → `user_uploads`.
 - **single FK vs join table** → entidade tem 0/1 do asset → coluna FK; tem N (ordem importa) → join table com `position`.
 - **public vs tenant/private** → o conteúdo vaza algo sensível mesmo sem identificar pessoa (CPF, contrato, doc pendente)? Não → `public`; sim → `tenant`/`private` + serve auth-gated.
-- **local vs object storage** → hoje sempre local; a migração é trocar a impl do `StorageBackend` (B2/S3/Azure/GCS), nunca a assinatura.
+- **local vs object storage** → default `local`; B2 já implementado (kailos), trocável por config (`storage.backend: b2`). Trocar a impl do `StorageBackend` (B2/S3/Azure/GCS), nunca a assinatura.
 
 ## Eixo storage — `StorageBackend` é a costura única
 
 Toda IO de bytes passa por um `StorageBackend`. Hoje `LocalStorageBackend` (NVMe); amanhã object storage, **sem tocar business logic**.
 
 ```python
+@dataclass
+class SaveResult:
+    url: str
+    etag: str | None = None         # object storage only (B2 ETag/VersionId → UploadMetadata)
+    version_id: str | None = None
+
 class StorageBackend(Protocol):
-    async def save_bytes(self, key: str, content: bytes, mime: str | None) -> str: ...
-    async def delete_file(self, key: str) -> bool: ...
-    async def delete_tree(self, prefix: str) -> bool: ...
-    def build_url(self, key: str) -> str: ...                                    # URL pública estável
-    async def presigned_url(self, key: str, ttl_seconds: int = 600) -> str: ...  # acesso privado
+    is_remote: bool   # False → local FileResponse; True → presigned 302 redirect
+    # `public` seleciona o bucket no remoto (True=público, False=privado); local ignora.
+    async def save_bytes(self, key: str, content: bytes, mime: str | None, *, public: bool) -> SaveResult: ...
+    async def delete_file(self, key: str, *, public: bool) -> bool: ...
+    async def delete_tree(self, prefix: str) -> bool: ...                         # SEM hint — subtree pode misturar buckets → limpa ambos
+    def build_url(self, key: str, *, public: bool) -> str: ...                    # público=URL CDN estável; privado=URL do gate
+    async def presigned_url(self, key: str, ttl_seconds: int = 600) -> str: ...   # SEMPRE private bucket
+    def key_from_url(self, url: str) -> str | None: ...                           # inverso de build_url (rows legados)
 ```
 
 | Backend                          | Implementação                                                       | `public`                          | `tenant`/`private`            |
 | -------------------------------- | ------------------------------------------------------------------- | --------------------------------- | ----------------------------- |
-| `LocalStorageBackend` (hoje)     | grava em `UPLOADS_DIR`, serve via nginx/handler                     | URL estável                       | handler valida auth, serve    |
-| `B2BackBlazeStorage`             | S3-compatible, endpoint B2 (`aioboto3`/`aws-sdk-*`)                 | bucket público + CDN              | bucket privado + presigned    |
+| `LocalStorageBackend` (hoje)     | grava em `UPLOADS_DIR`, serve via gate handler. `is_remote=False`   | URL estável (gate)                | handler valida auth, serve    |
+| `B2BackblazeStorage`             | S3-compatible, endpoint B2 (`aioboto3`). 2 buckets. `is_remote=True`| bucket público + CDN              | bucket privado + presigned    |
 | `S3StorageBackend` (AWS)         | mesma API S3                                                        | bucket público + CloudFront       | bucket privado + presigned    |
 | `AzureBlobStorageBackend`        | Azure SDK                                                           | container público                 | SAS URL TTL curto             |
 | `GcsStorageBackend`              | GCS SDK                                                             | bucket público                    | signed URL TTL curto          |
 
-Seleção por `settings.storage.backend`. `B2BackBlazeStorage` é só uma config (endpoint) do backend S3-compatible. **B2/object storage = trabalho seguinte** — hoje os projetos carregam só um `# TODO(b2)` no `config/uploads.py` na costura; não implementar agora.
+Seleção por `settings.storage.backend`. **Modelo de dois buckets (B2 implementado — kailos é a referência):** acesso B2/S3 é **bucket-wide** (não há flag público por objeto), então a visibility mapeia em **2 buckets por env** — um público (URL estável/CDN, fetch anônimo) e um privado (presigned-only, atrás do gate). O hint `public: bool` no save/delete/build_url escolhe o bucket; `presigned_url` é sempre o privado. Serving ramifica em `is_remote` (local `FileResponse` vs remoto presigned 302). Coluna `storage_key` guarda o key relativo (handle de delete/presign). Detalhe completo em §8.
 
 ---
 
@@ -289,40 +298,29 @@ async def serve_upload(conn, url_path: str, auth: AuthContext) -> Response:
     return FileResponse(...)
 ```
 
-Em B2: bucket privado + endpoint `GET /api/uploads/{id}/url` que retorna presigned URL TTL 5-10 min depois de passar pelos checks acima.
+Em B2: o arquivo `tenant`/`private` mora no bucket privado e a MESMA rota do gate, após os checks acima, presigna (TTL curto) e responde **302 redirect** para o private bucket (`is_remote=True`) — sem endpoint `/url` separado.
 
-## 8. Migration checklist — local FS → object storage (B2 / S3 / Azure / GCS)
+## 8. Migration checklist — local FS → object storage (B2 implementado; S3 / Azure / GCS análogos)
 
-**Trabalho seguinte — não fazer agora.** Hoje os projetos só carregam um `# TODO(b2)` no `config/uploads.py` na costura de IO. Quando for a hora:
+**Implementado no kailos (referência).** O seam vive em `config/storage.py`; o módulo `config/uploads.py` chama o singleton `storage`. Trocar `backend: local` → `b2` no yaml + popular `.env` liga o B2 sem tocar business. Shape concreto:
 
-1. **Config**:
-   - Adicionar `storage:` block em `config/app/{env}.yaml`: `backend: "local" | "b2" | "s3" | "azure" | "gcs"`, bucket público/privado, endpoint/region.
-   - Secrets do provider em `.env.example` (vazias) — `B2_KEY_ID`/`B2_APP_KEY`, `AWS_ACCESS_KEY_ID`/`AWS_SECRET_ACCESS_KEY`, `AZURE_STORAGE_CONNECTION_STRING`, `GCS_*`. Popular `.env` local manualmente.
-   - Sub-model `StorageSettings` em `config/settings.py`.
-2. **Interface** (a costura única — ver §Storage):
-   ```python
-   class StorageBackend(Protocol):
-       async def save_bytes(self, key: str, content: bytes, mime: str | None) -> str: ...
-       async def delete_file(self, key: str) -> bool: ...
-       async def delete_tree(self, prefix: str) -> bool: ...
-       def build_url(self, key: str) -> str: ...
-       async def presigned_url(self, key: str, ttl_seconds: int = 600) -> str: ...
-   ```
+1. **Config** (`StorageSettings` em `config/settings.py`, skill `python-config-bootstrap`):
+   - `storage:` block nos 3 yamls (`{local,staging,prod}`) + no yaml de teste: `backend: "local" | "b2"`, `b2_endpoint_url`, `b2_region`, **`b2_public_bucket`** + **`b2_private_bucket`** (DOIS buckets), `b2_public_base_url`. Default `backend: local`, campos B2 vazios.
+   - Secrets em `.env.example` (vazias): `B2_KEY_ID` / `B2_APP_KEY` (RESTRICTED multi-bucket key — master key NÃO funciona na S3 API). `_opt()` no `Settings`.
+   - **Validator fail-fast** (`@model_validator(mode="after")`): se `backend=="b2"`, exige endpoint + AMBOS os buckets + public_base + as 2 secrets; senão o primeiro upload daria 500 fundo no request path.
+2. **Interface** (`config/storage.py` — ver §Storage para a assinatura completa com `is_remote`, hint `public`, `SaveResult`, `key_from_url`).
 3. **Implementações**:
-   - `LocalStorageBackend` — extrai a lógica atual de `save_upload` (mkdir + write_bytes; delete via unlink/rmtree).
-   - `B2BackBlazeStorage` / `S3StorageBackend` — S3-compatible via `aioboto3`/`aiobotocore`; B2 = endpoint custom.
-   - `AzureBlobStorageBackend` / `GcsStorageBackend` — SDK do provider; presigned = SAS / signed URL.
-4. **Factory em `config/uploads.py`** (selecionada por `settings.storage.backend`):
+   - `LocalStorageBackend` (`is_remote=False`) — mkdir + `anyio.Path.write_bytes`; delete via `unlink`/`rmtree`. **Lê `UPLOADS_DIR` por chamada** (nunca cacheia em `__init__` — fixtures de teste mutam o path em runtime). `build_url`/`presigned_url` = URL do gate (sem expiry); hint `public` é no-op.
+   - `B2BackblazeStorage` (`is_remote=True`) — `aioboto3.Session` cacheada no `__init__` (offline, barato); **client por operação** (`async with session.client("s3", endpoint_url=, config=Config(signature_version="s3v4", s3={"addressing_style":"path"}))`), aiobotocore reusa o pool. `_bucket(public)` escolhe público/privado. `save_bytes` = `put_object` capturando `ETag`/`VersionId` → `SaveResult`. **`delete_file`/`delete_tree` apagam TODAS as versões** (`list_object_versions` paginado + `delete_objects` em lotes ≤1000) — bucket B2 é versionado por default. `presigned_url` = `generate_presigned_url("get_object", ...)` sempre no private bucket, TTL clamped a 604800s (7 dias, teto SigV4). `delete_tree` varre AMBOS os buckets (subtree pode misturar).
+4. **Factory em `config/storage.py`** (selecionada por `settings.storage.backend`):
    ```python
-   storage: StorageBackend = build_storage_backend(settings.storage)
+   storage: StorageBackend = build_storage_backend()
    ```
-   `save_upload` chama `storage.save_bytes(key, content, mime)` no fim — sem mudar a assinatura externa. Deletes passam por `storage.delete_file` / `storage.delete_tree`.
-5. **URL resolution**:
-   - `visibility='public'` → `build_url(key)` (URL estável do bucket público).
-   - `visibility != 'public'` → endpoint `GET /api/uploads/{id}/url` retorna `presigned_url` com TTL curto.
-6. **Migration de dados** (se em prod): script que sobe os arquivos locais para o bucket + atualiza `org_uploads.url` / `user_uploads.url` em batch. Em dev: reset + reupload manual.
-7. **Cleanup deletes**: object storage não tem `rmtree`. `delete_tree` enumera objects do prefix e deleta em pipeline/batch.
-8. **CDN**: Cloudflare/CloudFront na frente do bucket público. DNS aponta `cdn.dominio.com` para o endpoint do provider.
+   `save_upload(file, ..., public: bool = True)` chama `storage.save_bytes(key, content, mime, public=public)` no fim e devolve `UploadResult` com `storage_key`/`etag`/`version_id`. CRLV/documento passa `public=False`. Deletes via `delete_file_by_url(url, *, public=...)` / `delete_directory(*parts)`.
+5. **Coluna `storage_key`** (migration dbmate, nullable, sem index): handle canônico para delete/presign — a URL sozinha não basta (presigned expira). Persistida no `create`/`update` (COALESCE) do repository; `key_from_url` cobre rows legados (sem backfill). Os create-sites passam `storage_key=result.storage_key`.
+6. **Serving** (`routes/files/files.py::_serve_gated`, `response_model=None` na rota — o union de retorno quebra o response model do FastAPI): a MESMA visibility-gate roda para os dois backends; depois ramifica em `storage.is_remote` — local → `FileResponse` do disco; remoto → `RedirectResponse(presigned_url(key), 302)` (private bucket; B2/CDN serve os bytes, a API só assina após o gate). Bloco de existência em disco fica sob `if not storage.is_remote`. Públicos no B2 NÃO passam por aqui (a `url` armazenada aponta direto pro bucket público).
+7. **Valores armazenados por visibility (B2):** `public` → `url = build_url(key, public=True)` (URL pública/CDN, frontend bate direto), `storage_key = key`. `tenant`/`private` → `url = build_url(key, public=False)` = URL do gate (find_by_url + rota resolvem; a rota presigna+302), `storage_key = key`.
+8. **Provisionamento (console B2, no flip):** **convenção canônica de nome** `{project}-{env}-{public|private}` — matriz de 6 buckets (`{local,staging,prod}` × `{public,private}`): `{project}-local-public`/`-private`, `{project}-staging-...`, `{project}-prod-...`. **Nomes B2 são únicos GLOBALMENTE** (entre todas as contas) → se colidir, prefixe um token curto da conta (`{project}-{token}-{env}-{vis}`); o nome limpo é o default, o token só quando recusado. Bucket `public` = allPublic, `private` = allPrivate; ambos versionados + lifecycle "keep last version" como backstop. UMA restricted key multi-bucket (via CLI pra escopar exatamente os 2; a UI só restringe a 1 bucket → use "All"). **CDN (prod/staging): `b2_public_base_url` = custom domain Cloudflare na frente do bucket público** — **UM único** CNAME **proxied** `cdn.{domain}` → `f<NNN>.backblazeb2.com` (NNN = cluster da região; confirme na URL nativa do bucket) + Cache Rule "Cache Everything". O bucket vai no _path_ (`https://cdn.{domain}/file/{project}-{env}-public`), então **o mesmo hostname serve todos os envs** (staging e prod) — só o bucket muda; um CNAME, uma Cache Rule, zero duplicação (e replica igual nos próximos projetos). Egress B2→Cloudflare grátis (Bandwidth Alliance). Privado NUNCA via CDN — presigned-direto pelo gate. Em dev/local fica o endpoint S3 cru (sem CDN). Região é única por conta. Migration de dados em prod: script sobe arquivos locais + atualiza `url`/`storage_key` em batch; em dev, reupload.
 
 ## 9. Frontend — hook e mutation
 
@@ -366,6 +364,12 @@ Para chat de agente: hook dedicado `useChatFileUpload` com mutation embutida + s
 - **Nunca** relaxar a coluna de tenancy para `NULL` — arquivo do usuário vai em `user_uploads`, da org em `org_uploads`.
 - **Nunca** colocar mutation no `useFileUpload` (validator-only).
 - **Nunca** servir arquivo `visibility != 'public'` direto pelo nginx sem passar pelo gate da API.
+- **B2/S3 — nunca** usar a master application key na S3 API (não funciona); só restricted/multi-bucket key (`B2_KEY_ID`/`B2_APP_KEY`).
+- **B2/S3 — nunca** misturar `public` e `private` no mesmo bucket: acesso é bucket-wide ⇒ 2 buckets por env (público + privado), o hint `public` roteia.
+- **B2 — nunca** `delete_object` simples num bucket versionado esperando limpar (só esconde a última versão): apague TODAS as versões (`list_object_versions` + `delete_objects`), senão a história é cobrada.
+- **B2 — nunca** presigned TTL > 604800s (7 dias, teto SigV4) nem cachear um client global mutável — abra client por operação (a `Session` é cacheada, o pool é reusado).
+- **B2 público — nunca** `b2_public_base_url` = endpoint S3 cru (`https://s3.<region>...`) em prod/staging: serve sem CDN e paga egress. Use custom domain Cloudflare (`https://cdn.{domain}/file/{project}-{env}-public`; **um CNAME proxied** `cdn.{domain}` → `f<NNN>.backblazeb2.com` serve todos os envs pelo bucket no path). Privado nunca em CDN — presigned-direto.
+- **Serving remoto — nunca** esquecer `response_model=None` na rota que pode retornar `FileResponse | RedirectResponse` (o union quebra o response model do FastAPI no boot).
 - **Nunca** ON DELETE CASCADE em todas as FKs sem pensar — replace pattern requer cascade controlado.
 - **Trigger de `updated_at`** em `org_uploads`/`user_uploads` é gerenciado pelo `update_updated_at_column()` BEFORE UPDATE. NUNCA setar `updated_at` em UPDATE manual.
 - **`avif_quality`** está fixa em 80 (constante `AVIF_QUALITY`). Não parametrizar por call — uniformidade > flexibilidade.
