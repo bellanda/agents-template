@@ -15,6 +15,63 @@ import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
 import { createContext, memo, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { Streamdown } from "streamdown";
 
+const CHAT_MARKDOWN_UNORDERED_LIST_CLASS_NAME =
+  "my-2 list-outside list-disc whitespace-normal pl-6 [li>&]:mt-2 [li>&]:ml-4";
+const CHAT_MARKDOWN_ORDERED_LIST_CLASS_NAME =
+  "my-2 list-outside list-decimal whitespace-normal pl-6 [li>&]:mt-2 [li>&]:ml-4";
+const CHAT_MARKDOWN_LIST_ITEM_CLASS_NAME = "py-1 [&>p]:inline";
+
+const ChatMarkdownUnorderedList = memo(function ChatMarkdownUnorderedList({
+  className,
+  children,
+  node: _markdownAstNode,
+  ...rest
+}: ComponentProps<"ul"> & { node?: unknown }) {
+  return (
+    <ul
+      className={cn(CHAT_MARKDOWN_UNORDERED_LIST_CLASS_NAME, className)}
+      data-streamdown="unordered-list"
+      {...rest}
+    >
+      {children}
+    </ul>
+  );
+});
+
+const ChatMarkdownOrderedList = memo(function ChatMarkdownOrderedList({
+  className,
+  children,
+  node: _markdownAstNode,
+  ...rest
+}: ComponentProps<"ol"> & { node?: unknown }) {
+  return (
+    <ol
+      className={cn(CHAT_MARKDOWN_ORDERED_LIST_CLASS_NAME, className)}
+      data-streamdown="ordered-list"
+      {...rest}
+    >
+      {children}
+    </ol>
+  );
+});
+
+const ChatMarkdownListItem = memo(function ChatMarkdownListItem({
+  className,
+  children,
+  node: _markdownAstNode,
+  ...rest
+}: ComponentProps<"li"> & { node?: unknown }) {
+  return (
+    <li
+      className={cn(CHAT_MARKDOWN_LIST_ITEM_CLASS_NAME, className)}
+      data-streamdown="list-item"
+      {...rest}
+    >
+      {children}
+    </li>
+  );
+});
+
 export type MessageProps = HTMLAttributes<HTMLDivElement> & {
   from: UIMessage["role"];
 };
@@ -277,6 +334,11 @@ export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
       className={cn("size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0", className)}
+      components={{
+        ul: ChatMarkdownUnorderedList,
+        ol: ChatMarkdownOrderedList,
+        li: ChatMarkdownListItem,
+      }}
       plugins={streamdownPlugins}
       {...props}
     />
