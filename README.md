@@ -268,24 +268,30 @@ Restart the server — the agent is auto-discovered and registered.
 
 ## Available Models
 
-Models are lazy-loaded. Import: `from api.core.agents.models import models`
+Registry: `from api.core.agents.models import Models`. Instantiate with
+`init_model(Models.Provider.NAME)` (`core/agents/custom_providers.py`).
 
-| Access                                         | Provider | Notes     |
-| ---------------------------------------------- | -------- | --------- |
-| `models.Cerebras.GPT_OSS_120B__CEREBRAS`       | Cerebras |           |
-| `models.Cerebras.QWEN_3_235B_A22B__CEREBRAS`   | Cerebras |           |
-| `models.Chutes.GPT_OSS_120B_TEE__CHUTES`       | Chutes   | reasoning |
-| `models.Chutes.MINIMAX_M2_5_TEE__CHUTES`       | Chutes   | reasoning |
-| `models.Chutes.DEEPSEEK_V3_2_TEE__CHUTES`      | Chutes   | reasoning |
-| `models.Chutes.KIMI_K2_5_TEE__CHUTES`          | Chutes   | reasoning |
-| `models.Google.GEMINI_3_1_PRO_PREVIEW__GOOGLE` | Google   |           |
-| `models.Google.GEMINI_3_FLASH_PREVIEW__GOOGLE` | Google   |           |
-| `models.Groq.GPT_OSS_120B__GROQ`               | Groq     |           |
-| `models.Groq.KIMI_K2_INSTRUCT__GROQ`           | Groq     |           |
-| `models.NVIDIA.MINIMAX_M2_1__NVIDIA`           | NVIDIA   | thinking  |
-| `models.NVIDIA.DEEPSEEK_V3_2__NVIDIA`          | NVIDIA   | thinking  |
-| `models.NVIDIA.KIMI_K2_5__NVIDIA`              | NVIDIA   | thinking  |
-| `models.NVIDIA.GPT_OSS_120B__NVIDIA`           | NVIDIA   | thinking  |
+| Access                                      | Provider   | Notes                                       |
+| ------------------------------------------- | ---------- | ------------------------------------------- |
+| `Models.Chutes.KIMI_K2_6_TEE`               | chutes     | reasoning                                   |
+| `Models.Chutes.QWEN_3_6_27B_TEE`            | chutes     | reasoning                                   |
+| `Models.Chutes.GEMMA_4_31B_TEE`             | chutes     | reasoning                                   |
+| `Models.Google.GEMINI_3_FLASH_PREVIEW`      | google     | thinking; image/pdf/audio/video             |
+| `Models.OpenAI.GPT_5_4_NANO`                | openai     | reasoning; image                            |
+| `Models.Groq.GPT_OSS_120B`                  | groq       |                                             |
+| `Models.Groq.GPT_OSS_20B`                   | groq       |                                             |
+| `Models.Groq.WHISPER_LARGE_V3_TURBO`        | groq       | transcrição; **não é chat model**           |
+| `Models.DeepSeek.V4_FLASH`                  | deepseek   | reasoning                                   |
+| `Models.DeepSeek.V4_PRO`                    | deepseek   | reasoning                                   |
+| `Models.OpenRouter.DEEPSEEK_V4_FLASH_0731`  | openrouter | reasoning; upstream fixo: novita            |
+| `Models.OpenRouter.GEMINI_3_7_FLASH`        | openrouter | thinking; image/pdf/audio/video             |
+| `Models.NVIDIA.NEMOTRON_3_SUPER_120B_A12B`  | nvidia     | thinking                                    |
+| `Models.NVIDIA.NEMOTRON_3_NANO_30B_A3B`     | nvidia     | thinking                                    |
+
+`WHISPER_LARGE_V3_TURBO` não passa por `init_model` (levanta `ValueError`): é um POST
+multipart em `core/agents/media.py`, cobrado por **hora de áudio** e não por token — os
+campos de preço zerados nele são deliberados. **Todo chat model do registro precisa de
+preço**: sem ele o custo lê zero em silêncio e qualquer teto de gasto para de funcionar.
 
 Add a new provider: implement `init_<provider>_model()` in `src/api/core/agents/custom_providers.py`, then add a container class in `models.py`.
 

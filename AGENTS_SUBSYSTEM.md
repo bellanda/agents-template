@@ -32,8 +32,9 @@ resumidos (só config + tools):
 | Arquivo | Responsabilidade |
 | --- | --- |
 | `models.py` | `ModelConfig` (provider, pricing, capabilities) + registro `Models` + `compute_cost_usd` + `find_model_config` / `find_model_config_by_id` + `model_capabilities_dict` + `PROVIDER_ALIASES`/`canonical_provider`. |
-| `custom_providers.py` | `init_model(cfg)` / `init_model_by_id(id)` + `init_<provider>_model`. `ChatDeepSeekRoundtrip` (round-trip de `reasoning_content`). |
+| `custom_providers.py` | `init_model(cfg)` / `init_model_by_id(id)` + `init_<provider>_model`. `ChatDeepSeekRoundtrip` (round-trip de `reasoning_content`). `ChatOpenRouter` (reasoning + `model_provider` + custo real do upstream). |
 | `callbacks.py` | `UsageRecorderCallback` — persiste 1 linha em `agent_message_usage` por chamada de LLM. |
+| `media.py` | Mídia em texto para agente text-only: `media_to_text(bytes, mime_type=...)` com a cadeia Whisper → Gemini → `None`, retry por status e o custo do Whisper lançado à mão (cobra por hora de áudio, não passa pelo callback). Sem acoplamento a canal — ver §8-B. |
 | `checkpointer.py` | `AsyncPostgresSaver` singleton (`init_checkpointer`/`get_checkpointer`/`close_checkpointer`). |
 | `history_window.py` | `sliding_window_middleware` — corta o histórico enviado ao LLM por orçamento de tokens/mensagens. |
 | `prompt_cache.py` | Placeholder in-memory (caching real é nativo do provedor). |
@@ -86,10 +87,10 @@ resumidos (só config + tools):
 @dataclass(frozen=True)
 class ModelConfig:
     model_id: str
-    provider: str                      # deepseek | groq | google | openai | nvidia | cerebras | chutes
+    provider: str                      # deepseek | groq | google | openai | nvidia | cerebras | chutes | openrouter
     reasoning: bool = False            # emite reasoning_content no stream
     thinking: bool = False             # google include_thoughts / nvidia chat_template_kwargs
-    reasoning_effort: str | None = None  # low | high | max  (DeepSeek/OpenAI)
+    reasoning_effort: str | None = None  # low | high | max  (DeepSeek/OpenAI/OpenRouter)
     input_price_per_1m: float = 0.0
     cached_input_price_per_1m: float = 0.0
     output_price_per_1m: float = 0.0
@@ -97,7 +98,18 @@ class ModelConfig:
     supports_pdf_input: bool = False
     supports_audio_input: bool = False
     supports_video_input: bool = False
+    provider_order: tuple[str, ...] = ()      # OpenRouter: upstreams preferidos, em ordem
+    allow_provider_fallbacks: bool = True     # OpenRouter: False fixa em provider_order
 ```
+
+**OpenRouter (gateway multi-provider).** `model_id` é o slug do OpenRouter
+(`deepseek/deepseek-v4-flash-0731`) e o mesmo modelo é servido por dezenas de upstreams com
+preço/latência diferentes — `provider_order` declara a preferência (ex.: `("novita",)`) e
+`allow_provider_fallbacks=True` (default) deixa o gateway reencaminhar quando o preferido está
+fora/rate-limited. Pinagem dura (`False`) transforma 429 do upstream em erro da chamada; só use
+quando o upstream específico for requisito. O pricing no `ModelConfig` é o do upstream preferido e
+serve de fallback: `usage.cost` reportado pelo OpenRouter (custo real do upstream roteado) vence
+(ver §7).
 
 **Esquema barato recomendado (USD por 1M tokens):**
 
@@ -105,13 +117,14 @@ class ModelConfig:
 | --- | --- | --- | --- |
 | Atendente texto (default) | `deepseek-v4-flash` | 0.14 / 0.0028 / 0.28 | `reasoning_effort="high"`. Melhor custo/qualidade. |
 | Texto premium | `deepseek-v4-pro` | 0.435 / 0.003625 / 0.87 | quando precisa de mais capacidade. |
-| Áudio → texto | Groq `whisper-large-v3-turbo` | barato | shim para modelos text-only (ver §8). |
-| Imagem → texto | Groq `meta-llama/llama-4-scout-17b-16e-instruct` | barato | shim de visão para modelos text-only. |
-| Multimodal nativo | `gemini-3-flash-preview` | 0.50 / 0.05 / 3.00 | aceita imagem/pdf/áudio inline. |
+| Áudio → texto | Groq `whisper-large-v3-turbo` | 0.04 **por hora de áudio** | 1º degrau de `media.py`; não é chat model (ver §8-B). |
+| Mídia → texto | OpenRouter `google/gemini-3.7-flash` | 0.375 / 0.0375 / 1.875 | 2º degrau: imagem, PDF, vídeo e o áudio que o Whisper não pegou. |
+| Multimodal nativo | `gemini-3-flash-preview` | 0.50 / 0.05 / 3.00 | aceita imagem/pdf/áudio inline (SDK do Google, não OpenRouter). |
+| Texto via gateway | OpenRouter `deepseek/deepseek-v4-flash-0731` | 0.14 / 0.028 / 0.28 | preço do upstream preferido (Novita); custo real vem do gateway. |
 
-**Regra:** atendente padrão = DeepSeek V4 Flash text-only + shims Groq (Whisper/visão). Garante o
-fluxo mais barato e funcional. Trocar de modelo = trocar 1 `ModelConfig` no agente; o resto (custo,
-streaming, capabilities) acompanha automático.
+**Regra:** atendente padrão = DeepSeek V4 Flash text-only + `media.py` (Whisper → Gemini) para tudo
+que não é texto. Garante o fluxo mais barato e funcional. Trocar de modelo = trocar 1 `ModelConfig`
+no agente; o resto (custo, streaming, capabilities) acompanha automático.
 
 ---
 
@@ -209,7 +222,13 @@ Ambos no mesmo endpoint `POST /agents/chat/completions`, decididos por `stream` 
   em `on_chat_model_start` guarda metadata por `run_id`; em `on_llm_end` lê `usage_metadata` +
   `response_metadata`, resolve o `ModelConfig` (`find_model_config`) e insere em `agent_message_usage`.
 - **Fórmula** (`compute_cost_usd`): `(fresh_input·in + cached·cached_in + output·out) / 1e6`, com
-  `fresh_input = input_tokens - cache_read`, **arredondando para cima** (nunca sub-cobra).
+  `fresh_input = input_tokens - cache_read`, **arredondando para cima** (`round_cost_up`, nunca
+  sub-cobra).
+- **Custo reportado vence a tabela.** Gateway que roteia entre upstreams (OpenRouter) devolve o
+  custo real da chamada em `usage.cost`; `ChatOpenRouter` expõe isso em
+  `response_metadata["provider_cost_usd"]` (+ `upstream_provider`) e `build_usage_from_ai_message`
+  prefere esse valor — a tabela estática só conhece o upstream preferido, e com fallback ligado o
+  roteamento muda de request para request.
 - **Tabela `agent_message_usage`:** `thread_id, message_id, user_id, client_id, agent_id, provider,
   model_id, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, total_tokens,
   cost_usd, error, created_at`. Imutável (sem `updated_at`).
@@ -242,15 +261,59 @@ Há **dois padrões** no ecossistema — escolha por modalidade:
 - **Limpeza:** `DELETE /agents/threads/{id}` faz soft-delete das rows `user_uploads` da thread +
   remove o diretório de uploads (`delete_directory`).
 
-### B. WhatsApp (kailos/balizap) — shims de transcrição/visão para modelo text-only
-- DeepSeek é text-only → mídia inbound vira texto **antes** do agente (`_row_to_text`):
-  **áudio → Groq Whisper** (`transcription.py`), **imagem → Groq Llama-4 visão** (`vision.py`),
-  ambos fail-soft (fallback para placeholder). Vídeo/documento → placeholder/link.
+### B. Agente text-only (WhatsApp e afins) — `core/agents/media.py`
+O atendente é um modelo de TEXTO e chega áudio, foto e PDF. `core/agents/media.py` é o degrau que
+converte bytes em frase **antes** do prompt. **Entrada é `bytes` + `mime_type`, saída é `str | None`
+— o módulo não conhece canal nenhum**, e é por isso que serve WhatsApp, e-mail ou uploads de chat
+sem alteração; quem chama decide o que fazer com o `None` (no WhatsApp, um placeholder; num chat, o
+anexo sem descrição).
+
+```
+áudio  → Whisper (Groq)  --falhou-->  Gemini 3.7 Flash (aceita áudio)  --falhou-->  None
+imagem → Gemini 3.7 Flash                                              --falhou-->  None
+PDF    → Gemini 3.7 Flash                                              --falhou-->  None
+```
+
+```python
+text = await media_to_text(
+    content, mime_type="audio/ogg", filename="audio.ogg",
+    thread_id=thread_id, message_id=str(message_id),
+)
+```
+
+Quatro decisões que o módulo encoda, e as três primeiras são exatamente onde os projetos que
+copiaram esse padrão à mão erraram:
+
+1. **Whisper primeiro, multimodal depois.** Transcrever não precisa de raciocínio, e o Whisper na
+   Groq é ordem de grandeza mais barato. O modelo caro é o **degrau de queda**, não a rota normal.
+2. **A visão passa pelo LangChain** (`init_model(Models.OpenRouter.GEMINI_3_7_FLASH)` com
+   `callbacks=[usage_recorder]`), e não pelo SDK cru. É o que faz a linha cair em
+   `agent_message_usage` **de graça** — pelo atalho do SDK o custo da mídia simplesmente não existe
+   para nenhum teto de gasto.
+3. **O custo do Whisper é lançado à mão** (`record_transcription_cost`): ele é um POST multipart,
+   não passa pelo callback, e é cobrado por **hora de áudio**. Tokens ficam em zero; o que importa
+   é o `cost_usd`.
+4. **Retry diferenciado e fail-soft.** 429/5xx tentam de novo (backoff exponencial, 2 tentativas);
+   401/400 não — repetir credencial errada é queimar tempo numa falha que não muda de resposta.
+   Cada falha sai no log **com o `status_code`**, porque "sem transcrição" por 401 e por 429 se
+   resolvem de formas opostas. Nada aqui levanta.
+
+**Ordem, no canal que chama.** Quem enfileira o trabalho tem que gravar o texto **antes** de
+disparar o agente. Publicar "baixe a mídia" e "responda" no mesmo instante, sincronizados só por um
+debounce fixo, é a corrida clássica: download lento → o agente lê o placeholder, responde "não
+consigo ouvir áudio", e **nada o chama de volta** quando a transcrição fica pronta. O trigger sai
+depois do enriquecimento — **inclusive quando ele falha**, porque silêncio é a pior degradação.
 
 ### Capability flags
-`supports_image_input` é o único **enforçado** (gate 415/400). `supports_pdf/audio/video` são
-**informacionais** para o frontend; no fluxo MarkItDown, todo não-imagem vira texto. Exposto em
-`GET /agents` via `model_capabilities_dict`.
+`supports_image_input` é o único **enforçado** no chat playground (gate 415/400).
+`supports_pdf/audio/video` são informacionais para o frontend — no fluxo MarkItDown todo não-imagem
+vira texto — **e são o que `media.py` consulta** para saber qual modelo cobre qual modalidade.
+Exposto em `GET /agents` via `model_capabilities_dict`.
+
+**Modelo sem preço no registro lê custo ZERO em silêncio.** Foi o caso do `Groq.LLAMA_4_SCOUT`,
+registrado sem preço e nunca referenciado; ele saiu, e o lugar dele é o
+`Groq.WHISPER_LARGE_V3_TURBO` — que tem preço zerado **de propósito** (cobra por hora de áudio) e
+não passa por `init_model`, então ninguém o roteia pelo caminho cobrado por token.
 
 ### Alinhamento com o padrão universal de uploads (`uploads.md`) ✓
 O template está **alinhado**: `config/uploads.py` (core idêntico entre projetos) + tabela

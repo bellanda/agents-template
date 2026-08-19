@@ -3,7 +3,12 @@ from typing import Any
 from asyncpg.connection import Connection
 from langchain_core.messages import AIMessage
 
-from api.core.agents.models import canonical_provider, compute_cost_usd, find_model_config
+from api.core.agents.models import (
+    canonical_provider,
+    compute_cost_usd,
+    find_model_config,
+    round_cost_up,
+)
 from api.models.agents.usage import AgentMessageUsage
 
 
@@ -20,6 +25,10 @@ def build_usage_from_ai_message(
 
     Returns None if the message has no usage_metadata or no provider/model info — the registry
     needs both to compute cost via compute_cost_usd.
+
+    Gateways que roteiam entre upstreams (OpenRouter) reportam o custo REAL da chamada em
+    `response_metadata["provider_cost_usd"]`; nesse caso ele vence a tabela estática de preços,
+    que só conhece o upstream preferido do ModelConfig.
     """
     if ai is None:
         return None
@@ -33,7 +42,11 @@ def build_usage_from_ai_message(
         return None
 
     cfg = find_model_config(str(provider), str(model_id))
-    cost_usd = compute_cost_usd(usage, cfg) if cfg else 0.0
+    reported_cost = rm.get("provider_cost_usd")
+    if reported_cost is not None:
+        cost_usd = round_cost_up(float(reported_cost))
+    else:
+        cost_usd = compute_cost_usd(usage, cfg) if cfg else 0.0
     in_det = usage.get("input_token_details") or {}
     out_det = usage.get("output_token_details") or {}
     return AgentMessageUsage(

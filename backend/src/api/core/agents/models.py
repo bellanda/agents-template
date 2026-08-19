@@ -24,6 +24,11 @@ class ModelConfig:
     supports_pdf_input: bool = False  # PDF nativo (sem MarkItDown)
     supports_audio_input: bool = False
     supports_video_input: bool = False
+    # OpenRouter provider routing (ignorado pelos demais provedores): ordem de upstreams
+    # preferidos. allow_provider_fallbacks=False fixa no primeiro que responder de
+    # `provider_order` (429 do upstream vira erro em vez de reroute).
+    provider_order: tuple[str, ...] = ()
+    allow_provider_fallbacks: bool = True
 
 
 def model_capabilities_dict(cfg: "ModelConfig") -> dict[str, bool]:
@@ -35,6 +40,11 @@ def model_capabilities_dict(cfg: "ModelConfig") -> dict[str, bool]:
         "video_input": cfg.supports_video_input,
         "reasoning": cfg.reasoning or cfg.thinking,
     }
+
+
+def round_cost_up(value: float) -> float:
+    """Round a USD amount UP to COST_DECIMAL_PLACES (never under-bills)."""
+    return math.ceil(value * COST_SCALE) / COST_SCALE
 
 
 def compute_cost_usd(usage: dict[str, Any] | None, cfg: ModelConfig) -> float:
@@ -55,7 +65,7 @@ def compute_cost_usd(usage: dict[str, Any] | None, cfg: ModelConfig) -> float:
         + cached * cfg.cached_input_price_per_1m
         + output * cfg.output_price_per_1m
     ) / 1_000_000
-    return math.ceil(raw * COST_SCALE) / COST_SCALE
+    return round_cost_up(raw)
 
 
 # LangChain `response_metadata.model_provider` uses different names than our registry.
@@ -70,6 +80,7 @@ PROVIDER_ALIASES: dict[str, str] = {
     "chat_cerebras": "cerebras",
     "chat_nvidia": "nvidia",
     "chat_deepseek": "deepseek",
+    "chat_openrouter": "openrouter",
 }
 
 
@@ -182,7 +193,16 @@ class Models:
             cached_input_price_per_1m=0.0375,
             output_price_per_1m=0.30,
         )
-        LLAMA_4_SCOUT = ModelConfig("meta-llama/llama-4-scout-17b-16e-instruct", "groq")
+        # Transcrição de áudio (ver `core/agents/media.py`). NÃO é chat model: não passa por
+        # `init_model` e é cobrado por HORA DE ÁUDIO, não por token — por isso os campos de
+        # preço ficam zerados aqui e a conta sai de `WHISPER_USD_PER_HOUR`. Substituiu o
+        # `LLAMA_4_SCOUT`, que estava registrado sem preço nenhum e nunca era referenciado:
+        # modelo sem preço no registro lê custo ZERO em silêncio, e o teto de gasto some.
+        WHISPER_LARGE_V3_TURBO = ModelConfig(
+            "whisper-large-v3-turbo",
+            "groq",
+            supports_audio_input=True,
+        )
 
     class DeepSeek:
         # Modelos atuais (substituem deepseek-chat / deepseek-reasoner):
@@ -207,6 +227,42 @@ class Models:
             input_price_per_1m=0.435,
             cached_input_price_per_1m=0.003625,
             output_price_per_1m=0.87,
+        )
+
+    class OpenRouter:
+        # Gateway multi-provider (API OpenAI-compatible). `model_id` é o slug do OpenRouter e
+        # `provider_order` fixa o upstream preferido — o mesmo modelo é servido por dezenas de
+        # provedores com preço/latência diferentes. O pricing abaixo é o do upstream preferido
+        # (fallback do cálculo); quando o OpenRouter reporta `usage.cost`, a contabilização usa
+        # o valor REAL cobrado pelo upstream roteado (ver repositories/agents/usage.py).
+        # Preços: https://openrouter.ai/deepseek/deepseek-v4-flash-0731
+        DEEPSEEK_V4_FLASH_0731 = ModelConfig(
+            "deepseek/deepseek-v4-flash-0731",
+            "openrouter",
+            reasoning=True,
+            reasoning_effort="high",
+            input_price_per_1m=0.14,
+            cached_input_price_per_1m=0.028,
+            output_price_per_1m=0.28,
+            provider_order=("novita",),
+            allow_provider_fallbacks=True,
+        )
+        # Os olhos e os ouvidos de um atendente text-only. Áudio, imagem, vídeo e PDF viram
+        # texto aqui antes de entrar no prompt dele (ver `core/agents/media.py`). Pelo
+        # OpenRouter de propósito: reusa o `ChatOpenRouter` que já existe, não custa
+        # dependência nova e o custo cai em `agent_message_usage` pelo `usage_recorder` de
+        # sempre — sem uma linha de contabilidade nova.
+        GEMINI_3_7_FLASH = ModelConfig(
+            "google/gemini-3.7-flash",
+            "openrouter",
+            thinking=True,
+            input_price_per_1m=0.375,
+            cached_input_price_per_1m=0.0375,
+            output_price_per_1m=1.875,
+            supports_image_input=True,
+            supports_pdf_input=True,
+            supports_audio_input=True,
+            supports_video_input=True,
         )
 
     class NVIDIA:

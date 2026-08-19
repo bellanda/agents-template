@@ -42,6 +42,11 @@ export const enrichAgent = (agent: AgentModel): AgentModel => {
   if (desc.includes("google")) providers.push("google");
   if (desc.includes("nvidia")) providers.push("nvidia");
   if (desc.includes("cerebras")) providers.push("cerebras");
+  // OpenRouter é gateway: mostra o logo dele e, quando a descrição cita o upstream
+  // roteado (Baseten, DeepInfra…), o logo do upstream ao lado.
+  if (desc.includes("openrouter")) providers.push("openrouter");
+  if (desc.includes("baseten")) providers.push("baseten");
+  if (desc.includes("deepinfra")) providers.push("deepinfra");
 
   return { ...agent, chef, chefSlug, providers };
 };
