@@ -132,6 +132,29 @@ code {
   --radius-4xl: calc(var(--radius) + 16px);
 }
 
+/* ToggleCard (gate frontend, ref toggle-card.md) — orbit beam + status dot */
+@theme {
+  --animate-tc-beam: tc-beam 5s linear infinite;
+  --animate-tc-dot: tc-dot 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+
+  @keyframes tc-beam {
+    to {
+      offset-distance: 100%;
+    }
+  }
+  @keyframes tc-dot {
+    0%,
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+    50% {
+      opacity: 0.55;
+      transform: scale(0.75);
+    }
+  }
+}
+
 @layer base {
   * {
     @apply border-border outline-ring/50;
