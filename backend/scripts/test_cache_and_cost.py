@@ -50,12 +50,10 @@ USER_TURN_2 = "E em relação a financiamento, qual taxa vocês trabalham hoje?"
 
 WAIT_BETWEEN_TURNS_S = 10
 
+# A stack roda um modelo de chat só — o que este script mede hoje é cache e custo dele
+# ao longo de dois turnos, não mais comparação entre provedores.
 CASES: list[tuple[str, ModelConfig]] = [
-    ("OpenAI / GPT-5.4 nano", Models.OpenAI.GPT_5_4_NANO),
-    ("Google / Gemini 3 Flash", Models.Google.GEMINI_3_FLASH_PREVIEW),
-    ("Groq / GPT-OSS 120B", Models.Groq.GPT_OSS_120B),
-    ("Chutes / Kimi K2.6 TEE", Models.Chutes.KIMI_K2_6_TEE),
-    ("Chutes / Gemma 4 31B TEE", Models.Chutes.GEMMA_4_31B_TEE),
+    ("OpenRouter / GLM 5.3 Flash", Models.OpenRouter.GLM_5_3_FLASH),
 ]
 
 

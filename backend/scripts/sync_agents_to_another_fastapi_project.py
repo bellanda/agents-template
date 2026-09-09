@@ -131,14 +131,9 @@ def print_post_install(target: Path) -> None:
 1. pyproject.toml — add dependencies:
 
     "langchain>=1.2.10",
-    "langchain-cerebras>=0.8.2",
     "langchain-community>=0.4.1",
     "langchain-core>=1.2.17",
-    "langchain-deepseek>=1.0.1",
-    "langchain-google-genai>=4.2.1",
-    "langchain-groq>=1.1.2",
-    "langchain-nvidia-ai-endpoints>=1.1.0",
-    "langchain-openai>=1.1.10",
+    "langchain-openai>=1.1.10",   # ChatOpenRouter herda de ChatOpenAI
     "langgraph>=1.0.10",
     "langgraph-checkpoint-postgres>=3.0.4",
     "markitdown[all]>=0.1.5",
@@ -210,15 +205,8 @@ def print_post_install(target: Path) -> None:
 6. .env — add AI provider keys you need:
 
     # Pick the providers your agents use:
-    OPENAI_API_KEY=
-    GOOGLE_API_KEY=
-    ANTHROPIC_API_KEY=
-    NVIDIA_API_KEY=
-    CHUTES_API_KEY=
-    CEREBRAS_API_KEY=
-    GROQ_API_KEY=
-    OPENROUTER_API_KEY=
-    DEEPSEEK_API_KEY=
+    OPENROUTER_API_KEY=   # gateway único de chat
+    GROQ_API_KEY=         # só transcrição (Whisper)
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 """)

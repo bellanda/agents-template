@@ -10,9 +10,9 @@ COST_SCALE = 10**COST_DECIMAL_PLACES
 class ModelConfig:
     model_id: str
     provider: str
-    reasoning: bool = False  # emits reasoning_content in stream (Chutes/Cerebras)
-    thinking: bool = False  # NVIDIA: chat_template_kwargs; Google: include_thoughts
-    # OpenAI Responses API: none | low | medium | high | xhigh (see OpenAI reasoning docs)
+    # Liga o reasoning no upstream. `reasoning_effort` (low|medium|high) é mais
+    # específico e vence quando os dois vêm preenchidos.
+    reasoning: bool = False
     reasoning_effort: str | None = None
     # Pricing in USD per 1M tokens. cached_input_price applies when provider reports cache_read.
     input_price_per_1m: float = 0.0
@@ -38,7 +38,7 @@ def model_capabilities_dict(cfg: "ModelConfig") -> dict[str, bool]:
         "pdf_input": cfg.supports_pdf_input,
         "audio_input": cfg.supports_audio_input,
         "video_input": cfg.supports_video_input,
-        "reasoning": cfg.reasoning or cfg.thinking,
+        "reasoning": cfg.reasoning,
     }
 
 
@@ -71,16 +71,11 @@ def compute_cost_usd(usage: dict[str, Any] | None, cfg: ModelConfig) -> float:
 # LangChain `response_metadata.model_provider` uses different names than our registry.
 # Map the response value back to the registry's canonical provider key.
 PROVIDER_ALIASES: dict[str, str] = {
-    "google_genai": "google",
-    "google_vertexai": "google",
-    "openai_chat": "openai",
-    "openai_responses": "openai",
-    "chat_openai": "openai",
-    "chat_groq": "groq",
-    "chat_cerebras": "cerebras",
-    "chat_nvidia": "nvidia",
-    "chat_deepseek": "deepseek",
+    "openai_chat": "openrouter",
+    "openai_responses": "openrouter",
+    "chat_openai": "openrouter",
     "chat_openrouter": "openrouter",
+    "chat_groq": "groq",
 }
 
 
@@ -111,7 +106,7 @@ def find_model_config(provider: str, model_id: str) -> ModelConfig | None:
 def find_model_config_by_id(model_id: str) -> ModelConfig | None:
     """Lookup a ModelConfig by model_id alone (provider-agnostic).
 
-    The org-configurable attendant stores only a model_id (e.g. "deepseek-v4-flash");
+    The org-configurable attendant stores only a model_id (e.g. "z-ai/glm-5.3-flash");
     this resolves it to the full config so the dispatcher can instantiate it.
     """
     for namespace in vars(Models).values():
@@ -124,161 +119,57 @@ def find_model_config_by_id(model_id: str) -> ModelConfig | None:
 
 
 class Models:
-    """Model registry. Use init_model(Models.Provider.NAME) in each agent to instantiate."""
+    """Model registry. Use init_model(Models.OpenRouter.NAME) in each agent to instantiate."""
 
-    class Chutes:
-        KIMI_K2_6_TEE = ModelConfig(
-            "moonshotai/Kimi-K2.6-TEE",
-            "chutes",
-            reasoning=True,
-            input_price_per_1m=0.95,
-            cached_input_price_per_1m=0.95,
-            output_price_per_1m=4.00,
-        )
-        QWEN_3_6_27B_TEE = ModelConfig(
-            "Qwen/Qwen3.6-27B-TEE",
-            "chutes",
-            reasoning=True,
-            input_price_per_1m=0.50,
-            cached_input_price_per_1m=0.50,
-            output_price_per_1m=2.00,
-        )
-        GEMMA_4_31B_TEE = ModelConfig(
-            "google/gemma-4-31B-turbo-TEE",
-            "chutes",
-            reasoning=True,
-            input_price_per_1m=0.13,
-            cached_input_price_per_1m=0.13,
-            output_price_per_1m=0.38,
-        )
-
-    class Google:
-        GEMINI_3_FLASH_PREVIEW = ModelConfig(
-            "gemini-3-flash-preview",
-            "google",
-            thinking=True,
-            input_price_per_1m=0.50,
-            cached_input_price_per_1m=0.05,
-            output_price_per_1m=3.00,
-            supports_image_input=True,
-            supports_pdf_input=True,
-            supports_audio_input=True,
-            supports_video_input=True,
-        )
-
-    class OpenAI:
-        GPT_5_4_NANO = ModelConfig(
-            "gpt-5.4-nano",
-            "openai",
+    class OpenRouter:
+        # Gateway multi-provider (API OpenAI-compatible) e ÚNICO caminho de chat da stack.
+        # `model_id` é o slug do OpenRouter e `provider_order` fixa os upstreams aceitos —
+        # o mesmo modelo é servido por dezenas de provedores com preço, quantização e
+        # jurisdição diferentes. O pricing abaixo é o do primeiro da ordem (fallback do
+        # cálculo); quando o OpenRouter reporta `usage.cost`, a contabilização usa o valor
+        # REAL cobrado pelo upstream roteado.
+        #
+        # Multimodal nativo: o MESMO modelo conversa e lê a imagem que o usuário manda, e é
+        # por isso que `media.py` não tem um "modelo de visão" próprio. As flags de
+        # capacidade abaixo são o que liga/desliga cada ramo de `_content_parts` — trocar
+        # de modelo aqui reconfigura o enriquecimento de mídia inteiro, sem tocar em media.py.
+        GLM_5_3_FLASH = ModelConfig(
+            "z-ai/glm-5.3-flash",
+            "openrouter",
             reasoning=True,
             reasoning_effort="high",
-            input_price_per_1m=0.20,
-            cached_input_price_per_1m=0.02,
-            output_price_per_1m=1.25,
+            input_price_per_1m=0.15,
+            output_price_per_1m=0.50,
             supports_image_input=True,
+            supports_video_input=True,
+            # GLM 5.3 Flash NÃO aceita PDF nem áudio inline (o catálogo do OpenRouter
+            # declara text/image/video). Com isso o degrau "PDF/áudio → multimodal" fica
+            # desligado: áudio é Whisper ou nada, e PDF não é enriquecido. Um modelo com
+            # `file`/`audio` (ex.: google/gemini-3.8-flash) religa os dois só trocando
+            # este bloco.
+            supports_pdf_input=False,
+            supports_audio_input=False,
+            # `allow_fallbacks=False` + esta ordem é declaração de JURISDIÇÃO, não de preço:
+            # os três upstreams são dos EUA. Com fallback ligado, um 429 reroteia em silêncio
+            # para qualquer provedor do slug — inclusive a própria Z.AI, na China. Três em
+            # fila faz o 429 rerotar DENTRO da jurisdição em vez de virar erro.
+            #
+            # A ordem não é por preço: CoreWeave e Fireworks servem em fp8, a DeepInfra em
+            # fp4 — quantização mais agressiva castiga instruction-following e tool calling,
+            # e a diferença entre o topo e o piso é US$ 0,075/M. BaseTen e a própria Z.AI
+            # ficam FORA de propósito: nenhuma das duas serve `tool_choice: required`
+            # neste modelo, e agente com ferramenta depende disso.
+            provider_order=("coreweave", "fireworks", "deepinfra"),
+            allow_provider_fallbacks=False,
         )
 
     class Groq:
-        GPT_OSS_120B = ModelConfig(
-            "openai/gpt-oss-120b",
-            "groq",
-            input_price_per_1m=0.15,
-            cached_input_price_per_1m=0.075,
-            output_price_per_1m=0.60,
-        )
-        GPT_OSS_20B = ModelConfig(
-            "openai/gpt-oss-20b",
-            "groq",
-            input_price_per_1m=0.075,
-            cached_input_price_per_1m=0.0375,
-            output_price_per_1m=0.30,
-        )
-        # Transcrição de áudio (ver `core/agents/media.py`). NÃO é chat model: não passa por
-        # `init_model` e é cobrado por HORA DE ÁUDIO, não por token — por isso os campos de
-        # preço ficam zerados aqui e a conta sai de `WHISPER_USD_PER_HOUR`. Substituiu o
-        # `LLAMA_4_SCOUT`, que estava registrado sem preço nenhum e nunca era referenciado:
-        # modelo sem preço no registro lê custo ZERO em silêncio, e o teto de gasto some.
+        # NÃO é chat model — só transcrição de áudio. Existe aqui para a contabilidade achar
+        # provider/model_id; a chamada é POST multipart em `media.py`, porque o endpoint de
+        # transcrição não é OpenAI-chat-compatible e não cabe no `init_model`.
+        # Cobrado por HORA de áudio, não por token — ver WHISPER_USD_PER_HOUR lá.
         WHISPER_LARGE_V3_TURBO = ModelConfig(
             "whisper-large-v3-turbo",
             "groq",
             supports_audio_input=True,
-        )
-
-    class DeepSeek:
-        # Modelos atuais (substituem deepseek-chat / deepseek-reasoner):
-        # ambos suportam tool calling, JSON output e reasoning (thinking mode).
-        # Pricing oficial: https://api-docs.deepseek.com/quick_start/pricing
-        # Context: 1M tokens · max output: 384K tokens.
-        V4_FLASH = ModelConfig(
-            "deepseek-v4-flash",
-            "deepseek",
-            reasoning=True,
-            reasoning_effort="high",
-            input_price_per_1m=0.14,
-            cached_input_price_per_1m=0.0028,
-            output_price_per_1m=0.28,
-        )
-        # V4 Pro: pricing reflete desconto de 75% válido até 2026-05-31.
-        V4_PRO = ModelConfig(
-            "deepseek-v4-pro",
-            "deepseek",
-            reasoning=True,
-            reasoning_effort="high",
-            input_price_per_1m=0.435,
-            cached_input_price_per_1m=0.003625,
-            output_price_per_1m=0.87,
-        )
-
-    class OpenRouter:
-        # Gateway multi-provider (API OpenAI-compatible). `model_id` é o slug do OpenRouter e
-        # `provider_order` fixa o upstream preferido — o mesmo modelo é servido por dezenas de
-        # provedores com preço/latência diferentes. O pricing abaixo é o do upstream preferido
-        # (fallback do cálculo); quando o OpenRouter reporta `usage.cost`, a contabilização usa
-        # o valor REAL cobrado pelo upstream roteado (ver repositories/agents/usage.py).
-        # Preços: https://openrouter.ai/deepseek/deepseek-v4-flash-0731
-        DEEPSEEK_V4_FLASH_0731 = ModelConfig(
-            "deepseek/deepseek-v4-flash-0731",
-            "openrouter",
-            reasoning=True,
-            reasoning_effort="high",
-            input_price_per_1m=0.14,
-            cached_input_price_per_1m=0.028,
-            output_price_per_1m=0.28,
-            provider_order=("novita",),
-            allow_provider_fallbacks=True,
-        )
-        # Os olhos e os ouvidos de um atendente text-only. Áudio, imagem, vídeo e PDF viram
-        # texto aqui antes de entrar no prompt dele (ver `core/agents/media.py`). Pelo
-        # OpenRouter de propósito: reusa o `ChatOpenRouter` que já existe, não custa
-        # dependência nova e o custo cai em `agent_message_usage` pelo `usage_recorder` de
-        # sempre — sem uma linha de contabilidade nova.
-        GEMINI_3_7_FLASH = ModelConfig(
-            "google/gemini-3.7-flash",
-            "openrouter",
-            thinking=True,
-            input_price_per_1m=0.375,
-            cached_input_price_per_1m=0.0375,
-            output_price_per_1m=1.875,
-            supports_image_input=True,
-            supports_pdf_input=True,
-            supports_audio_input=True,
-            supports_video_input=True,
-        )
-
-    class NVIDIA:
-        NEMOTRON_3_SUPER_120B_A12B = ModelConfig(
-            "nvidia/nemotron-3-super-120b-a12b",
-            "nvidia",
-            thinking=True,
-            input_price_per_1m=0,
-            cached_input_price_per_1m=0,
-            output_price_per_1m=0,
-        )
-        NEMOTRON_3_NANO_30B_A3B = ModelConfig(
-            "nvidia/nemotron-3-nano-30b-a3b",
-            "nvidia",
-            thinking=True,
-            input_price_per_1m=0,
-            cached_input_price_per_1m=0,
-            output_price_per_1m=0,
         )

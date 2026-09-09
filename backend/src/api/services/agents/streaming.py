@@ -377,10 +377,10 @@ async def stream_agent(
                 if chunk is None:
                     continue
                 raw_content = getattr(chunk, "content", None)
-                gemini_thinking = extract_thinking_from_content(raw_content)
+                inline_thinking = extract_thinking_from_content(raw_content)
                 content = normalize_chunk_text(raw_content)
                 additional = getattr(chunk, "additional_kwargs", None) or {}
-                reasoning_content = gemini_thinking + reasoning_from_additional_kwargs(additional)
+                reasoning_content = inline_thinking + reasoning_from_additional_kwargs(additional)
 
                 if reasoning_content:
                     if not reasoning_started:

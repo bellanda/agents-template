@@ -7,7 +7,7 @@ from api.core.agents.history_window import sliding_window_middleware
 from api.core.agents.models import Models, model_capabilities_dict
 from api.core.agents.schemas import AgentConfig
 
-PRIMARY_MODEL = Models.Groq.GPT_OSS_120B
+PRIMARY_MODEL = Models.OpenRouter.GLM_5_3_FLASH
 
 config = AgentConfig(
     name="Agente de Busca Web",

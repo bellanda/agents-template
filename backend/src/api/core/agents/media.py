@@ -4,9 +4,15 @@ O problema é sempre o mesmo em qualquer canal: o modelo de atendimento é de TE
 áudio, foto e PDF. Este módulo transforma bytes em frase ANTES do prompt, com uma cadeia de
 degraus e um piso:
 
-    áudio  → Whisper (Groq) → Gemini 3.7 Flash (aceita áudio) → None
-    imagem → Gemini 3.7 Flash                                 → None
-    PDF    → Gemini 3.7 Flash                                 → None
+    áudio  → Whisper (Groq) → modelo multimodal, SE ele aceitar áudio → None
+    imagem → modelo multimodal                                          → None
+    PDF    → modelo multimodal, SE ele aceitar PDF                      → None
+
+O "modelo multimodal" é o MESMO do atendimento (`VISION_MODEL`), não um modelo de visão
+à parte: o padrão da stack é multimodal nativo. Quais degraus existem de fato sai das
+flags de capacidade do `ModelConfig`, não de um `if` escrito aqui — com o GLM 5.3 Flash
+(text/image/video) o ramo de PDF e o degrau de queda do áudio nascem desligados, e um
+modelo com `file`/`audio` religa os dois sem tocar neste arquivo.
 
 Nada aqui levanta exceção e nada aqui conhece o canal: a entrada é `bytes` + `mime_type`, a
 saída é `str | None`. Quem chama decide o que fazer com o `None` — no WhatsApp vira um
@@ -36,7 +42,7 @@ from langchain_core.messages import HumanMessage
 
 from api.core.agents.callbacks import usage_recorder
 from api.core.agents.custom_providers import init_model
-from api.core.agents.models import Models, round_cost_up
+from api.core.agents.models import ModelConfig, Models, round_cost_up
 from api.core.logging import get_logger
 from api.models.agents.usage import AgentMessageUsage
 from api.repositories.agents.usage import insert_agent_message_usage
@@ -48,7 +54,8 @@ log = get_logger(__name__)
 # separá-las é o que permite responder "quanto custou ouvir áudio este mês".
 ENRICHMENT_AGENT_ID: Final = "media-enrichment"
 
-VISION_MODEL: Final = Models.OpenRouter.GEMINI_3_7_FLASH
+# O modelo do atendimento, não um modelo de visão separado — ele é multimodal nativo.
+VISION_MODEL: Final = Models.OpenRouter.GLM_5_3_FLASH
 VISION_MAX_TOKENS: Final = 512
 
 GROQ_TRANSCRIPTION_URL: Final = "https://api.groq.com/openai/v1/audio/transcriptions"
@@ -169,18 +176,26 @@ async def transcribe_audio(
     return None
 
 
-def _content_parts(content: bytes, mime_type: str, filename: str) -> list[dict[str, Any]] | None:
-    """As partes da mensagem multimodal, no formato que o OpenRouter espera por modalidade."""
+def _content_parts(
+    content: bytes, mime_type: str, filename: str, cfg: ModelConfig = VISION_MODEL
+) -> list[dict[str, Any]] | None:
+    """As partes da mensagem multimodal, no formato que o OpenRouter espera por modalidade.
+
+    Cada ramo é gateado pela capacidade DECLARADA do modelo. Mandar um PDF para um modelo
+    que não aceita `file` não degrada — o upstream recusa a request inteira, e o que o
+    usuário vê é o anexo sumir sem explicação. Melhor devolver `None` aqui e cair no
+    placeholder, que é uma falha legível.
+    """
     encoded = base64.b64encode(content).decode("ascii")
     bare = _bare_mime(mime_type)
     family = _family(mime_type)
 
-    if family == "image":
+    if family == "image" and cfg.supports_image_input:
         return [
             {"type": "text", "text": IMAGE_PROMPT},
             {"type": "image_url", "image_url": {"url": f"data:{bare};base64,{encoded}"}},
         ]
-    if family == "audio":
+    if family == "audio" and cfg.supports_audio_input:
         return [
             {"type": "text", "text": AUDIO_PROMPT},
             {
@@ -188,7 +203,7 @@ def _content_parts(content: bytes, mime_type: str, filename: str) -> list[dict[s
                 "input_audio": {"data": encoded, "format": bare.split("/")[-1]},
             },
         ]
-    if bare == PDF_MIME:
+    if bare == PDF_MIME and cfg.supports_pdf_input:
         return [
             {"type": "text", "text": DOCUMENT_PROMPT},
             {
@@ -308,6 +323,11 @@ async def media_to_text(
                 user_id=user_id,
             )
             return result.text
+        # O degrau de queda só existe se o modelo aceitar áudio de verdade. Com um modelo
+        # text/image (o GLM 5.3 Flash é assim), `describe_media` devolveria `None` de
+        # qualquer jeito — mas o log diria que houve fallback, e não houve.
+        if not VISION_MODEL.supports_audio_input:
+            return None
         log.info("enrichment_falling_back_to_vision", message_id=message_id)
 
     return await describe_media(
