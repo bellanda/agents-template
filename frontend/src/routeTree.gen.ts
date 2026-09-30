@@ -9,29 +9,29 @@
 // Additionally, you should also exclude this file from your linter and/or formatter to prevent it from being checked or modified.
 
 import { Route as rootRouteImport } from './routes/__root'
-import { Route as React19DemoRouteImport } from './routes/react19-demo'
 import { Route as IndexRouteImport } from './routes/index'
-import { Route as ChatAgentIdRouteImport } from './routes/chat/$agentId'
+import { Route as React19DemoRouteImport } from './routes/react19-demo'
 import { Route as AgentAgentIdRouteImport } from './routes/agent/$agentId'
+import { Route as ChatAgentIdRouteImport } from './routes/chat/$agentId'
 
-const React19DemoRoute = React19DemoRouteImport.update({
-  id: '/react19-demo',
-  path: '/react19-demo',
-  getParentRoute: () => rootRouteImport,
-} as any)
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
   getParentRoute: () => rootRouteImport,
 } as any)
-const ChatAgentIdRoute = ChatAgentIdRouteImport.update({
-  id: '/chat/$agentId',
-  path: '/chat/$agentId',
+const React19DemoRoute = React19DemoRouteImport.update({
+  id: '/react19-demo',
+  path: '/react19-demo',
   getParentRoute: () => rootRouteImport,
 } as any)
 const AgentAgentIdRoute = AgentAgentIdRouteImport.update({
   id: '/agent/$agentId',
   path: '/agent/$agentId',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const ChatAgentIdRoute = ChatAgentIdRouteImport.update({
+  id: '/chat/$agentId',
+  path: '/chat/$agentId',
   getParentRoute: () => rootRouteImport,
 } as any)
 
@@ -71,13 +71,6 @@ export interface RootRouteChildren {
 
 declare module '@tanstack/react-router' {
   interface FileRoutesByPath {
-    '/react19-demo': {
-      id: '/react19-demo'
-      path: '/react19-demo'
-      fullPath: '/react19-demo'
-      preLoaderRoute: typeof React19DemoRouteImport
-      parentRoute: typeof rootRouteImport
-    }
     '/': {
       id: '/'
       path: '/'
@@ -85,11 +78,11 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof IndexRouteImport
       parentRoute: typeof rootRouteImport
     }
-    '/chat/$agentId': {
-      id: '/chat/$agentId'
-      path: '/chat/$agentId'
-      fullPath: '/chat/$agentId'
-      preLoaderRoute: typeof ChatAgentIdRouteImport
+    '/react19-demo': {
+      id: '/react19-demo'
+      path: '/react19-demo'
+      fullPath: '/react19-demo'
+      preLoaderRoute: typeof React19DemoRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/agent/$agentId': {
@@ -97,6 +90,13 @@ declare module '@tanstack/react-router' {
       path: '/agent/$agentId'
       fullPath: '/agent/$agentId'
       preLoaderRoute: typeof AgentAgentIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/chat/$agentId': {
+      id: '/chat/$agentId'
+      path: '/chat/$agentId'
+      fullPath: '/chat/$agentId'
+      preLoaderRoute: typeof ChatAgentIdRouteImport
       parentRoute: typeof rootRouteImport
     }
   }
