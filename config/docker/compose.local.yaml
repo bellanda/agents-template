@@ -1,0 +1,52 @@
+services:
+  postgres:
+    # Published on loopback so host-only dev (uvicorn + `bun dev`) reaches the DB.
+    ports:
+      - "127.0.0.1:5432:5432"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4g
+          pids: 512
+        reservations:
+          cpus: "0.25"
+          memory: 512m
+
+  backend:
+    environment:
+      # Granian sizing for this env. Pool max_size (yaml) is per process: workers x max_size
+      # must stay under Postgres max_connections (100 default).
+      GRANIAN_WORKERS: 2
+      GRANIAN_WORKERS_LIFETIME: 7200
+      GRANIAN_WORKERS_KILL_TIMEOUT: 60
+      GRANIAN_WORKERS_MAX_RSS: 819
+    # Loopback only (not exposed to the LAN): lets `bun dev` on the host (:5173) proxy to the API.
+    ports:
+      - "127.0.0.1:8000:8000"
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4g
+          pids: 4096
+        reservations:
+          cpus: "0.25"
+          memory: 512m
+
+  nginx:
+    build:
+      args:
+        # Mirror the `vite:` block of config/app/local.yaml — THESE decide the bundle (the image
+        # build cannot read the yaml). Loopback/dev: must match the published nginx port.
+        VITE_BACKEND_URL: http://localhost:19080
+        VITE_FRONTEND_URL: http://localhost:19080
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+          pids: 512
+        reservations:
+          cpus: "0.1"
+          memory: 128m

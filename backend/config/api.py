@@ -1,18 +1,13 @@
 import tomllib
 
-from dotenv import load_dotenv
-
 from config import paths
-from config.tools import getenv_or_raise_exception
-
-load_dotenv(override=True)
 
 with open(paths.BASE_DIR / "pyproject.toml", "rb") as f:
     pyproject_data = tomllib.load(f)
 
 
 class APIConfig:
-    """Core Server Configuration: Network, Metadata and Uploads"""
+    """Core server configuration: metadata, API prefix, upload paths and limits"""
 
     # ----------------------------------------------------------------------------
     # 📦 CORE APPLICATION SETTINGS
@@ -21,18 +16,10 @@ class APIConfig:
     PROJECT_DESCRIPTION = pyproject_data["project"]["description"]
     PROJECT_VERSION = pyproject_data["project"]["version"]
 
-    # ----------------------------------------------------------------------------
-    # 🌐 SERVER CONFIGURATION
-    # ----------------------------------------------------------------------------
-    HOST: str = getenv_or_raise_exception("HOST")
-    PORT: int = int(getenv_or_raise_exception("PORT"))
+    # Network bind (host/port/workers) is NOT here: Granian takes GRANIAN_* from the compose
+    # `environment:` (config/docker/compose.<env>.yaml) and uvicorn's dev entrypoint in main.py
+    # binds 0.0.0.0:8000.
     API_V1_PREFIX = "/api/v1"
-
-    # Granian specific
-    GRANIAN_INTERFACE: str = getenv_or_raise_exception("GRANIAN_INTERFACE")
-    GRANIAN_HTTP: str = getenv_or_raise_exception("GRANIAN_HTTP")
-    GRANIAN_LOOP: str = getenv_or_raise_exception("GRANIAN_LOOP")
-    GRANIAN_WORKERS: int = int(getenv_or_raise_exception("GRANIAN_WORKERS"))
 
     # ----------------------------------------------------------------------------
     # 📁 UPLOAD PATHS, SIZE LIMITS & QUOTAS

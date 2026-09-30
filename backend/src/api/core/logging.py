@@ -4,16 +4,15 @@ NDJSON in prod, ConsoleRenderer in dev (TTY-aware), QueueHandler async-safe.
 Third-party libs (asyncpg, granian, uvicorn) flow through the same
 ProcessorFormatter, so every line — app or lib — has the same shape.
 
-Config is read from environment variables (the template has no Pydantic
-settings module): LOG_LEVEL, LOG_FORMAT (auto|json|console), SERVICE_NAME,
-APP_ENV. Defaults are safe — logging never fails to start.
+Config comes from `settings.logging` (config/app/{env}.yaml): service_name, app_env, level,
+format ("" = auto | json | console) and per-lib levels (`level_asyncpg`). The first three feed
+every log line, so they are not optional.
 
 See `.claude/rules/logging.md` for the full spec.
 """
 
 import logging
 import logging.config
-import os
 import queue
 import sys
 from logging.handlers import QueueHandler, QueueListener
@@ -21,6 +20,8 @@ from typing import Any
 
 import orjson
 import structlog
+
+from config.settings import settings
 
 LOG_QUEUE_MAXSIZE = -1  # unbounded; level filtering happens before enqueue
 THIRD_PARTY_DEFAULTS = {
@@ -48,10 +49,10 @@ class _RawQueueHandler(QueueHandler):
 
 
 class LogConfig:
-    SERVICE_NAME: str = os.getenv("SERVICE_NAME", "agents-template")
-    APP_ENV: str = os.getenv("APP_ENV", "local")
-    LOG_LEVEL: str = os.getenv("LOG_LEVEL", "INFO").upper()
-    LOG_FORMAT: str = (os.getenv("LOG_FORMAT") or "auto").lower()
+    SERVICE_NAME: str = settings.logging.service_name
+    APP_ENV: str = settings.logging.app_env
+    LOG_LEVEL: str = settings.logging.level.upper()
+    LOG_FORMAT: str = (settings.logging.format or "auto").lower()
 
     @classmethod
     def is_json(cls) -> bool:
@@ -143,9 +144,10 @@ def setup_logging() -> None:
     root.setLevel(LogConfig.LOG_LEVEL)
 
     for name, default_level in THIRD_PARTY_DEFAULTS.items():
-        # Allow per-lib override via env, e.g. LOG_LEVEL_ASYNCPG=DEBUG.
-        env_key = f"LOG_LEVEL_{name.upper().replace('.', '_')}"
-        level = os.getenv(env_key, default_level)
+        # settings.logging exposes `level_<lib>` (only `level_asyncpg` today); other libs
+        # keep their default. Add a field to LoggingSettings + the yamls to tune one.
+        yaml_attr = f"level_{name.lower().replace('.', '_')}"
+        level = getattr(settings.logging, yaml_attr, default_level)
         logger = logging.getLogger(name)
         logger.setLevel(level)
         logger.propagate = True

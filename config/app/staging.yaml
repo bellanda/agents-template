@@ -1,0 +1,53 @@
+postgres:
+  # DSN (secret, carries the password): `.env > DATABASE_URL` on the host; set by
+  # config/docker/compose.<env>.yaml in docker. Only pool tuning lives here.
+  pool:
+    min_size: 2
+    # PER PROCESS — total = GRANIAN_WORKERS (compose override) x max_size; keep under Postgres max_connections.
+    max_size: 10
+    max_queries: 50000
+    max_inactive_connection_lifetime: 300.0
+    command_timeout: 60.0
+    timeout: 30.0
+
+logging:
+  service_name: agents-template-backend
+  app_env: staging
+  level: INFO
+  format: ""
+  level_asyncpg: WARNING
+
+cors:
+  # Credentialed CORS (allow_credentials: true) -> allow_origins lists ONLY trusted first-party
+  # frontends; a wildcard/third-party origin would let that site send cookie-bearing requests.
+  allow_origins:
+    - https://agents-template-temporario.bellanda.app
+  allow_credentials: true
+  allow_methods: ["*"]
+  allow_headers: ["*"]
+  expose_headers: ["Content-Length", "X-Requested-With"]
+  max_age: 86400
+
+openrouter:
+  # Single chat gateway (text/image/video). The API key is `.env > OPENROUTER_API_KEY`.
+  api_base: https://openrouter.ai/api/v1
+  # Optional attribution headers (HTTP-Referer / X-Title) for OpenRouter's app ranking.
+  site_url: ""
+  app_title: ""
+
+agents:
+  # Per-chunk previews in services/agents/streaming.py. Off outside local: prompts and tool
+  # payloads would land in shared logs.
+  stream_debug: false
+  # Process-wide cap on concurrent one-shot LLM calls (core/agents/llm.py).
+  max_concurrent_llm: 8
+  # Attempts on transient provider errors (429/5xx/timeout) only.
+  llm_max_retries: 3
+  # In-process memo of tenant agent instructions (seconds); saves invalidate this worker.
+  tenant_config_ttl_seconds: 30
+
+vite:
+  # VITE_* defaults (build-time). On Docker, compose.<env>.yaml > nginx.build.args decides the
+  # bundle (the image build cannot read this file) — mirror any change there.
+  backend_url: https://agents-template-temporario.bellanda.app
+  frontend_url: https://agents-template-temporario.bellanda.app

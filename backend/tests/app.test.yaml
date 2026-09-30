@@ -1,0 +1,43 @@
+# Hermetic config for pytest: a conftest must set `APP_YAML_PATH` to this file BEFORE importing
+# any `api`/`config` module (Settings loads at import). Mirrors config/app/*.yaml section for
+# section — Settings is `extra="forbid"`, so a missing/extra section kills the whole collect.
+# Secrets (DATABASE_URL, provider keys) are injected by the conftest via env, never stored here.
+postgres:
+  pool:
+    min_size: 1
+    max_size: 5
+    max_queries: 50000
+    max_inactive_connection_lifetime: 300.0
+    command_timeout: 60.0
+    timeout: 10.0
+
+logging:
+  service_name: agents-template-backend-test
+  app_env: test
+  level: WARNING
+  format: ""
+  level_asyncpg: WARNING
+
+cors:
+  allow_origins:
+    - http://localhost:3000
+  allow_credentials: true
+  allow_methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"]
+  allow_headers: ["Content-Type", "Authorization"]
+  expose_headers: ["Content-Type"]
+  max_age: 600
+
+openrouter:
+  api_base: https://openrouter.ai/api/v1
+  site_url: ""
+  app_title: ""
+
+agents:
+  stream_debug: false
+  max_concurrent_llm: 8
+  llm_max_retries: 3
+  tenant_config_ttl_seconds: 30
+
+vite:
+  backend_url: http://localhost
+  frontend_url: http://localhost

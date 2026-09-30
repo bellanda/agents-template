@@ -1,0 +1,164 @@
+include:
+  # Two orthogonal axes, both in `.env`:
+  #   ENVIRONMENT  → per-env app config (workers, resources, VITE_* build args).
+  #   INGRESS_MODE → ingress topology (nginx ports + networks). Default loopback so dev boots
+  #                  without setting anything; staging/prod MUST set it in `.env`.
+  - path: config/docker/compose.${ENVIRONMENT}.yaml
+  - path: config/docker/ingress.${INGRESS_MODE:-loopback}.yaml
+
+x-no-new-privs: &no-new-privs
+  security_opt:
+    - no-new-privileges:true
+
+# `${VAR}` interpolation here is ONLY for secrets from `.env`; anything env-aware is a literal
+# in config/docker/compose.<env>.yaml (skill python-config-bootstrap).
+services:
+  postgres:
+    container_name: agents-template-postgres
+    image: postgres:18.4-trixie
+    <<: *no-new-privs
+    environment:
+      POSTGRES_DB: agents_template
+      POSTGRES_USER: agents_template
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+    volumes:
+      - pgdata:/var/lib/postgresql
+    networks:
+      - internal
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -d agents_template -U agents_template"]
+      interval: 1s
+      timeout: 1s
+      retries: 10
+    restart: always
+    stop_grace_period: 60s
+    logging:
+      driver: json-file
+      options:
+        max-size: "30m"
+        max-file: "5"
+        compress: "true"
+
+  migrate:
+    container_name: agents-template-migrate
+    image: ghcr.io/amacneil/dbmate:2.33.0
+    <<: *no-new-privs
+    command: ["--wait", "up"]
+    environment:
+      DATABASE_URL: postgres://agents_template:${POSTGRES_PASSWORD}@postgres:5432/agents_template?sslmode=disable
+    volumes:
+      - ./backend/db:/db:ro
+    networks:
+      - internal
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      - /tmp:size=16M,mode=1777
+    depends_on:
+      postgres:
+        condition: service_healthy
+    logging:
+      driver: json-file
+      options:
+        max-size: "5m"
+        max-file: "3"
+        compress: "true"
+
+  backend:
+    container_name: agents-template-backend
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+      args:
+        APP_UID: ${APP_UID:-1000}
+    <<: *no-new-privs
+    user: "${APP_UID:-1000}:1000"
+    env_file:
+      - .env
+    environment:
+      # Beats the host-style DATABASE_URL that `.env` may carry for bare-metal dev: the compose
+      # `environment:` wins over `env_file:`, and config/tools.py loads `.env` with override=False.
+      DATABASE_URL: postgres://agents_template:${POSTGRES_PASSWORD}@postgres:5432/agents_template?sslmode=disable
+      # Granian constants; per-env sizing (workers, RSS, lifetime) is in compose.<env>.yaml.
+      GRANIAN_INTERFACE: asgi
+      GRANIAN_HTTP: auto
+      GRANIAN_LOOP: uvloop
+    volumes:
+      - ./config/app/${ENVIRONMENT}.yaml:/app/app.yaml:ro
+      - ./backend/uploads:/app/uploads
+    networks:
+      - internal
+    cap_drop: [ALL]
+    read_only: true
+    tmpfs:
+      # Chat attachments are spooled to /tmp (routes/agents/chat.py) before MarkItDown runs.
+      - /tmp:size=128M,mode=1777
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    healthcheck:
+      test:
+        - CMD
+        - python3
+        - -c
+        - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+    restart: always
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "10"
+        compress: "true"
+
+  nginx:
+    container_name: agents-template-nginx
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      target: nginx-runtime
+    <<: *no-new-privs
+    volumes:
+      - ./config/nginx/snippets:/etc/nginx/snippets:ro
+      - ./config/nginx/conf.d/shared.conf:/etc/nginx/conf.d/00-shared.conf:ro
+      # Server block picked by INGRESS_MODE (loopback/gateway: plain :80).
+      - ./config/nginx/conf.d/server.${INGRESS_MODE:-loopback}.conf:/etc/nginx/conf.d/default.conf:ro
+    networks:
+      - internal
+    cap_drop: [ALL]
+    cap_add:
+      - NET_BIND_SERVICE
+      - CHOWN
+      - DAC_OVERRIDE
+      - SETGID
+      - SETUID
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://localhost/healthz >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 3
+      start_period: 10s
+    restart: always
+    stop_grace_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "10"
+        compress: "true"
+
+volumes:
+  pgdata:
+
+networks:
+  internal:
+    driver: bridge

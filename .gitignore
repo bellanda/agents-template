@@ -31,6 +31,10 @@ temp
 *.temp*
 *temp.*
 
+# Sources-of-truth versionadas (overridem `*.local.*` acima)
+!config/app/local.yaml
+!config/docker/compose.local.yaml
+
 
 # Dependências e cache de build. `frontend/.gitignore` já cobre o de lá; esta linha pega o
 # node_modules/.vite que o `bunx` cria na raiz quando rodado fora de frontend/.

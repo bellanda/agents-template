@@ -1,0 +1,46 @@
+services:
+  postgres:
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4g
+          pids: 512
+        reservations:
+          cpus: "0.25"
+          memory: 512m
+
+  backend:
+    environment:
+      # Granian sizing for this env. Pool max_size (yaml) is per process: workers x max_size
+      # must stay under Postgres max_connections (100 default).
+      GRANIAN_WORKERS: 2
+      GRANIAN_WORKERS_LIFETIME: 3600
+      GRANIAN_WORKERS_KILL_TIMEOUT: 30
+      GRANIAN_WORKERS_MAX_RSS: 819
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4g
+          pids: 4096
+        reservations:
+          cpus: "0.25"
+          memory: 512m
+
+  nginx:
+    build:
+      args:
+        # Mirror the `vite:` block of config/app/staging.yaml — THESE decide the bundle (the image
+        # build cannot read the yaml).
+        VITE_BACKEND_URL: https://agents-template-temporario.bellanda.app
+        VITE_FRONTEND_URL: https://agents-template-temporario.bellanda.app
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 1g
+          pids: 512
+        reservations:
+          cpus: "0.1"
+          memory: 128m

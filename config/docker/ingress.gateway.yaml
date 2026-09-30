@@ -1,0 +1,17 @@
+# =============================================================================
+# INGRESS_MODE=gateway — app shares the host behind a central gateway.
+# nginx publishes NO host ports; the gateway reaches it over the external
+# `nginx-proxy-network` (e.g. agents-template-nginx:80) and terminates TLS.
+# Server block: server.gateway.conf (:80 plain, real-ip restored from the gateway).
+# Host prerequisite: `docker network create nginx-proxy-network`.
+# =============================================================================
+services:
+  nginx:
+    ports: []
+    networks:
+      - internal
+      - nginx-proxy-network
+
+networks:
+  nginx-proxy-network:
+    external: true

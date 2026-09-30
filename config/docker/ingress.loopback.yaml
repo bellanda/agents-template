@@ -1,0 +1,9 @@
+# =============================================================================
+# INGRESS_MODE=loopback — local dev on this machine.
+# nginx publishes :19080 on 127.0.0.1 only (high fixed port avoids clashing with :80 and
+# never leaks to the LAN). Plain HTTP, no TLS. Server block: server.loopback.conf.
+# =============================================================================
+services:
+  nginx:
+    ports:
+      - "127.0.0.1:19080:80"

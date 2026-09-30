@@ -1,37 +1,18 @@
+"""PostgreSQL connection layer for the API.
+
+- DSN single source of truth: `settings.database_url` (`.env > DATABASE_URL` on the host,
+  compose `environment:` in docker). It carries the password, so it is a secret.
+- Pool kwargs (asyncpg) come from `settings.postgres.pool` (yaml).
+- Schema is managed by dbmate (`backend/db/migrations/`); never created at startup.
+- orjson codec installed on every connection for fast json/jsonb.
+"""
+
 from collections.abc import AsyncGenerator
 
 import asyncpg
 import orjson
-from dotenv import load_dotenv
 
-from config.tools import getenv_or_raise_exception
-
-load_dotenv(override=True)
-
-
-class DatabaseConfig:
-    """PostgreSQL connection and pool configuration"""
-
-    POSTGRES_DB: str = getenv_or_raise_exception("POSTGRES_DB")
-    POSTGRES_USER: str = getenv_or_raise_exception("POSTGRES_USER")
-    POSTGRES_PASSWORD: str = getenv_or_raise_exception("POSTGRES_PASSWORD")
-    POSTGRES_HOST: str = getenv_or_raise_exception("POSTGRES_HOST")
-    POSTGRES_PORT: str = getenv_or_raise_exception("POSTGRES_PORT")
-    POSTGRES_DATABASE_URI: str = f"postgresql://{POSTGRES_USER}:{POSTGRES_PASSWORD}@{POSTGRES_HOST}:{POSTGRES_PORT}/{POSTGRES_DB}"
-
-    POSTGRES_POOL_MIN_SIZE: int = int(getenv_or_raise_exception("POSTGRES_POOL_MIN_SIZE"))
-    POSTGRES_POOL_MAX_SIZE: int = int(getenv_or_raise_exception("POSTGRES_POOL_MAX_SIZE"))
-    POSTGRES_POOL_MAX_QUERIES: int = int(getenv_or_raise_exception("POSTGRES_POOL_MAX_QUERIES"))
-    POSTGRES_POOL_MAX_INACTIVE_CONNECTION_LIFETIME: float = float(
-        getenv_or_raise_exception("POSTGRES_POOL_MAX_INACTIVE_CONNECTION_LIFETIME")
-    )
-    POSTGRES_POOL_COMMAND_TIMEOUT: float = float(
-        getenv_or_raise_exception("POSTGRES_POOL_COMMAND_TIMEOUT")
-    )
-    POSTGRES_POOL_TIMEOUT: float = float(getenv_or_raise_exception("POSTGRES_POOL_TIMEOUT"))
-
-
-database_config = DatabaseConfig()
+from config.settings import settings
 
 # ----------------------------------------------------------------------------
 # 🛢️ DATABASE POOL MANAGEMENT
@@ -54,7 +35,7 @@ async def init_connection(conn: asyncpg.Connection) -> None:
 
 async def init_asyncpg_pool() -> None:
     """
-    Initializes the asyncpg connection pool using DatabaseConfig.
+    Initializes the asyncpg connection pool from `settings.postgres.pool` + `settings.database_url`.
 
     Includes advanced configurations for performance and stability:
     - min/max_size: Pool scaling boundaries
@@ -66,14 +47,15 @@ async def init_asyncpg_pool() -> None:
     """
     global asyncpg_pool
     if asyncpg_pool is None:
+        pool_cfg = settings.postgres.pool
         asyncpg_pool = await asyncpg.create_pool(
-            dsn=database_config.POSTGRES_DATABASE_URI,
-            min_size=database_config.POSTGRES_POOL_MIN_SIZE,
-            max_size=database_config.POSTGRES_POOL_MAX_SIZE,
-            max_queries=database_config.POSTGRES_POOL_MAX_QUERIES,
-            max_inactive_connection_lifetime=database_config.POSTGRES_POOL_MAX_INACTIVE_CONNECTION_LIFETIME,
-            timeout=database_config.POSTGRES_POOL_TIMEOUT,
-            command_timeout=database_config.POSTGRES_POOL_COMMAND_TIMEOUT,
+            dsn=settings.database_url.get_secret_value(),
+            min_size=pool_cfg.min_size,
+            max_size=pool_cfg.max_size,
+            max_queries=pool_cfg.max_queries,
+            max_inactive_connection_lifetime=pool_cfg.max_inactive_connection_lifetime,
+            timeout=pool_cfg.timeout,
+            command_timeout=pool_cfg.command_timeout,
             init=init_connection,
         )
 

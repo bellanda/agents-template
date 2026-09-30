@@ -1,0 +1,26 @@
+# Ephemeral Postgres for pytest (agents-template), started by check.sh.
+# Values must match the test DATABASE_URL set in backend/tests/conftest.py:
+#   postgres://postgres:postgres@localhost:5433/test_agents_template?sslmode=disable
+# Run: docker compose -p agents-template-tests -f compose.yml up -d --wait
+# Host port 5433 is shared by every project's test DB: only one suite may run at a time.
+services:
+  postgres-test:
+    image: postgres:18-trixie
+    container_name: agents-template-test-db
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: test_agents_template
+      TZ: UTC
+    ports:
+      - "5433:5432"
+    volumes:
+      - postgres-test-data:/var/lib/postgresql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres"]
+      interval: 1s
+      timeout: 1s
+      retries: 20
+
+volumes:
+  postgres-test-data:

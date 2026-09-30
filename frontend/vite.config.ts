@@ -27,7 +27,9 @@ const config = defineConfig({
   server: {
     proxy: {
       "/api": {
-        target: "http://localhost:8000",
+        // Dev-server proxy only. Same value as yaml `vite.backend_url` (host dev default);
+        // the docker bundle uses same-origin /api through nginx, so this never ships.
+        target: process.env.VITE_BACKEND_URL ?? "http://localhost:8000",
         changeOrigin: true,
       },
     },
