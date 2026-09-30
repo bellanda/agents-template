@@ -105,8 +105,15 @@ export interface TextInputContext {
 export interface PromptInputControllerProps {
   textInput: TextInputContext;
   attachments: AttachmentsContext;
+  /**
+   * Submits the form as if the user had pressed send. Registered by PromptInput: the hidden
+   * file input is a SIBLING of the form, so `fileInputRef.closest("form")` never reaches it.
+   */
+  requestSubmit: () => void;
   /** INTERNAL: Allows PromptInput to register its file textInput + "open" callback */
   __registerFileInput: (ref: RefObject<HTMLInputElement | null>, open: () => void) => void;
+  /** INTERNAL: Allows PromptInput to register its form submit callback */
+  __registerForm: (submit: () => void) => void;
 }
 
 const PromptInputController = createContext<PromptInputControllerProps | null>(null);
@@ -158,6 +165,8 @@ export const PromptInputProvider = ({
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   // oxlint-disable-next-line eslint(no-empty-function)
   const openRef = useRef<() => void>(() => {});
+  // oxlint-disable-next-line eslint(no-empty-function)
+  const submitRef = useRef<() => void>(() => {});
 
   const add = useCallback((files: File[] | FileList) => {
     const incoming = [...files];
@@ -241,9 +250,19 @@ export const PromptInputProvider = ({
     []
   );
 
+  const __registerForm = useCallback((submit: () => void) => {
+    submitRef.current = submit;
+  }, []);
+
+  const requestSubmit = useCallback(() => {
+    submitRef.current();
+  }, []);
+
   const controller = useMemo<PromptInputControllerProps>(
     () => ({
+      requestSubmit,
       __registerFileInput,
+      __registerForm,
       attachments,
       textInput: {
         clear: clearInput,
@@ -251,7 +270,7 @@ export const PromptInputProvider = ({
         value: textInput,
       },
     }),
-    [textInput, clearInput, attachments, __registerFileInput]
+    [textInput, clearInput, attachments, requestSubmit, __registerFileInput, __registerForm]
   );
 
   return (
@@ -557,6 +576,7 @@ export const PromptInput = ({
       return;
     }
     controller.__registerFileInput(inputRef, () => inputRef.current?.click());
+    controller.__registerForm(() => formRef.current?.requestSubmit());
   }, [usingProvider, controller]);
 
   // Note: File input cannot be programmatically set for security reasons

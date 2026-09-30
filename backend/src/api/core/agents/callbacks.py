@@ -1,20 +1,23 @@
-"""Callback que persiste uma linha em agent_message_usage por chamada de LLM.
+"""Callback that persists one `agent_message_usage` row per LLM call.
 
-Anexado a todo agente no registry via `.with_config(callbacks=[usage_recorder])`.
-Funciona com qualquer caminho de invocação (ainvoke, astream, astream_events) e
-em qualquer agente — é o ponto único de contabilização.
+The SINGLE accounting point: attached to every registry agent via
+`.with_config(callbacks=[usage_recorder])` and passed explicitly in `config["callbacks"]` by
+the streaming path and `core/agents/llm.py`. It works on every invocation path (ainvoke,
+astream, astream_events), so no call route escapes measurement — a spend cap is only as good
+as its coverage.
 
-Fluxo:
-    on_chat_model_start  -> guarda metadata por run_id
-    on_llm_end           -> extrai usage_metadata da AIMessage final, calcula custo
-                            via tabela de preços e insere uma linha
-    on_llm_error         -> só limpa o cache de metadata pra não vazar memória
+Flow:
+    on_chat_model_start  -> stash RunnableConfig.metadata per run_id
+    on_llm_end           -> read usage_metadata of the final AIMessage, compute cost, insert
+    on_llm_error         -> only drop the stash (no memory leak)
 
-Metadata esperado em RunnableConfig.metadata:
-    - thread_id   (obrigatório; sem ele a linha não é gravada)
-    - agent_id    (obrigatório)
-    - user_id     (opcional)
-    - client_id   (opcional)
+Expected RunnableConfig.metadata (build it with `UsageContext.to_metadata()` from `llm.py`):
+    - thread_id   (required; without it no row is written)
+    - agent_id    (required)
+    - user_id     (optional)
+    - client_id   (optional sub-scope, e.g. an end customer)
+    - tenant_id   (optional; what per-tenant monthly cost / spend caps sum over — apps map
+                   their organization_id here)
 """
 
 from __future__ import annotations
@@ -36,7 +39,7 @@ log = get_logger(__name__)
 
 
 class UsageRecorderCallback(AsyncCallbackHandler):
-    """Persiste agent_message_usage automaticamente em todo `on_llm_end`."""
+    """Persist agent_message_usage automatically on every `on_llm_end`."""
 
     def __init__(self) -> None:
         self._meta_by_run: dict[UUID, dict[str, Any]] = {}
@@ -90,10 +93,14 @@ class UsageRecorderCallback(AsyncCallbackHandler):
             agent_id=str(agent_id),
             user_id=str(meta["user_id"]) if meta.get("user_id") is not None else None,
             client_id=str(meta["client_id"]) if meta.get("client_id") is not None else None,
+            tenant_id=str(meta["tenant_id"]) if meta.get("tenant_id") is not None else None,
         )
         if usage_row is None:
             return
 
+        # Own connection, outside any caller transaction: accounting must not be undone by a
+        # rollback of the flow that triggered it — the provider already charged the tokens.
+        # No pool (scripts, tests without DB) = nothing to record, never an error.
         pool = getattr(database_module, "asyncpg_pool", None)
         if pool is None:
             return

@@ -1,5 +1,9 @@
 from typing import Any
 
+from api.core.logging import get_logger
+
+log = get_logger(__name__)
+
 
 def _reasoning_summary_text_from_block(block: dict) -> str:
     """Text from a single Gemini/OpenAI-style reasoning content block."""
@@ -101,12 +105,32 @@ def _extract_message_content(agent_response: Any) -> str:
 
 
 async def execute_agent(
-    agent_info: dict, query: "str | list[dict[str, Any]]", session_id: str
+    agent_info: dict,
+    query: "str | list[dict[str, Any]]",
+    session_id: str,
+    *,
+    agent_id: str,
+    user_id: str | None = None,
+    client_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> str:
-    """Execute agent and return the final response."""
-    agent = agent_info["agent"]
+    """Run a registry agent to completion (non-streaming) and return the final text.
 
-    config: dict = {"configurable": {"thread_id": session_id}}
+    `metadata` is what makes this path billed: without thread_id/agent_id the
+    `usage_recorder` (attached by the registry) drops every row of a one-shot call.
+    `configurable.tenant_id` feeds `tenant_instructions_middleware`, same as streaming.
+    """
+    agent = agent_info["agent"]
+    config: dict = {
+        "configurable": {"thread_id": session_id, "tenant_id": tenant_id},
+        "metadata": {
+            "thread_id": session_id,
+            "agent_id": agent_id,
+            "user_id": user_id,
+            "client_id": client_id,
+            "tenant_id": tenant_id,
+        },
+    }
 
     try:
         response = await agent.ainvoke(
@@ -115,6 +139,7 @@ async def execute_agent(
         )
         return _extract_message_content(response)
     except Exception as e:
+        log.exception("execute_agent_failed", agent_id=agent_id, session_id=session_id)
         return f"❌ Desculpe, ocorreu um erro inesperado: {e!s}"
 
 
@@ -123,11 +148,22 @@ async def call_agent_async(
     session_id: str,
     model_id: str,
     agents_registry: dict,
+    *,
+    user_id: str | None = None,
+    client_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> str:
-    """Execute agent and return response."""
+    """Execute a registry agent by id and return its response."""
     if model_id not in agents_registry:
         available = list(agents_registry.keys())
         raise Exception(f"Model '{model_id}' not found. Available: {available}")
 
-    agent_info = agents_registry[model_id]
-    return await execute_agent(agent_info, query, session_id)
+    return await execute_agent(
+        agents_registry[model_id],
+        query,
+        session_id,
+        agent_id=model_id,
+        user_id=user_id,
+        client_id=client_id,
+        tenant_id=tenant_id,
+    )

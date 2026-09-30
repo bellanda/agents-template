@@ -5,6 +5,12 @@
 > de verdade do que o template **cria** e dos padrões que ele **força**. Pode ser enviado como
 > prompt para um projeto novo recriar tudo de forma idêntica, ou usado como checklist de
 > auditoria. Propaga via `backend/scripts/sync_agents_to_another_fastapi_project.py`.
+>
+> **Fonte canônica (decisão do usuário, 2026-09-30: "deixe tudo centralizado e padronizado em
+> todos").** Este template é a ÚNICA origem da camada de IA de todos os apps (kailos, balizap,
+> nexarena, optimuslar, akmeo). Melhoria feita num app volta para cá primeiro e sai pelo script
+> de sync; `core/agents/` é copiado com overwrite, então edição local no app se perde. O
+> checklist de convergência por app está no §17.
 
 ---
 
@@ -31,14 +37,20 @@ resumidos (só config + tools):
 ### `core/agents/` — infraestrutura (idêntica entre projetos)
 | Arquivo | Responsabilidade |
 | --- | --- |
-| `models.py` | `ModelConfig` (provider, pricing, capabilities) + registro `Models` + `compute_cost_usd` + `find_model_config` / `find_model_config_by_id` + `model_capabilities_dict` + `PROVIDER_ALIASES`/`canonical_provider`. |
-| `custom_providers.py` | `init_model(cfg)` / `init_model_by_id(id)` + `init_<provider>_model`. `ChatDeepSeekRoundtrip` (round-trip de `reasoning_content`). `ChatOpenRouter` (reasoning + `model_provider` + custo real do upstream). |
-| `callbacks.py` | `UsageRecorderCallback` — persiste 1 linha em `agent_message_usage` por chamada de LLM. |
-| `media.py` | Mídia em texto para agente text-only: `media_to_text(bytes, mime_type=...)` com a cadeia Whisper → Gemini → `None`, retry por status e o custo do Whisper lançado à mão (cobra por hora de áudio, não passa pelo callback). Sem acoplamento a canal — ver §8-B. |
+| `models.py` | `ModelConfig` (provider, pricing, capabilities, `provider_order` = jurisdição) + registro `Models` + `compute_cost_usd`/`round_cost_up` (`COST_DECIMAL_PLACES`) + `iter_model_configs` / `find_model_config` / `find_model_config_by_id` + `model_capabilities_dict` + `PROVIDER_ALIASES`/`canonical_provider`. |
+| `model_catalog.py` | Modelos que o tenant pode escolher, com **label + preço** para a tela (`GET /agents/model-catalog`). Hoje só GLM 5.3 Flash; valida no import que todo slug existe no registro. (origem: akmeo) |
+| `llm.py` | **Chamada one-shot** fora de agente: `complete()` (texto) e `complete_structured()` (Pydantic via function calling) + `UsageContext` (quem paga) + `LlmResult` (custo real/estimado) + `with_llm_retry` (CapacityLimiter do processo + retry só de erro transitório). (origem: akmeo `llm.py`) |
+| `subagents.py` | `run_subagent()` + `SUBAGENT_RUN_TAG` — supervisor chama especialista como tool; especialista stateless (`checkpointer=False`), fora do stream do chat, custo sob `agent_id:<nome>`. |
+| `tenant_instructions.py` | `tenant_instructions_middleware` — anexa o Markdown do tenant (`agent_configs`) ao system prompt base, em runtime, com memo TTL. |
+| `tool_envelope.py` | Envelope `{"type", "data"}` para tool result virar card no front (`action_confirmation`/`action_error`). (origem: optimuslar) |
+| `ocr.py` | `ocr_document()` — PDF escaneado / foto de documento → Markdown, 1 chamada GLM por página em paralelo, detecção de loop degenerado, página digital pula a rede. (origem: optimuslar `ocr_service`) |
+| `custom_providers.py` | `init_model(cfg)` / `init_model_by_id(id)` + `init_<provider>_model`. `ChatOpenRouter` (reasoning + `model_provider` + custo real do upstream). |
+| `callbacks.py` | `UsageRecorderCallback` — persiste 1 linha em `agent_message_usage` por chamada de LLM (metadata `thread_id`, `agent_id`, `user_id`, `client_id`, `tenant_id`). |
+| `media.py` | Mídia em texto: `media_to_text(bytes, mime_type=..., usage=UsageContext, message_id=...)` com a cadeia Whisper (áudio) / GLM 5.3 Flash (imagem, **vídeo**) → `None`; `describe_images()` (N imagens numa chamada, devolve `VisionResult` com custo); retry por status; custo do Whisper lançado à mão. Sem acoplamento a canal — ver §8-B. |
 | `checkpointer.py` | `AsyncPostgresSaver` singleton (`init_checkpointer`/`get_checkpointer`/`close_checkpointer`). |
 | `history_window.py` | `sliding_window_middleware` — corta o histórico enviado ao LLM por orçamento de tokens/mensagens. |
-| `prompt_cache.py` | Placeholder in-memory (caching real é nativo do provedor). |
-| `schemas.py` | `AgentConfig`, `AgentSuggestion`, `ChatRequest`, capability DTOs. |
+| `prompt_cache.py` | Memo TTL in-process de fragmentos de prompt vindos do DB (instruções do tenant). NÃO é o cache do provedor — esse é implícito por prefixo (ver §10). |
+| `schemas.py` | `AgentConfig`, `AgentSuggestion` (com `action: fill|attach`), serialização de sugestões. |
 
 ### `src/api/{models,repositories,routes,services}/agents/`
 | Arquivo | Responsabilidade |
@@ -48,18 +60,23 @@ resumidos (só config + tools):
 | `models/agents/checkpoint_jsonb.py` | `AgentCheckpoint`/`AgentCheckpointWrite` (value-objects do langgraph; pulado pelo check_schema). |
 | `repositories/agents/usage.py` | `build_usage_from_ai_message`, `insert_agent_message_usage`, `get_thread_total_cost_usd`, `get_user_total_cost_usd`. |
 | `repositories/agents/chat_history.py` | `get_chat_messages`, `save_chat` (upsert), `get_user_threads`, `delete_chat`. |
+| `repositories/agents/agent_config.py` | `agent_configs` + `agent_config_versions` (upsert com bump atômico de versão, snapshots, listagem limitada). |
+| `models/agents/agent_config.py` / `agent_config_version.py` | Espelho das tabelas de config do tenant. |
+| `schemas/agents/agent_config.py` | DTOs de `/agents/{agent_id}/config` + `MAX_PROMPT_MARKDOWN_CHARS` (20k, espelha o CHECK e o front). |
+| `routes/agents/agent_config.py` | `GET/PUT /agents/{id}/config`, `GET …/versions`, `POST …/versions/{v}/activate`. |
+| `services/agents/agent_config.py` | get-or-default, salvar = nova versão + snapshot (transação), rollback = nova versão, invalida o memo. |
 | `routes/agents/chat.py` | `POST /agents/chat/completions` (stream e não-stream) + extração multimodal. |
 | `routes/agents/threads.py` | `GET/DELETE /agents/threads`, `GET /agents/threads/{id}`. |
-| `routes/agents/models.py` | `GET /agents` — lista agentes/modelos com `capabilities`. |
+| `routes/agents/models.py` | `GET /agents` — lista agentes com `capabilities`; `GET /agents/model-catalog`. |
 | `services/agents/registry.py` | `discover_agents()` — auto-discovery da pasta `agents/`. |
-| `services/agents/executors.py` | `call_agent_async`/`execute_agent` (one-shot) + extração de reasoning. |
+| `services/agents/executors.py` | `call_agent_async`/`execute_agent` (agente do registry sem stream, **com metadata de custo**) + extração de reasoning. |
 | `services/agents/streaming.py` | `stream_agent` — SSE + save destacado + tool/reasoning parts. |
 | `services/agents/utils.py` | `convert_file_to_text` (MarkItDown). |
 
 ### Infra compartilhada (importada pelas camadas de agents; copiada skip-if-exists)
 | Arquivo | Responsabilidade |
 | --- | --- |
-| `core/logging.py` | Stack structlog → stdlib → QueueHandler/QueueListener → stderr. `setup_logging`/`shutdown_logging`/`get_logger`/`bind_request_id`. JSON (orjson) em prod, console em dev. Config via env (`LOG_LEVEL`/`LOG_FORMAT`/`SERVICE_NAME`/`APP_ENV`). |
+| `core/logging.py` | Stack structlog → stdlib → QueueHandler/QueueListener → stderr. `setup_logging`/`shutdown_logging`/`get_logger`/`bind_request_id`. JSON (orjson) em prod, console em dev. Config via `settings.logging` (yaml: `level`/`format`/`service_name`/`app_env`/`level_asyncpg`). |
 | `core/exceptions.py` | `BadRequestError`/`AuthenticationError`/`ForbiddenError`/`NotFoundError` — subclasses de `HTTPException` (FastAPI trata nativo, sem handler custom). |
 | `middlewares/logging_middleware.py` | `LoggingMiddleware` (ASGI puro) — lê `X-Request-ID`, bind em contextvar, 1 linha `http_request` por request com método/path/status/duration_ms. |
 | `services/auth.py` | `get_auth_context` — seam única de identidade (Bearer → `X-User-Id` → `user` query → `default_user`). Ver §4. |
@@ -70,16 +87,27 @@ resumidos (só config + tools):
 | `config/uploads.py` | `save_upload` canônico (raw/image-AVIF/document) + `org_dir`/`user_dir` + filename `{slug}-{uuid4}.{ext}`. Core idêntico entre projetos. |
 
 ### `agents/<name>/` — agentes de exemplo (o contrato)
-`weather_agent/` e `web_search_agent/`: cada um expõe `config: AgentConfig` + `create_root_agent(checkpointer=None)` + `tools/`.
+Cada um expõe `config: AgentConfig` + `create_root_agent(checkpointer=None)` + `tools/`:
+`weather_agent/` (agente com tools — o caso comum), `web_search_agent/` (tools + scraping) e
+`research_supervisor_agent/` (**subagente**: supervisor delega a um pesquisador via tool).
 
 ### `db/`
 `db/migrations/<ts>_initial.sql` (dbmate) + `db/schema.sql`: cria `agent_message_usage`,
 `chat_history`, `checkpoints`, `checkpoint_writes`, `checkpoint_blobs`, `user_uploads` + função
-`update_updated_at_column`.
+`update_updated_at_column`. `20260930120000_tenant_agent_configs.sql`: `agent_message_usage.tenant_id`
+(+ índice `(tenant_id, created_at)`), `agent_configs`, `agent_config_versions`.
+
+### Frontend (`frontend/src/`)
+`components/ai-elements/` (primitivas: Conversation, Message, Reasoning, PromptInput, Context…),
+`components/chat/` (`ChatView`, `use-chat-session` = `useChat` + transport SSE, anexos, picker,
+`tool-results/` = registry `type → card` do envelope, sugestões `fill|attach`),
+`components/agent-config/` (tela de instruções do tenant: `InstructionsCard` + `MarkdownPreview` +
+`chatgpt-builder-prompt` + `VersionsPanel`, canônico do balizap), rota `routes/agent-config.tsx`,
+`lib/api.ts` (fetchers + `MAX_PROMPT_MARKDOWN_CHARS`).
 
 ---
 
-## 2. Registro de modelos & esquema barato (DeepSeek / Groq)
+## 2. Registro de modelos & stack única (OpenRouter GLM 5.3 Flash / Groq Whisper)
 
 `ModelConfig` (frozen dataclass) em `core/agents/models.py`:
 
@@ -87,10 +115,9 @@ resumidos (só config + tools):
 @dataclass(frozen=True)
 class ModelConfig:
     model_id: str
-    provider: str                      # deepseek | groq | google | openai | nvidia | cerebras | chutes | openrouter
+    provider: str                      # openrouter | groq
     reasoning: bool = False            # emite reasoning_content no stream
-    thinking: bool = False             # google include_thoughts / nvidia chat_template_kwargs
-    reasoning_effort: str | None = None  # low | high | max  (DeepSeek/OpenAI/OpenRouter)
+    reasoning_effort: str | None = None  # low | medium | high  (OpenRouter)
     input_price_per_1m: float = 0.0
     cached_input_price_per_1m: float = 0.0
     output_price_per_1m: float = 0.0
@@ -102,33 +129,45 @@ class ModelConfig:
     allow_provider_fallbacks: bool = True     # OpenRouter: False fixa em provider_order
 ```
 
-**OpenRouter (gateway multi-provider).** `model_id` é o slug do OpenRouter
-(`deepseek/deepseek-v4-flash-0731`) e o mesmo modelo é servido por dezenas de upstreams com
-preço/latência diferentes — `provider_order` declara a preferência (ex.: `("novita",)`) e
-`allow_provider_fallbacks=True` (default) deixa o gateway reencaminhar quando o preferido está
-fora/rate-limited. Pinagem dura (`False`) transforma 429 do upstream em erro da chamada; só use
-quando o upstream específico for requisito. O pricing no `ModelConfig` é o do upstream preferido e
-serve de fallback: `usage.cost` reportado pelo OpenRouter (custo real do upstream roteado) vence
-(ver §7).
+**OpenRouter (gateway único de chat).** `model_id` é o slug do OpenRouter
+(`z-ai/glm-5.3-flash`) e o mesmo modelo é servido por vários upstreams com preço, quantização e
+jurisdição diferentes — `provider_order` declara os upstreams aceitos (`coreweave`, `fireworks`,
+`deepinfra`, todos dos EUA) e `allow_provider_fallbacks=False` fixa nessa lista: um 429 reroteia
+dentro dela em vez de cair em qualquer provedor do slug. Com `True` (default do dataclass) o gateway
+reencaminha livremente. O pricing no `ModelConfig` é o do primeiro upstream e serve de fallback:
+`usage.cost` reportado pelo OpenRouter (custo real do upstream roteado) vence (ver §7).
 
-**Esquema barato recomendado (USD por 1M tokens):**
+**Stack (USD por 1M tokens):**
 
 | Uso | Modelo | input / cached / output | Notas |
 | --- | --- | --- | --- |
-| Atendente texto (default) | `deepseek-v4-flash` | 0.14 / 0.0028 / 0.28 | `reasoning_effort="high"`. Melhor custo/qualidade. |
-| Texto premium | `deepseek-v4-pro` | 0.435 / 0.003625 / 0.87 | quando precisa de mais capacidade. |
-| Áudio → texto | Groq `whisper-large-v3-turbo` | 0.04 **por hora de áudio** | 1º degrau de `media.py`; não é chat model (ver §8-B). |
-| Mídia → texto | OpenRouter `google/gemini-3.7-flash` | 0.375 / 0.0375 / 1.875 | 2º degrau: imagem, PDF, vídeo e o áudio que o Whisper não pegou. |
-| Multimodal nativo | `gemini-3-flash-preview` | 0.50 / 0.05 / 3.00 | aceita imagem/pdf/áudio inline (SDK do Google, não OpenRouter). |
-| Texto via gateway | OpenRouter `deepseek/deepseek-v4-flash-0731` | 0.14 / 0.028 / 0.28 | preço do upstream preferido (Novita); custo real vem do gateway. |
+| Texto, imagem e vídeo | OpenRouter `z-ai/glm-5.3-flash` (`Models.OpenRouter.GLM_5_3_FLASH`) | 0.15 / 0 / 0.50 | `reasoning_effort="high"`. Multimodal nativo: o mesmo modelo conversa e lê imagem/vídeo. Não aceita PDF nem áudio inline. |
+| Áudio → texto | Groq `whisper-large-v3-turbo` (`Models.Groq.WHISPER_LARGE_V3_TURBO`) | 0.04 **por hora de áudio** | Não é chat model; POST multipart em `media.py` (ver §8-B). |
 
-**Regra:** atendente padrão = DeepSeek V4 Flash text-only + `media.py` (Whisper → Gemini) para tudo
-que não é texto. Garante o fluxo mais barato e funcional. Trocar de modelo = trocar 1 `ModelConfig`
-no agente; o resto (custo, streaming, capabilities) acompanha automático.
+**Regra:** atendente padrão = GLM 5.3 Flash via OpenRouter; áudio passa antes pelo Whisper (Groq) em
+`media.py`. Trocar de modelo = trocar 1 `ModelConfig` (as flags `supports_*` religam/desligam cada
+ramo de mídia); o resto (custo, streaming, capabilities) acompanha automático.
 
 ---
 
-## 3. Contrato do agente (limpo e resumido)
+## 3. Espectro de uso — escolha a menor ferramenta que resolve
+
+| Caso | Use | Exemplo no template |
+| --- | --- | --- |
+| Uma pergunta → um texto (resumo, reescrita, "descreva", job agendado) | `llm.complete(prompt, usage=UsageContext(...))` | docstring de `core/agents/llm.py` |
+| Uma pergunta → um objeto validado (extração, roteamento, score) | `llm.complete_structured(prompt, Schema, usage=...)` | docstring de `core/agents/llm.py` |
+| Conversa com ferramentas, memória, stream e UI | agente em `agents/<name>/` (`create_agent`) | `agents/weather_agent/` |
+| Tarefa que se divide em especialistas com loop próprio | supervisor + `run_subagent` | `agents/research_supervisor_agent/` |
+| Áudio/imagem/vídeo chegando num fluxo de texto | `media.media_to_text` / `describe_images` | §8-B |
+| PDF escaneado / foto de documento | `ocr.ocr_document` | docstring de `core/agents/ocr.py` |
+| Resultado de tool como card no chat | `tool_envelope.action_confirmation(...)` | front `chat/tool-results/` |
+
+Regras que valem para todos: **sempre passar `UsageContext`** em fluxo de produto (sem ele a
+chamada não entra em `agent_message_usage` e escapa de qualquer teto); `agent_id` estável por
+propósito (`"media-enrichment"`, `"lead-scoring"`) para saber quanto cada coisa custa; thread
+sintético para trabalho fora de chat (`f"job:{job_id}"`).
+
+## 3.1 Contrato do agente (limpo e resumido)
 
 Cada `agents/<name>/agent.py` expõe:
 
@@ -136,10 +175,10 @@ Cada `agents/<name>/agent.py` expõe:
 config = AgentConfig(
     name="...", description="...",
     system_prompt=SYSTEM_PROMPT,
-    model=init_model(Models.DeepSeek.V4_FLASH),
+    model=init_model(Models.OpenRouter.GLM_5_3_FLASH),
     tools=[tool_a, tool_b],
     save_to_db=True,
-    capabilities=model_capabilities_dict(Models.DeepSeek.V4_FLASH),
+    capabilities=model_capabilities_dict(Models.OpenRouter.GLM_5_3_FLASH),
     suggestions=[...],
 )
 
@@ -148,14 +187,20 @@ def create_root_agent(checkpointer=None):
         model=config.model,
         tools=config.tools,
         system_prompt=config.system_prompt,
-        middleware=[sliding_window_middleware],
+        middleware=[sliding_window_middleware, tenant_instructions_middleware],
         checkpointer=checkpointer,   # injetado pelo registry
     )
 ```
 
+Ordem do middleware: janela de histórico primeiro (corta o que o modelo vê), instruções do tenant
+por último (anexam ao system prompt). Um agente que não deve ler instruções do tenant só omite o
+segundo.
+
 - **Auto-discovery** (`registry.py`): varre `agents/`, importa `agents.<name>.agent`, lê `config` +
   `create_root_agent` (ou `root_agent` pré-construído), injeta o checkpointer compartilhado quando
   `save_to_db=True`, e anexa o `usage_recorder` global. Chave do registro = `model_id` (`_`→`-`).
+  Agente que falha no import sai no log como `agent_discovery_failed` (antes era engolido — o
+  `web_search_agent` estava sumindo do picker em silêncio por sugestões em formato inválido).
 - **Tools**: `@tool("name", args_schema=PydanticModel)` em `agents/<name>/tools/`. Docstring = o que o
   LLM lê. Sem boilerplate além disso.
 
@@ -172,7 +217,9 @@ standalone). Precedência de identidade (primeiro não-vazio vence):
 3. Query param `user`.
 4. `DEFAULT_USER_ID` (`"default_user"`).
 
-Retorna `{"user_id", "client_id", "roles"}`. `client_id` vem de `X-Client-Id`/`client_id`.
+Retorna `{"user_id", "client_id", "tenant_id", "roles"}`. `client_id` vem de `X-Client-Id`/`client_id`.
+`tenant_id` é o escopo de config e de custo por tenant: no template = `user_id` (não há
+organizações); nos apps = o `organization_id` resolvido do token verificado.
 
 | Camada | Padrão no template | Como os apps reforçam |
 | --- | --- | --- |
@@ -180,8 +227,8 @@ Retorna `{"user_id", "client_id", "roles"}`. `client_id` vem de `X-Client-Id`/`c
 | Rotas de gestão de config | n/a no template | kailos/balizap: `@permission_service.require_authentication()` + `require_permission_in_org("agent_config:read|manage")`, `user_id = request.state.auth_context["user_id"]`. |
 | Webhook inbound (WhatsApp) | n/a no template | HMAC SHA-256 (`_verify_whatsapp_signature` + `WHATSAPP_APP_SECRET`); responde 200 ≤10s e processa via fila. |
 
-`user_id`/`client_id` derivados da seam fluem para checkpointer config, `usage_recorder` metadata e
-`chat_history`. **Frontend:** identidade vai no header `X-User-Id` em toda chamada (chat transport,
+`user_id`/`client_id`/`tenant_id` derivados da seam fluem para checkpointer config
+(`configurable.tenant_id` → middleware de instruções), `usage_recorder` metadata e `chat_history`. **Frontend:** identidade vai no header `X-User-Id` em toda chamada (chat transport,
 `fetchThreads`, `uploadFile`, …) — `useUserId()` é o ponto de troca no front.
 
 ---
@@ -209,10 +256,12 @@ Ambos no mesmo endpoint `POST /agents/chat/completions`, decididos por `stream` 
 `start` → `text-start`/`text-delta`/`text-end` · `reasoning-start`/`reasoning-delta`/`reasoning-end`
 · `tool-input-available` / `tool-output-available` / `tool-output-error` · `error` · `finish`.
 
-- **Reasoning/thinking:** extraído de `content[]` (Gemini/OpenAI Responses) e de
-  `additional_kwargs["reasoning_content"]` (DeepSeek/Chutes/Cerebras), reemitido como `reasoning-delta`.
-- **DeepSeek thinking multi-turno:** `ChatDeepSeekRoundtrip` reinjeta o `reasoning_content` da
-  AIMessage anterior — sem isso a API DeepSeek dá 400.
+- **Reasoning/thinking:** extraído de `content[]` e de
+  `additional_kwargs["reasoning_content"]`, reemitido como `reasoning-delta`.
+- **Subagentes não vazam:** eventos com a tag `SUBAGENT_RUN_TAG` (`"nostream"`) são descartados —
+  o usuário vê a tool `delegate_*` do supervisor, não os tokens do especialista.
+- **Tool result como card:** saída `{"type", "data"}` (`tool_envelope.py`) é renderizada pelo
+  registry do front; o resto cai no bloco de tool colapsado.
 
 ---
 
@@ -232,7 +281,12 @@ Ambos no mesmo endpoint `POST /agents/chat/completions`, decididos por `stream` 
 - **Tabela `agent_message_usage`:** `thread_id, message_id, user_id, client_id, agent_id, provider,
   model_id, input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, total_tokens,
   cost_usd, error, created_at`. Imutável (sem `updated_at`).
-- **Agregações:** `get_thread_total_cost_usd`, `get_user_total_cost_usd`. O custo também é embutido no
+- **Agregações:** `get_thread_total_cost_usd`, `get_user_total_cost_usd`,
+  `get_tenant_cost_usd_since(tenant_id, month_start_utc())` — o custo do mês por tenant, base de
+  qualquer teto de gasto (índice `(tenant_id, created_at)`; kailos/balizap fazem o mesmo com
+  `organization_id`).
+- **One-shot:** `llm.complete*` devolve `LlmResult.cost_usd` (real quando o OpenRouter reporta,
+  `cost_is_real=True`) — útil para creditar o custo no teto assim que a chamada volta (akmeo). O custo também é embutido no
   `chat_history` (campo `usage` da mensagem assistant) para exibição.
 - Praticamente todos os provedores hoje retornam input/cached/output → o cálculo é confiável.
 
@@ -269,24 +323,33 @@ sem alteração; quem chama decide o que fazer com o `None` (no WhatsApp, um pla
 anexo sem descrição).
 
 ```
-áudio  → Whisper (Groq)  --falhou-->  Gemini 3.7 Flash (aceita áudio)  --falhou-->  None
-imagem → Gemini 3.7 Flash                                              --falhou-->  None
-PDF    → Gemini 3.7 Flash                                              --falhou-->  None
+áudio  → Whisper (Groq)        --falhou-->  None
+imagem → GLM 5.3 Flash (OpenRouter)  --falhou-->  None
+vídeo  → GLM 5.3 Flash (OpenRouter, parte `video_url`, até 20 MB inline)  --falhou-->  None
+PDF    → não enriquecido inline (GLM não aceita PDF) → use `ocr.ocr_document` (página→imagem)
 ```
 
 ```python
 text = await media_to_text(
     content, mime_type="audio/ogg", filename="audio.ogg",
-    thread_id=thread_id, message_id=str(message_id),
+    usage=UsageContext(thread_id=thread_id, agent_id=ENRICHMENT_AGENT_ID, tenant_id=org_id),
+    message_id=str(message_id),
 )
+# N fotos numa chamada (laudo de avaliação kailos/balizap): o modelo compara os ângulos.
+result = await describe_images([(jpeg1, "image/jpeg"), (jpeg2, "image/jpeg")],
+                               prompt=LAUDO_PROMPT, context=listing_text, usage=ctx)
+result.text, result.cost_usd
 ```
+
+`UsageContext` (de `llm.py`) substitui os kwargs soltos `thread_id/agent_id/user_id` — é o mesmo
+objeto em `llm.complete`, `media`, `ocr`, e é o que carrega `tenant_id` para o custo do mês.
 
 Quatro decisões que o módulo encoda, e as três primeiras são exatamente onde os projetos que
 copiaram esse padrão à mão erraram:
 
-1. **Whisper primeiro, multimodal depois.** Transcrever não precisa de raciocínio, e o Whisper na
-   Groq é ordem de grandeza mais barato. O modelo caro é o **degrau de queda**, não a rota normal.
-2. **A visão passa pelo LangChain** (`init_model(Models.OpenRouter.GEMINI_3_7_FLASH)` com
+1. **Áudio é Whisper ou nada.** GLM 5.3 Flash não aceita áudio inline, então não há degrau
+   multimodal de queda para áudio; transcrição é barata e dispensa raciocínio.
+2. **A visão passa pelo LangChain** (`init_model(Models.OpenRouter.GLM_5_3_FLASH)` com
    `callbacks=[usage_recorder]`), e não pelo SDK cru. É o que faz a linha cair em
    `agent_message_usage` **de graça** — pelo atalho do SDK o custo da mídia simplesmente não existe
    para nenhum teto de gasto.
@@ -345,9 +408,14 @@ storage (B2/S3/Azure/GCS) atrás de um `StorageBackend` Protocol — assinatura 
 - **`sliding_window_middleware`** (`history_window.py`): mantém o turno atual intacto e, andando do mais
   recente ao mais antigo, substitui `ToolMessage` pesados por placeholder até o orçamento
   (`MAX_MESSAGES_TO_LLM=80`, `MAX_TOKENS_HEURISTIC=256k`, divisor 4). Remove `ToolMessage` órfão no
-  início (quebra Gemini). O histórico completo continua no checkpoint para replay na UI.
-- **`prompt_cache.py`**: placeholder; caching real é nativo do provedor (reportado em `cache_read` e
-  cobrado por `cached_input_price_per_1m`).
+  início (quebra o provedor). O histórico completo continua no checkpoint para replay na UI.
+- **Cache do provedor** (OpenRouter/GLM): implícito por **prefixo**, reportado em `cache_read` e
+  cobrado a `cached_input_price_per_1m`. A única exigência é manter o prefixo estável: system prompt
+  base estático primeiro, texto do tenant/dinâmico depois (é a ordem do
+  `tenant_instructions_middleware`), nada de timestamp/request id no topo.
+- **`prompt_cache.py`**: memo TTL in-process (`settings.agents.tenant_config_ttl_seconds`) das
+  instruções do tenant — o middleware roda antes de CADA chamada de modelo do turno (loops de tool
+  fazem várias). Salvar pela API invalida o worker que atendeu; os outros convergem no TTL.
 
 ---
 
@@ -360,6 +428,10 @@ tabelas do langgraph `checkpoints`/`checkpoint_writes`/`checkpoint_blobs`, e `us
 versionado via dbmate** (não `checkpointer.setup()` em runtime — sem DDL no startup). `db/schema.sql`
 é o dump canônico, regenerado a cada `dbmate up`. `check_schema.py`: `UserUpload`→`user_uploads`,
 `upload_jsonb.py` pulado (sufixo `_jsonb`).
+
+`20260930120000_tenant_agent_configs.sql`: `agent_message_usage.tenant_id` + índice parcial
+`(tenant_id, created_at)`, `agent_configs` (UNIQUE `(tenant_id, agent_id)`, CHECK de 20k chars, trigger
+updated_at) e `agent_config_versions` (FK CASCADE, UNIQUE `(config_id, version)` cobre a FK).
 
 ---
 
@@ -394,9 +466,9 @@ app.mount(api_config.UPLOADS_HTTP_PREFIX, StaticFiles(directory=api_config.UPLOA
 ## 13. Logging (structlog)
 
 Stack fixo (ver rule `logging.md`): structlog → stdlib `logging` → QueueHandler/QueueListener →
-stderr. `JSONRenderer`(orjson, NDJSON) em prod, `ConsoleRenderer` em dev (TTY-aware). Config por env
-(`LOG_LEVEL`/`LOG_FORMAT=auto|json|console`/`SERVICE_NAME`/`APP_ENV`) — o template **não** tem
-`config/settings.py`, então `core/logging.py` lê de `os.getenv` com defaults seguros.
+stderr. `JSONRenderer`(orjson, NDJSON) em prod, `ConsoleRenderer` em dev (TTY-aware). Config vem de
+`settings.logging` (`config/app/{env}.yaml > logging:` — `level`, `format: ""|json|console`,
+`service_name`, `app_env`, `level_asyncpg`); `core/logging.py` não lê `os.getenv`.
 
 - **Uso:** `from api.core.logging import get_logger` → `log = get_logger(__name__)`.
 - Evento = `snake_case`, contexto = kwargs (`log.info("stream_agent_start", session_id=..., model=...)`).
@@ -406,19 +478,104 @@ stderr. `JSONRenderer`(orjson, NDJSON) em prod, `ConsoleRenderer` em dev (TTY-aw
 
 ---
 
-## 14. Setup num projeto novo
+## 14. Instruções do agente por tenant (config versionada)
 
-1. Rode `scripts/sync_agents_to_another_fastapi_project.py --target <backend>`. Copia (overwrite) as
-   camadas `agents/` + `src/api/**/agents`; copia (skip-if-exists) a infra compartilhada (logging,
-   exceptions, middlewares, auth, uploads, models/repos de upload, `config/uploads.py`); copia
-   `db/migrations/*.sql` preservando as do alvo.
-2. Adicione as deps: langchain/langgraph/langchain-deepseek/langchain-groq/markitdown/asyncpg/orjson +
-   **structlog** + **opencv-python-headless** + **numpy**; e `[tool.hatch]` `packages += ["agents"]`.
-3. `DATABASE_URL` no `.env` → `dbmate up` (cria também `user_uploads`).
-4. Wiring do §12 (logging + middleware + lifespan + routers + StaticFiles). Provider keys no `.env`.
-5. **Auth:** substitua `resolve_identity` em `services/auth.py` por verificação JWT real (§4).
+O padrão kailos/balizap generalizado: o dono do negócio monta as instruções no ChatGPT (botão com
+prompt pronto em `chatgpt-builder-prompt.ts`), cola na tela `/agent-config`, salva; o agente lê em
+runtime.
+
+- **Tabelas:** `agent_configs` (1 linha ativa por `(tenant_id, agent_id)`, `system_prompt_markdown`
+  ≤ 20k chars, `model_id` do catálogo, `active_version`) + `agent_config_versions` (snapshot imutável
+  por save). Salvar e restaurar SEMPRE criam versão nova — rollback é auditável e reversível.
+- **API:** `GET/PUT /agents/{agent_id}/config`, `GET /agents/{agent_id}/config/versions` (50 mais
+  recentes), `POST /agents/{agent_id}/config/versions/{v}/activate`, `GET /agents/model-catalog`.
+  Tenant vem da seam (`ctx["tenant_id"]`), nunca do body. Apps com papéis colocam o check de
+  permissão nas rotas (`agent_config:read|manage`).
+- **Runtime:** `tenant_instructions_middleware` lê `configurable.tenant_id` + `metadata.agent_id`,
+  busca o Markdown (memo TTL) e anexa depois do system prompt base, sob `## Instruções do negócio`.
+  Sem tenant/config/DB → prompt base puro (instrução é enriquecimento, nunca motivo de falhar o turno).
+  `model_id` hoje só alimenta a tela (catálogo de 1 modelo); com um 2º modelo, o swap entra no
+  mesmo middleware (`request.override(model=init_model_by_id(...))`).
+- **O que fica no app, não aqui:** dados do negócio injetados em runtime (horário, filas, catálogo),
+  flags de captura (balizap `sections`), `enabled` on/off do atendente, preview/tester da config.
+
+## 15. Setup num projeto novo
+
+1. Rode `scripts/sync_agents_to_another_fastapi_project.py --target <backend> [--add-module NAME]... [--examples]`.
+   Sobrescreve **arquivo a arquivo** só o que o template possui (nunca apaga nada do alvo):
+   `src/api/{schemas,models,repositories,services,routes}/agents`; em `core/agents/` só os módulos
+   que o alvo **já tem** (módulo novo só com `--add-module ocr`, repetível); imprime resumo
+   overwritten/added/unchanged/skipped. Copia
+   (skip-if-exists) a infra compartilhada (logging, exceptions, middlewares, auth, uploads, models/repos
+   de upload, `config/uploads.py`); copia `db/migrations/*.sql` preservando as do alvo; `--examples`
+   copia os agentes de exemplo (skip-if-exists).
+2. Adicione as deps: langchain/langgraph/langchain-openai/markitdown/asyncpg/orjson/curl-cffi/anyio/pyyaml +
+   **structlog** + **opencv-python-headless** + **numpy** (+ **pypdfium2** se usar `ocr.py`); e
+   `[tool.hatch]` `packages += ["agents"]`.
+3. `DATABASE_URL` no `.env` → `dbmate up`. Config: chaves yaml `openrouter:`/`agents:` (incl.
+   `max_concurrent_llm`, `llm_max_retries`, `tenant_config_ttl_seconds`) nos 3 `config/app/*.yaml` +
+   campos em `Settings` + secrets no `.env` (o script imprime o passo a passo).
+4. Wiring do §12 (logging + middleware + lifespan + routers + StaticFiles). Provider keys (`OPENROUTER_API_KEY`, `GROQ_API_KEY`) só no `.env`.
+5. **Auth:** substitua `resolve_identity` em `services/auth.py` por verificação JWT real e devolva
+   `tenant_id` (org do usuário) no contexto (§4).
 6. **Uploads org-owned:** se o projeto é org-owned, crie também `org_uploads` + `OrgUpload`/repo
    (o template ship só user-owned) — ver `uploads.md`.
+7. **Frontend:** copie `components/{ai-elements,chat,agent-config}/`, a rota `agent-config` e os
+   fetchers de `lib/api.ts`.
+
+## 16. Como estender e propagar (para o próximo agente)
+
+- **Novo modelo:** só se a regra `ai-agents.md` mudar. Um `ModelConfig` em `models.py` + uma
+  `ModelOption` em `model_catalog.py` + migration reescrevendo slugs legados. Nada mais muda.
+- **Novo agente:** pasta `agents/<name>/` com `agent.py` (`config` + `create_root_agent`) e `tools/`.
+  O registry descobre sozinho. Comece copiando `weather_agent`.
+- **Nova capacidade genérica** (helper de mídia, middleware, envelope de tool): nasce em
+  `core/agents/` com docstring de módulo dizendo quando usar e de qual app veio; entra na tabela do
+  §1 e no espectro do §3. Lógica de negócio (dispatcher de WhatsApp, laudo, handoff, runner de
+  agendamento) fica no app.
+- **Política de `core/agents/` num app:** o app mantém SÓ os módulos que realmente usa (direta ou
+  transitivamente), cada um **byte-idêntico** ao template (`cmp`); módulo não usado é apagado (puxa
+  dep que o app não tem — ex.: `ocr.py` exige pypdfium2). Comportamento específico do app vive em
+  adaptadores **fora** de `core/agents/`. Dica de domínio (vocabulário de placa, matrícula, número de
+  peito) entra pelo kwarg `extra_instructions` de `ocr_document`/`describe_media`/`describe_images`/
+  `media_to_text`, que é ANEXADO ao prompt canônico, nunca o substitui.
+- **Propagar:** rode o sync em cada app, revise o diff (o overwrite apaga edições locais nos arquivos
+  do template — melhoria volta ao template primeiro), ajuste os pontos de acoplamento do §17 e rode o
+  `check.sh` do app.
+
+## 17. Checklist de convergência por app (estado em 2026-09-30)
+
+> Convergência concluída em 2026-09-30: todo módulo presente em `core/agents/` de cada app é idêntico ao
+> template; módulos não usados foram removidos e dicas de domínio vão por `extra_instructions` nos
+> call sites (fora do core). Os itens abaixo são o histórico do que foi levado para adaptadores.
+
+Divergências encontradas ao consolidar. Cada app deve, ao rodar o sync:
+
+- **Todos:** `custom_providers.py` lendo chaves de `config.integrations` (hoje kailos, balizap,
+  optimuslar, akmeo usam `os.getenv` + `dotenv.load_dotenv`; nexarena usa `settings` direto — os dois
+  convergem para o shim `integrations_config`); `models.py` com `iter_model_configs`;
+  `media.py` com a nova API `usage=UsageContext` (callers: `media_to_text(..., usage=..., message_id=...)`);
+  `tenant_id` na seam de auth; middleware `sliding_window` + `tenant_instructions` nos agentes de chat.
+- **kailos:** `organization_id UUID` em `agent_message_usage` ≈ `tenant_id` — manter a coluna do app
+  e mapear no callback (passar `tenant_id=str(org_id)`; `_as_uuid` fica no app), ou migrar para
+  `tenant_id`. `usage_repository.py` → nome do template `repositories/agents/usage.py`.
+  `describe_images` do app → o do template (retorna `VisionResult`, não tupla). Config do atendente
+  (`org_agent_configs`) continua do app; o front `agent-config/` deve ganhar `MarkdownPreview.tsx`.
+- **balizap:** mesmo mapeamento `organization_id`→`tenant_id`; `media.py` (CurlMime, sem retry, sem
+  custo do Whisper) → template; `schemas.py` ganha `action` nas sugestões. `org_agent_configs` +
+  `AgentTester`/`ModelSetup` ficam no app (fonte canônica da tela: InstructionsCard/MarkdownPreview/
+  chatgpt-builder-prompt, já portados).
+- **nexarena:** `callbacks.py` grava `conversation_id` e usa `agent_message_usage_repository` — adotar o
+  repo do template (`insert_agent_message_usage`) e levar `conversation_id` como `thread_id`/metadata
+  do app; `custom_providers` perde `streaming=False` fixo (o template recebe `streaming` por kwarg).
+- **optimuslar:** `tool_envelope.py` → template (manter os discriminadores `appraisal_*` num módulo do
+  app); `schemas.py`: `CAPABILITY_OCR_INPUT` fica no app (flag de agente, não de modelo — ver §8);
+  `services/documents/ocr_service.py` + `page_render_service.py` → `core/agents/ocr.ocr_document`
+  (pypdfium2; mesma heurística de scan/coverage).
+- **akmeo:** `services/agents/llm.py` → `core/agents/llm.py` (`with_llm_retry`, `cost_of`,
+  `complete`); `model_catalog.py` → `core/agents/model_catalog.py` (`description_pt`→`description`,
+  `ModelOption.config`); faltam `callbacks.py`/`media.py`/`checkpointer.py` — o runner credita custo à
+  mão, deveria passar `UsageContext` para o `usage_recorder` gravar `agent_message_usage`.
 
 > Tudo que era pendência (uploads universais, auth de chat, `print()`→structlog) está **implementado**
 > no template — este doc descreve o estado atual, não um roadmap.

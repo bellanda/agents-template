@@ -1,35 +1,32 @@
-import os
 from typing import Any
 
-import dotenv
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
 from langchain_openai import ChatOpenAI
 
 from api.core.agents.models import ModelConfig, find_model_config_by_id
-
-dotenv.load_dotenv(override=True)
+from config.integrations import integrations_config
 
 
 class ChatOpenRouter(ChatOpenAI):
-    """OpenRouter (gateway OpenAI-compatible) — reasoning, upstream roteado e custo real.
+    """OpenRouter (OpenAI-compatible gateway) — reasoning, routed upstream and real cost.
 
-    Três coisas que o ChatOpenAI base não entrega quando o endpoint é o OpenRouter:
+    Three things the base ChatOpenAI does not deliver when the endpoint is OpenRouter:
 
-    1. **reasoning**: chega em ``delta.reasoning`` (stream) / ``message.reasoning``
-       (one-shot) e é descartado pelo parser da langchain-openai. Reemitimos em
-       ``additional_kwargs["reasoning_content"]`` — mesmo contrato dos outros
-       provedores com reasoning do registro (Chutes/Cerebras/DeepSeek).
-    2. **model_provider**: o base grava ``"openai"`` fixo; sem reescrever para
-       ``"openrouter"`` o ``find_model_config`` não acha o ModelConfig e o custo sai zero.
-    3. **custo real**: com ``usage: {include: true}`` o OpenRouter devolve ``usage.cost``
-       (o que o upstream roteado realmente cobrou) e o nome desse upstream. Como o
-       roteamento é dinâmico, esse valor vale mais que a tabela estática de preços —
-       expomos os dois em ``response_metadata`` para a contabilização preferir o real.
+    1. **reasoning** arrives in ``delta.reasoning`` (stream) / ``message.reasoning``
+       (one-shot) and is dropped by langchain-openai's parser. We re-emit it in
+       ``additional_kwargs["reasoning_content"]`` — the single reasoning contract that
+       ``services/agents/streaming.py`` consumes.
+    2. **model_provider** is stamped as ``"openai"``; without rewriting it to
+       ``"openrouter"`` ``find_model_config`` misses and the cost is recorded as zero.
+    3. **real cost**: with ``usage: {include: true}`` OpenRouter returns ``usage.cost``
+       (what the routed upstream actually charged) and that upstream's name. Routing is
+       dynamic, so this beats the static price table — both go to ``response_metadata``
+       and the usage repository prefers the real one.
     """
 
     def _stamp_openrouter_metadata(self, target: dict, raw: dict) -> None:
-        """Reescreve o provider e anexa custo/upstream reportados pelo OpenRouter."""
+        """Rewrite the provider and attach the cost/upstream reported by OpenRouter."""
         target["model_provider"] = "openrouter"
         upstream = raw.get("provider")
         if upstream:
@@ -58,8 +55,9 @@ class ChatOpenRouter(ChatOpenAI):
             if reasoning:
                 gen_chunk.message.additional_kwargs["reasoning_content"] = reasoning
 
-        # `upstream_provider`/`provider_cost_usd` só no chunk que carrega usage (o último):
-        # o merge de response_metadata entre chunks concatena strings e recusa floats repetidos.
+        # `upstream_provider`/`provider_cost_usd` only on the chunk that carries usage (the
+        # last one): merging response_metadata across chunks concatenates strings and rejects
+        # repeated floats.
         gen_chunk.message.response_metadata["model_provider"] = "openrouter"
         if chunk.get("usage"):
             self._stamp_openrouter_metadata(gen_chunk.message.response_metadata, chunk)
@@ -73,8 +71,8 @@ class ChatOpenRouter(ChatOpenAI):
     ) -> ChatResult:
         result = super()._create_chat_result(response, generation_info)
 
-        # Mesma exclusão do ChatOpenAI base: `parsed` pode conter Pydantic arbitrário
-        # de structured output e não interessa aqui (só lemos provider/usage/reasoning).
+        # Same exclusion as the base ChatOpenAI: `parsed` may hold arbitrary Pydantic from
+        # structured output and is irrelevant here (we only read provider/usage/reasoning).
         raw = (
             response
             if isinstance(response, dict)
@@ -104,9 +102,10 @@ def init_openrouter_model(
 ) -> ChatOpenRouter:
     """Initialize an OpenRouter model (OpenAI-compatible endpoint).
 
-    `reasoning_effort` (low | medium | high) e o roteamento de provider viajam no
-    `extra_body` — são extensões do OpenRouter sobre o schema da OpenAI. `usage.include`
-    pede o custo real do upstream de volta na resposta.
+    `reasoning_effort` (low | medium | high) and upstream routing travel in `extra_body` —
+    they are OpenRouter extensions over the OpenAI schema. `usage.include` asks for the real
+    upstream cost back in the response. Keys come from `settings` via `config/integrations.py`
+    (SecretStr unwrapped there), never from `os.getenv` here.
     """
     extra_body: dict[str, Any] = {**kwargs.pop("extra_body", {}), "usage": {"include": True}}
     if reasoning_effort is not None:
@@ -119,20 +118,20 @@ def init_openrouter_model(
             "allow_fallbacks": allow_provider_fallbacks,
         }
 
-    # Headers de atribuição (aparecem no ranking de apps do OpenRouter) — opcionais.
+    # Optional attribution headers (shown in OpenRouter's app ranking).
     attribution = {
         header: value
-        for header, env in (
-            ("HTTP-Referer", "OPENROUTER_SITE_URL"),
-            ("X-Title", "OPENROUTER_APP_TITLE"),
+        for header, value in (
+            ("HTTP-Referer", integrations_config.OPENROUTER_SITE_URL),
+            ("X-Title", integrations_config.OPENROUTER_APP_TITLE),
         )
-        if (value := os.getenv(env))
+        if value
     }
 
     return ChatOpenRouter(
         model=model,
-        openai_api_base=os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1"),
-        openai_api_key=os.getenv("OPENROUTER_API_KEY"),
+        openai_api_base=integrations_config.OPENROUTER_API_BASE,
+        openai_api_key=integrations_config.OPENROUTER_API_KEY,
         streaming=streaming,
         stream_usage=True,
         extra_body=extra_body,
@@ -144,12 +143,11 @@ def init_openrouter_model(
 def init_model(config: ModelConfig, **overrides: Any) -> BaseChatModel:
     """Instantiate a LangChain model from a ModelConfig with optional parameter overrides.
 
-    Config defaults (reasoning, reasoning_effort, roteamento de upstream) valem a menos
-    que sobrescritos aqui.
+    Config defaults (reasoning, reasoning_effort, upstream routing) apply unless overridden.
 
-    A stack inteira fala com o OpenRouter — é o gateway único de chat. `Models.Groq`
-    existe no registro só como linha de preço para a transcrição de áudio, que é POST
-    multipart em `core/agents/media.py` e nunca passa por aqui.
+    The whole stack talks to OpenRouter — the single chat gateway. `Models.Groq` exists in
+    the registry only as the price row for audio transcription, which is a multipart POST in
+    `core/agents/media.py` and never goes through here.
 
     Example:
         init_model(Models.OpenRouter.GLM_5_3_FLASH)
@@ -157,8 +155,8 @@ def init_model(config: ModelConfig, **overrides: Any) -> BaseChatModel:
     """
     if config.provider != "openrouter":
         raise ValueError(
-            f"Provider {config.provider!r} não é instanciável: o único gateway de chat é o "
-            f"OpenRouter. Model id: {config.model_id!r}"
+            f"Provider {config.provider!r} is not instantiable: OpenRouter is the only chat "
+            f"gateway. Model id: {config.model_id!r}"
         )
     reasoning = overrides.pop("reasoning", config.reasoning)
     reasoning_effort = overrides.pop("reasoning_effort", config.reasoning_effort)
@@ -177,8 +175,8 @@ def init_model(config: ModelConfig, **overrides: Any) -> BaseChatModel:
 def init_model_by_id(model_id: str, **overrides: Any) -> BaseChatModel:
     """Resolve a registered model_id to a live LangChain model.
 
-    Raises ValueError if the id is not in the Models registry — the org-config
-    layer must only persist ids that exist here.
+    Raises ValueError if the id is not in the Models registry — tenant configs must only
+    persist ids from `model_catalog.py`.
     """
     config = find_model_config_by_id(model_id)
     if config is None:

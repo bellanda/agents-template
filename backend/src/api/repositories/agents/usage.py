@@ -1,3 +1,4 @@
+import datetime as dt
 from typing import Any
 
 from asyncpg.connection import Connection
@@ -20,15 +21,16 @@ def build_usage_from_ai_message(
     agent_id: str,
     user_id: str | None = None,
     client_id: str | None = None,
+    tenant_id: str | None = None,
 ) -> AgentMessageUsage | None:
     """Build an AgentMessageUsage row from a finished AIMessage (response_metadata + usage_metadata).
 
     Returns None if the message has no usage_metadata or no provider/model info — the registry
     needs both to compute cost via compute_cost_usd.
 
-    Gateways que roteiam entre upstreams (OpenRouter) reportam o custo REAL da chamada em
-    `response_metadata["provider_cost_usd"]`; nesse caso ele vence a tabela estática de preços,
-    que só conhece o upstream preferido do ModelConfig.
+    Gateways that route between upstreams (OpenRouter) report the REAL cost of the call in
+    `response_metadata["provider_cost_usd"]`; it wins over the static price table, which only
+    knows the ModelConfig's preferred upstream.
     """
     if ai is None:
         return None
@@ -54,6 +56,7 @@ def build_usage_from_ai_message(
         message_id=message_id,
         user_id=user_id,
         client_id=client_id,
+        tenant_id=tenant_id,
         agent_id=agent_id,
         provider=canonical_provider(str(provider)),
         model_id=str(model_id),
@@ -71,12 +74,12 @@ async def insert_agent_message_usage(conn: Connection, usage: AgentMessageUsage)
     row = await conn.fetchrow(
         """
         INSERT INTO agent_message_usage (
-            thread_id, message_id, user_id, client_id, agent_id, provider, model_id,
+            thread_id, message_id, user_id, client_id, tenant_id, agent_id, provider, model_id,
             input_tokens, cached_input_tokens, output_tokens, reasoning_tokens, total_tokens,
             cost_usd, error
         )
-        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14)
-        RETURNING id, thread_id, message_id, agent_id, provider, model_id,
+        VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, $15)
+        RETURNING id, tenant_id, thread_id, message_id, agent_id, provider, model_id,
                   input_tokens, cached_input_tokens, output_tokens, reasoning_tokens,
                   total_tokens, cost_usd, error, created_at
         """,
@@ -84,6 +87,7 @@ async def insert_agent_message_usage(conn: Connection, usage: AgentMessageUsage)
         usage.message_id,
         usage.user_id,
         usage.client_id,
+        usage.tenant_id,
         usage.agent_id,
         usage.provider,
         usage.model_id,
@@ -112,5 +116,29 @@ async def get_user_total_cost_usd(conn: Connection, user_id: str) -> float:
     val = await conn.fetchval(
         "SELECT COALESCE(SUM(cost_usd), 0)::float FROM agent_message_usage WHERE user_id = $1",
         user_id,
+    )
+    return float(val or 0.0)
+
+
+def month_start_utc(now: dt.datetime | None = None) -> dt.datetime:
+    """First instant of the current UTC month — the window of a monthly spend cap."""
+    current = now or dt.datetime.now(dt.UTC)
+    return current.astimezone(dt.UTC).replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+
+
+async def get_tenant_cost_usd_since(conn: Connection, tenant_id: str, since: dt.datetime) -> float:
+    """Sum a tenant's cost since `since` (pass `month_start_utc()` for "this month").
+
+    Served by `ix_agent_message_usage_tenant_id_created_at` (tenant_id, created_at) — this is
+    the query a per-tenant monthly AI budget runs before every expensive call.
+    """
+    val = await conn.fetchval(
+        """
+        SELECT COALESCE(SUM(cost_usd), 0)::float
+        FROM agent_message_usage
+        WHERE tenant_id = $1 AND created_at >= $2
+        """,
+        tenant_id,
+        since,
     )
     return float(val or 0.0)

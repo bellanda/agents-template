@@ -4,12 +4,16 @@ const API_BASE = "/api/v1/agents";
 
 export type AgentSuggestionSection = "direct" | "template" | "follow_up";
 
+/** `fill` only writes the prompt in the composer; `attach` also opens the file picker and auto-sends once a file is attached. */
+export type AgentSuggestionAction = "fill" | "attach";
+
 export interface AgentSuggestionInstant {
   kind: "instant";
   label: string;
   prompt: string;
   section: Exclude<AgentSuggestionSection, "template">;
   emoji: string;
+  action: AgentSuggestionAction;
 }
 
 export interface AgentSuggestionTemplate {
@@ -27,6 +31,10 @@ const SUGGESTION_LABEL_MAX_CHARS = 56;
 
 function parseInstantSection(raw: unknown): Exclude<AgentSuggestionSection, "template"> {
   return raw === "follow_up" ? "follow_up" : "direct";
+}
+
+function parseSuggestionAction(raw: unknown): AgentSuggestionAction {
+  return raw === "attach" ? "attach" : "fill";
 }
 
 function parseTemplateSection(raw: unknown): "template" | "follow_up" {
@@ -48,6 +56,7 @@ export function normalizeAgentSuggestions(raw: unknown): AgentSuggestion[] {
         prompt: item,
         section: "direct",
         emoji: "",
+        action: "fill",
       });
       continue;
     }
@@ -60,6 +69,7 @@ export function normalizeAgentSuggestions(raw: unknown): AgentSuggestion[] {
           prompt: String((item as { prompt: unknown }).prompt),
           section: parseInstantSection((item as { section?: unknown }).section),
           emoji: String((item as { emoji?: unknown }).emoji ?? ""),
+          action: parseSuggestionAction((item as { action?: unknown }).action),
         });
         continue;
       }
@@ -211,6 +221,86 @@ export async function deleteThread(threadId: string, userId?: string): Promise<v
   });
   if (!res.ok) throw new Error("Failed to delete thread");
 }
+
+// ── Tenant agent config (instructions) ─────────────────────────────────────────
+
+/** Backend cap for `system_prompt_markdown` (the text is sent on EVERY model call). */
+export const MAX_PROMPT_MARKDOWN_CHARS = 20_000;
+
+export interface AgentConfig {
+  agent_id: string;
+  tenant_id: string;
+  model_id: string;
+  system_prompt_markdown: string;
+  /** 0 = never saved. */
+  active_version: number;
+  updated_at: string | null;
+}
+
+export interface AgentConfigVersion {
+  version: number;
+  model_id: string;
+  system_prompt_markdown: string;
+  note: string | null;
+  created_by: string | null;
+  created_at: string;
+}
+
+async function requestAgentConfig<T>(
+  path: string,
+  userId: string | undefined,
+  init?: { method: "PUT" | "POST"; body?: unknown }
+): Promise<T> {
+  const res = await fetch(`${API_BASE}/${path}`, {
+    method: init?.method ?? "GET",
+    headers: {
+      ...userHeaders(userId),
+      ...(init?.body !== undefined ? { "Content-Type": "application/json" } : {}),
+    },
+    body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
+  });
+  if (!res.ok) {
+    let message = `Falha na requisição (HTTP ${res.status}).`;
+    try {
+      const body = (await res.json()) as { detail?: unknown };
+      if (typeof body.detail === "string") message = body.detail;
+    } catch {
+      // Non-JSON error body: keep the generic message.
+    }
+    throw new Error(message);
+  }
+  return (await res.json()) as T;
+}
+
+export const fetchAgentConfig = (agentId: string, userId?: string): Promise<AgentConfig> =>
+  requestAgentConfig(`${encodeURIComponent(agentId)}/config`, userId);
+
+export const saveAgentConfig = (
+  agentId: string,
+  body: { system_prompt_markdown: string; model_id?: string; note?: string },
+  userId?: string
+): Promise<AgentConfig> =>
+  requestAgentConfig(`${encodeURIComponent(agentId)}/config`, userId, { method: "PUT", body });
+
+export async function fetchAgentConfigVersions(
+  agentId: string,
+  userId?: string
+): Promise<AgentConfigVersion[]> {
+  const data = await requestAgentConfig<{ versions?: AgentConfigVersion[] }>(
+    `${encodeURIComponent(agentId)}/config/versions`,
+    userId
+  );
+  return data.versions ?? [];
+}
+
+export const activateAgentConfigVersion = (
+  agentId: string,
+  version: number,
+  userId?: string
+): Promise<AgentConfig> =>
+  requestAgentConfig(`${encodeURIComponent(agentId)}/config/versions/${version}/activate`, userId, {
+    method: "POST",
+  });
 
 // ── Uploads ────────────────────────────────────────────────────────────────────
 

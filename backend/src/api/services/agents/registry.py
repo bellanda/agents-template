@@ -4,7 +4,10 @@ from typing import Any
 from api.core.agents.callbacks import usage_recorder
 from api.core.agents.checkpointer import get_checkpointer
 from api.core.agents.schemas import serialize_suggestions_for_api
+from api.core.logging import get_logger
 from config import paths
+
+log = get_logger(__name__)
 
 agents_registry: dict[str, Any] = {}
 
@@ -58,7 +61,9 @@ def discover_agents() -> dict[str, Any]:
                 "capabilities": dict(agent_config.capabilities),
             }
         except Exception:
-            pass
+            # One broken agent must not take the others down, but it must be visible — a
+            # silent skip looks like "the agent vanished from the picker".
+            log.exception("agent_discovery_failed", module=module_path)
 
     return agents
 

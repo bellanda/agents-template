@@ -2,6 +2,7 @@ import time
 
 from fastapi import APIRouter, Depends
 
+from api.core.agents import model_catalog
 from api.services.agents.registry import get_agents_registry
 
 router = APIRouter()
@@ -34,3 +35,9 @@ async def list_models(agents_registry: dict = Depends(get_agents_registry)):
         )
 
     return {"object": "list", "data": models}
+
+
+@router.get("/model-catalog")
+async def list_model_catalog() -> dict:
+    """Models a tenant may pick, with label + price per 1M tokens (core/agents/model_catalog.py)."""
+    return {"data": model_catalog.catalog_payload()}

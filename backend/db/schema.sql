@@ -30,6 +30,39 @@ $$;
 
 
 --
+-- Name: agent_config_versions; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agent_config_versions (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    config_id uuid NOT NULL,
+    version integer NOT NULL,
+    model_id character varying(255) NOT NULL,
+    system_prompt_markdown text DEFAULT ''::text NOT NULL,
+    note text,
+    created_by character varying(255),
+    created_at timestamp with time zone DEFAULT now() NOT NULL
+);
+
+
+--
+-- Name: agent_configs; Type: TABLE; Schema: public; Owner: -
+--
+
+CREATE TABLE public.agent_configs (
+    id uuid DEFAULT gen_random_uuid() NOT NULL,
+    tenant_id character varying(255) NOT NULL,
+    agent_id character varying(255) NOT NULL,
+    model_id character varying(255) NOT NULL,
+    system_prompt_markdown text DEFAULT ''::text NOT NULL,
+    active_version integer DEFAULT 1 NOT NULL,
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    updated_at timestamp with time zone DEFAULT now() NOT NULL,
+    CONSTRAINT ck_agent_configs_markdown_length CHECK ((char_length(system_prompt_markdown) <= 20000))
+);
+
+
+--
 -- Name: agent_message_usage; Type: TABLE; Schema: public; Owner: -
 --
 
@@ -49,7 +82,8 @@ CREATE TABLE public.agent_message_usage (
     total_tokens integer DEFAULT 0 NOT NULL,
     cost_usd numeric(12,6) DEFAULT 0 NOT NULL,
     error text,
-    created_at timestamp with time zone DEFAULT now() NOT NULL
+    created_at timestamp with time zone DEFAULT now() NOT NULL,
+    tenant_id character varying(255)
 );
 
 
@@ -179,6 +213,22 @@ ALTER TABLE ONLY public.agent_message_usage ALTER COLUMN id SET DEFAULT nextval(
 
 
 --
+-- Name: agent_config_versions agent_config_versions_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_config_versions
+    ADD CONSTRAINT agent_config_versions_pkey PRIMARY KEY (id);
+
+
+--
+-- Name: agent_configs agent_configs_pkey; Type: CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_configs
+    ADD CONSTRAINT agent_configs_pkey PRIMARY KEY (id);
+
+
+--
 -- Name: agent_message_usage agent_message_usage_pkey; Type: CONSTRAINT; Schema: public; Owner: -
 --
 
@@ -249,6 +299,13 @@ CREATE INDEX ix_agent_message_usage_created_at ON public.agent_message_usage USI
 
 
 --
+-- Name: ix_agent_message_usage_tenant_id_created_at; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_agent_message_usage_tenant_id_created_at ON public.agent_message_usage USING btree (tenant_id, created_at) WHERE (tenant_id IS NOT NULL);
+
+
+--
 -- Name: ix_agent_message_usage_thread_id; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -291,6 +348,27 @@ CREATE INDEX ix_user_uploads_owner_user_id ON public.user_uploads USING btree (o
 
 
 --
+-- Name: uq_agent_config_versions_config_id_version; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_agent_config_versions_config_id_version ON public.agent_config_versions USING btree (config_id, version);
+
+
+--
+-- Name: uq_agent_configs_tenant_id_agent_id; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE UNIQUE INDEX uq_agent_configs_tenant_id_agent_id ON public.agent_configs USING btree (tenant_id, agent_id);
+
+
+--
+-- Name: agent_configs update_agent_configs_updated_at; Type: TRIGGER; Schema: public; Owner: -
+--
+
+CREATE TRIGGER update_agent_configs_updated_at BEFORE UPDATE ON public.agent_configs FOR EACH ROW WHEN ((old.* IS DISTINCT FROM new.*)) EXECUTE FUNCTION public.update_updated_at_column();
+
+
+--
 -- Name: chat_history update_chat_history_updated_at; Type: TRIGGER; Schema: public; Owner: -
 --
 
@@ -305,6 +383,14 @@ CREATE TRIGGER update_user_uploads_updated_at BEFORE UPDATE ON public.user_uploa
 
 
 --
+-- Name: agent_config_versions agent_config_versions_config_id_fkey; Type: FK CONSTRAINT; Schema: public; Owner: -
+--
+
+ALTER TABLE ONLY public.agent_config_versions
+    ADD CONSTRAINT agent_config_versions_config_id_fkey FOREIGN KEY (config_id) REFERENCES public.agent_configs(id) ON DELETE CASCADE;
+
+
+--
 -- PostgreSQL database dump complete
 --
 
@@ -314,4 +400,5 @@ CREATE TRIGGER update_user_uploads_updated_at BEFORE UPDATE ON public.user_uploa
 --
 
 INSERT INTO public.schema_migrations (version) VALUES
-    ('20260427000000');
+    ('20260427000000'),
+    ('20260930120000');

@@ -1,6 +1,5 @@
 import asyncio
 import contextlib
-import os
 from collections.abc import AsyncGenerator
 from typing import Any
 
@@ -8,6 +7,7 @@ import orjson
 from asyncpg.connection import Connection
 
 from api.core.agents.callbacks import usage_recorder
+from api.core.agents.subagents import SUBAGENT_RUN_TAG
 from api.core.logging import get_logger
 from api.models.agents.history import ChatHistoryThread
 from api.repositories.agents.chat_history import get_chat_messages, save_chat
@@ -18,6 +18,7 @@ from api.services.agents.executors import (
     reasoning_from_additional_kwargs,
 )
 from config.database import get_pool
+from config.settings import settings
 
 log = get_logger(__name__)
 
@@ -39,7 +40,7 @@ PREVIEW_LENGTH = 200
 
 
 def _agent_stream_debug() -> bool:
-    return os.environ.get("AGENT_STREAM_DEBUG", "1").strip().lower() not in ("0", "false", "no")
+    return settings.agents.stream_debug
 
 
 def _dev_preview(val: Any, max_len: int = 900) -> str:
@@ -137,8 +138,8 @@ async def stream_agent(
     current_timestamp: int,
     requested_model: str,
     conn: Connection | None,
-    realtor_id: int | None = None,
     active_client_id: str | None = None,
+    tenant_id: str | None = None,
     user_file_parts: list[dict[str, Any]] | None = None,
     user_visible_text: str | None = None,
 ) -> AsyncGenerator[str]:
@@ -210,8 +211,9 @@ async def stream_agent(
     langgraph_config: dict = {
         "configurable": {
             "thread_id": session_id,
-            "realtor_id": realtor_id,
             "active_client_id": active_client_id,
+            # Read by tenant_instructions_middleware to append the tenant's Markdown.
+            "tenant_id": tenant_id,
         },
         # UsageRecorderCallback reads these to persist agent_message_usage.
         "metadata": {
@@ -219,6 +221,7 @@ async def stream_agent(
             "agent_id": requested_model,
             "user_id": user_id,
             "client_id": active_client_id,
+            "tenant_id": tenant_id,
         },
         # astream_events doesn't propagate callbacks attached via .with_config() —
         # pass the recorder explicitly so on_chat_model_start/end fire on every LLM call.
@@ -235,6 +238,10 @@ async def stream_agent(
             config=langgraph_config,
         ):
             event_type = event.get("event") or ""
+            # Subagent runs (core/agents/subagents.py) are internal work of a tool call: their
+            # tokens/tool events must not reach the chat — only the supervisor's do.
+            if SUBAGENT_RUN_TAG in (event.get("tags") or []):
+                continue
             ev_name = event.get("name") or ""
             ev_run = str(event.get("run_id", ""))[:10]
             data = event.get("data") or {}

@@ -38,10 +38,9 @@ from langchain_core.messages import (
 # enough to stop runaway growth after long sessions.
 # ──────────────────────────────────────────────────────────────────────────────
 MAX_MESSAGES_TO_LLM: int = 80
-# 256k é o "padrão moderno" dos LLMs grandes (Claude Sonnet, GPT-4.1, etc.) e
-# fica bem abaixo do 1M do Gemini — equilíbrio entre contexto rico e custo
-# de cache. Como `_content_length / 4` é heurística (subestima JSON), o teto
-# real fica em ~150-200k tokens, dando folga para tool outputs sem estourar.
+# 256k is the reference context ceiling for GLM 5.3 Flash via OpenRouter — a balance between
+# rich context and cache cost. `_content_length / 4` is a heuristic (it underestimates JSON), so
+# the real ceiling lands at ~150-200k tokens, leaving room for tool outputs.
 MAX_TOKENS_HEURISTIC: int = 256_000
 TOKEN_HEURISTIC_DIVISOR: int = 4
 TOOL_RESULT_PLACEHOLDER: str = (
@@ -110,7 +109,8 @@ def trim_messages_for_llm(messages: list[AnyMessage]) -> list[AnyMessage]:
     kept_previous.reverse()
 
     # Guarantee the trimmed prefix doesn't start with an orphan ToolMessage —
-    # Gemini rejects ToolMessages that lack a preceding AIMessage with tool_calls.
+    # OpenAI-compatible APIs (OpenRouter included) reject a ToolMessage without the
+    # preceding AIMessage carrying its tool_calls.
     while kept_previous and isinstance(kept_previous[0], ToolMessage):
         kept_previous.pop(0)
 

@@ -4,7 +4,8 @@ import time
 
 import requests
 from requests.adapters import HTTPAdapter
-from requests.exceptions import ConnectionError, HTTPError, RequestException, Timeout
+from requests.exceptions import ConnectionError as RequestsConnectionError
+from requests.exceptions import HTTPError, RequestException, Timeout
 from urllib3.util.retry import Retry
 
 
@@ -75,7 +76,7 @@ class OptimizedSession:
         """Converte erros de request em strings descritivas."""
         if isinstance(error, Timeout):
             return f"TIMEOUT_ERROR: {url} - Request timed out"
-        if isinstance(error, ConnectionError):
+        if isinstance(error, RequestsConnectionError):
             return f"CONNECTION_ERROR: {url} - Failed to connect"
         if isinstance(error, HTTPError):
             return f"HTTP_ERROR: {url} - HTTP {error.response.status_code}"

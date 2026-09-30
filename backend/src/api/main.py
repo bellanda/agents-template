@@ -12,6 +12,7 @@ from api.middlewares.logging_middleware import LoggingMiddleware
 from api.services.agents.registry import get_agents_registry, reload_agents_registry
 from config.api import api_config
 from config.database import close_asyncpg_pool, init_asyncpg_pool
+from config.settings import settings
 
 setup_logging()
 log = get_logger(__name__)
@@ -44,10 +45,12 @@ api_router = APIRouter(prefix="/api/v1")
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origins=settings.cors.allow_origins,
+    allow_credentials=settings.cors.allow_credentials,
+    allow_methods=settings.cors.allow_methods,
+    allow_headers=settings.cors.allow_headers,
+    expose_headers=settings.cors.expose_headers,
+    max_age=settings.cors.max_age,
 )
 app.add_middleware(LoggingMiddleware)
 

@@ -8,6 +8,7 @@ class AgentMessageUsage(BaseModel):
     message_id: str
     user_id: str | None = None
     client_id: str | None = None
+    tenant_id: str | None = None
     agent_id: str
     provider: str
     model_id: str

@@ -110,14 +110,12 @@ def get_weather(city: str) -> str:
 
         weather_description = weather_codes.get(current["weather_code"], "Condição desconhecida")
 
-        result = f"""🌤️ Clima em {city}:
+        return f"""🌤️ Clima em {city}:
 📍 Temperatura: {current["temperature_2m"]}°C
 💧 Umidade: {current["relative_humidity_2m"]}%
 🌬️ Vento: {current["wind_speed_10m"]} km/h
 ☁️ Condição: {weather_description}
 🕐 Atualizado em: {current["time"]}"""
-
-        return result
 
     except requests.RequestException as e:
         return f"Erro ao obter dados do clima para {city}: {e!s}"

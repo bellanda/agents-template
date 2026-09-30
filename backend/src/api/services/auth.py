@@ -15,6 +15,10 @@ Identity precedence (first non-empty wins):
 
 ``client_id`` (optional sub-scope, e.g. an end-customer within a tenant) comes
 from ``X-Client-Id`` header or ``client_id`` query param.
+
+``tenant_id`` scopes tenant agent instructions (`agent_configs`) and per-tenant cost
+(`agent_message_usage.tenant_id`). The template has no organizations: each user is its own
+tenant. Apps set it to the organization id resolved from the verified token.
 """
 
 from typing import Any
@@ -57,4 +61,4 @@ async def get_auth_context(request: Request) -> dict[str, Any]:
     if not client_id:
         client_id = (request.query_params.get("client_id") or "").strip() or None
 
-    return {"user_id": user_id, "client_id": client_id, "roles": []}
+    return {"user_id": user_id, "client_id": client_id, "tenant_id": user_id, "roles": []}

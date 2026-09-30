@@ -1,8 +1,10 @@
-import pprint
 import re
 import time
 
+import structlog
 from duckpy import Client
+
+log = structlog.get_logger(__name__)
 
 client = Client()
 
@@ -14,7 +16,7 @@ def search(query: str) -> list[str]:
     start_time = time.perf_counter()
     results = client.search(query)
     end_time = time.perf_counter()
-    print(f"🔍 DuckDuckGo searched for {query} in {end_time - start_time} seconds")
+    log.info("duckduckgo_searched", query=query, seconds=end_time - start_time)
 
     return [
         {
@@ -28,4 +30,4 @@ def search(query: str) -> list[str]:
 
 if __name__ == "__main__":
     results = search("Gustavo Bellanda")
-    pprint.pprint(results)
+    log.info("duckduckgo_results", results=results)

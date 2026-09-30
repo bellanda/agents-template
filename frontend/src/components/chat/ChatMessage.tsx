@@ -14,6 +14,7 @@ import {
   ToolInput,
   ToolOutput,
 } from "@/components/ai-elements/tool";
+import { resolveToolResult } from "@/components/chat/tool-results";
 import { ChatImageLightbox } from "@/components/chat/ChatImageLightbox";
 import { cn } from "@/lib/utils";
 import type { UIMessage } from "ai";
@@ -234,6 +235,18 @@ function ChatMessageBase({ message, isLastMessage, isStreaming }: ChatMessagePro
             if (part.type === "dynamic-tool") {
               const toolPart = part as ToolPart;
               const key = `${message.id}-tool-${toolPart.toolCallId}`;
+
+              // Envelope with a registered renderer becomes a card; everything else keeps the
+              // collapsed tool block with the raw output.
+              const card =
+                toolPart.state === "output-available" ? resolveToolResult(toolPart.output) : null;
+              if (card) {
+                return (
+                  <div key={key} className="w-full">
+                    <card.Renderer data={card.data as never} />
+                  </div>
+                );
+              }
 
               return (
                 <div key={key} className="w-full">

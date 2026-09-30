@@ -6,12 +6,19 @@ from pydantic import BaseModel, ConfigDict, Field
 
 SuggestionSection = Literal["direct", "template", "follow_up"]
 
+# What clicking a suggestion chip does in the composer (optimuslar, 2026-09): `fill` only writes
+# the text (the user reviews and sends); `attach` writes it, opens the file picker and sends by
+# itself as soon as a file is attached — for flows that start from a document ("analyze this
+# contract"). The frontend treats a missing/unknown value as `fill`.
+SuggestionAction = Literal["fill", "attach"]
+
 
 class AgentSuggestionInstant(BaseModel):
     kind: Literal["instant"] = "instant"
     label: str
     prompt: str
     section: SuggestionSection = "direct"
+    action: SuggestionAction = "fill"
     emoji: str = ""
 
 
@@ -40,9 +47,9 @@ class AgentConfig(BaseModel):
     tools: list[BaseTool] = []
     suggestions: list[AgentSuggestion] = []
     save_to_db: bool = True
-    # Capabilities expostas no /agents para o frontend bloquear uploads
-    # incompatíveis (ex.: imagem em modelo só de texto). Helper:
-    # ``model_capabilities_dict(Models.X.Y)`` em api.core.agents.models.
+    # Capability flags exposed on GET /agents so the frontend blocks incompatible uploads
+    # (e.g. an image on a text-only model). Fill with
+    # ``model_capabilities_dict(Models.X.Y)`` from api.core.agents.models.
     capabilities: dict[str, bool] = Field(
         default_factory=lambda: {
             "image_input": False,
@@ -73,6 +80,7 @@ def serialize_suggestions_for_api(suggestions: list[Any]) -> list[dict[str, Any]
                     "label": label,
                     "prompt": item,
                     "section": "direct",
+                    "action": "fill",
                     "emoji": "",
                 }
             )

@@ -1,3 +1,4 @@
+import { useAttachAndSend } from "@/components/chat/use-attach-and-send";
 import { usePromptInputController } from "@/components/ai-elements/prompt-input";
 import type { AgentSuggestion, AgentSuggestionInstant } from "@/lib/api";
 import { motion } from "motion/react";
@@ -16,6 +17,7 @@ function isInstantDirect(s: AgentSuggestion): s is AgentSuggestionInstant {
 
 export function ChatEmptyHero({ agentName, suggestions }: ChatEmptyHeroProps) {
   const { textInput } = usePromptInputController();
+  const attachAndSend = useAttachAndSend();
 
   const directSuggestions = useMemo(
     () => suggestions.filter(isInstantDirect).slice(0, MAX_HERO_SUGGESTIONS),
@@ -42,7 +44,11 @@ export function ChatEmptyHero({ agentName, suggestions }: ChatEmptyHeroProps) {
               animate={{ opacity: 1, y: 0 }}
               transition={{ duration: 0.2, delay: 0.05 + i * 0.04, ease: "easeOut" }}
               type="button"
-              onClick={() => textInput.setInput(suggestion.prompt)}
+              onClick={() =>
+                suggestion.action === "attach"
+                  ? attachAndSend(suggestion.prompt)
+                  : textInput.setInput(suggestion.prompt)
+              }
               className="border-border/70 hover:bg-accent hover:border-border text-muted-foreground hover:text-foreground rounded-full border px-3.5 py-1.5 text-sm transition-colors"
             >
               {suggestion.label}

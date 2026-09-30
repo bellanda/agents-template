@@ -32,7 +32,6 @@ class ChatRequest(BaseModel):
     stream: bool = False
     session_id: str | None = None
     files: list[str] | None = None  # Optional list of file paths to process
-    realtor_id: int | None = None
     active_client_id: str | None = None
 
 
@@ -423,8 +422,8 @@ async def chat_completions(
                         current_timestamp,
                         request.model,
                         conn=conn,
-                        realtor_id=request.realtor_id,
                         active_client_id=active_client_id,
+                        tenant_id=ctx["tenant_id"],
                         user_file_parts=user_file_parts,
                         user_visible_text=user_visible_text,
                     ):
@@ -455,6 +454,9 @@ async def chat_completions(
             session_id=session_id,
             model_id=request.model,
             agents_registry=agents_registry,
+            user_id=user_id,
+            client_id=active_client_id,
+            tenant_id=ctx["tenant_id"],
         )
 
         return {

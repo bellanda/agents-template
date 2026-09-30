@@ -1,3 +1,6 @@
+import time
+
+import structlog
 from langchain.tools import tool
 from pydantic import BaseModel, Field
 
@@ -8,6 +11,17 @@ from api.services.agents.tools import (
     generate_status_message,
     generate_step_message,
 )
+
+log = structlog.get_logger(__name__)
+
+# Entries older than this are evicted from the dedup cache.
+CACHE_TTL_SECONDS = 60
+# A similar query inside this window reuses the cached result (LLMs tend to fire duplicate searches).
+DUPLICATE_WINDOW_SECONDS = 30
+# Shared words needed to consider two queries "similar".
+MIN_SHARED_WORDS = 2
+# Preview length logged for a result.
+RESULT_PREVIEW_CHARS = 100
 
 # Controle global para evitar buscas duplas na mesma sessão
 _search_cache = {}
@@ -39,17 +53,16 @@ async def web_search(query: str) -> str:
         String formatada com informações completas da busca na web.
     """
 
-    print(f"🚨 [TOOL] web_search EXECUTANDO com query: '{query}'")
-    print(f"🚨 [TOOL] Timestamp: {__import__('time').time()}")
+    log.info("web_search_tool_started", query=query)
 
     # Verificar se já foi feita uma busca similar recentemente
     query_normalized = query.lower().strip()
-    current_time = __import__("time").time()
+    current_time = time.time()
 
     # Limpar cache antigo (mais de 60 segundos)
     keys_to_remove = []
-    for cached_query, (timestamp, result) in _search_cache.items():
-        if current_time - timestamp > 60:
+    for cached_query, (timestamp, _) in _search_cache.items():
+        if current_time - timestamp > CACHE_TTL_SECONDS:
             keys_to_remove.append(cached_query)
 
     for key in keys_to_remove:
@@ -58,20 +71,20 @@ async def web_search(query: str) -> str:
     # Verificar se existe busca similar no cache
     for cached_query, (timestamp, cached_result) in _search_cache.items():
         # Se a query é muito similar e foi feita recentemente (últimos 30 segundos)
-        if current_time - timestamp < 30 and (
+        if current_time - timestamp < DUPLICATE_WINDOW_SECONDS and (
             query_normalized in cached_query
             or cached_query in query_normalized
-            or len(set(query_normalized.split()) & set(cached_query.split())) >= 2
+            or len(set(query_normalized.split()) & set(cached_query.split())) >= MIN_SHARED_WORDS
         ):
             cache_msg = generate_status_message(
                 "completed", f"Usando resultado em cache para query similar: '{cached_query}'"
             )
-            print(f"🔄 [TOOL] {cache_msg}")
+            log.info("web_search_tool_cache_hit", message=cache_msg)
             return cached_result
 
     try:
         search_msg = generate_step_message(1, "Iniciando busca na web...")
-        print(f"🔍 [TOOL] {search_msg}")
+        log.info("web_search_tool_step", message=search_msg)
 
         result = await search(query)
 
@@ -81,10 +94,13 @@ async def web_search(query: str) -> str:
         success_msg = generate_result_message(
             "success", f"Busca concluída! Resultado: {len(result) if result else 0} caracteres"
         )
-        print(f"✅ [TOOL] {success_msg}")
-        print(f"📄 [TOOL] Primeiros 100 chars: {result[:100] if result else 'VAZIO'}...")
+        log.info(
+            "web_search_tool_done",
+            message=success_msg,
+            preview=result[:RESULT_PREVIEW_CHARS] if result else "VAZIO",
+        )
         return result
     except Exception as e:
         error_msg = generate_error_message(f"Erro inesperado ao realizar a busca na web: {e!s}")
-        print(f"❌ [TOOL] {error_msg}")
+        log.error("web_search_tool_failed", message=error_msg)
         return f"Erro inesperado ao realizar a busca na web: {e!s}"

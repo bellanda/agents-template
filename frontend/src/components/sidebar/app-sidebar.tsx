@@ -27,8 +27,8 @@ import {
 } from "@/components/ui/sidebar";
 import { useUserId } from "@/hooks/useUserId";
 import { prefetchThreadMessages, type Thread } from "@/lib/api";
-import { PlusIcon, RobotIcon, TrashIcon } from "@phosphor-icons/react";
-import { useNavigate, useRouterState } from "@tanstack/react-router";
+import { PlusIcon, RobotIcon, SlidersHorizontalIcon, TrashIcon } from "@phosphor-icons/react";
+import { Link, useNavigate, useRouterState } from "@tanstack/react-router";
 import { useCallback, useRef } from "react";
 
 const DEFAULT_AGENT_ID = "web-search-agent";
@@ -147,6 +147,12 @@ export function AppSidebar() {
             <Button onClick={handleNewChat} className="w-full" size="sm">
               <PlusIcon className="mr-2 size-4" />
               New Chat
+            </Button>
+            <Button asChild variant="ghost" className="mt-1 w-full justify-start" size="sm">
+              <Link to="/agent-config">
+                <SlidersHorizontalIcon className="mr-2 size-4" />
+                Instruções do agente
+              </Link>
             </Button>
           </div>
 

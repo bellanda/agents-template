@@ -10,6 +10,7 @@
 
 import { Route as rootRouteImport } from './routes/__root'
 import { Route as IndexRouteImport } from './routes/index'
+import { Route as AgentConfigRouteImport } from './routes/agent-config'
 import { Route as React19DemoRouteImport } from './routes/react19-demo'
 import { Route as AgentAgentIdRouteImport } from './routes/agent/$agentId'
 import { Route as ChatAgentIdRouteImport } from './routes/chat/$agentId'
@@ -17,6 +18,11 @@ import { Route as ChatAgentIdRouteImport } from './routes/chat/$agentId'
 const IndexRoute = IndexRouteImport.update({
   id: '/',
   path: '/',
+  getParentRoute: () => rootRouteImport,
+} as any)
+const AgentConfigRoute = AgentConfigRouteImport.update({
+  id: '/agent-config',
+  path: '/agent-config',
   getParentRoute: () => rootRouteImport,
 } as any)
 const React19DemoRoute = React19DemoRouteImport.update({
@@ -37,12 +43,14 @@ const ChatAgentIdRoute = ChatAgentIdRouteImport.update({
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
+  '/agent-config': typeof AgentConfigRoute
   '/react19-demo': typeof React19DemoRoute
   '/agent/$agentId': typeof AgentAgentIdRoute
   '/chat/$agentId': typeof ChatAgentIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
+  '/agent-config': typeof AgentConfigRoute
   '/react19-demo': typeof React19DemoRoute
   '/agent/$agentId': typeof AgentAgentIdRoute
   '/chat/$agentId': typeof ChatAgentIdRoute
@@ -50,20 +58,38 @@ export interface FileRoutesByTo {
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/': typeof IndexRoute
+  '/agent-config': typeof AgentConfigRoute
   '/react19-demo': typeof React19DemoRoute
   '/agent/$agentId': typeof AgentAgentIdRoute
   '/chat/$agentId': typeof ChatAgentIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/react19-demo' | '/agent/$agentId' | '/chat/$agentId'
+  fullPaths:
+    | '/'
+    | '/agent-config'
+    | '/react19-demo'
+    | '/agent/$agentId'
+    | '/chat/$agentId'
   fileRoutesByTo: FileRoutesByTo
-  to: '/' | '/react19-demo' | '/agent/$agentId' | '/chat/$agentId'
-  id: '__root__' | '/' | '/react19-demo' | '/agent/$agentId' | '/chat/$agentId'
+  to:
+    | '/'
+    | '/agent-config'
+    | '/react19-demo'
+    | '/agent/$agentId'
+    | '/chat/$agentId'
+  id:
+    | '__root__'
+    | '/'
+    | '/agent-config'
+    | '/react19-demo'
+    | '/agent/$agentId'
+    | '/chat/$agentId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
   IndexRoute: typeof IndexRoute
+  AgentConfigRoute: typeof AgentConfigRoute
   React19DemoRoute: typeof React19DemoRoute
   AgentAgentIdRoute: typeof AgentAgentIdRoute
   ChatAgentIdRoute: typeof ChatAgentIdRoute
@@ -76,6 +102,13 @@ declare module '@tanstack/react-router' {
       path: '/'
       fullPath: '/'
       preLoaderRoute: typeof IndexRouteImport
+      parentRoute: typeof rootRouteImport
+    }
+    '/agent-config': {
+      id: '/agent-config'
+      path: '/agent-config'
+      fullPath: '/agent-config'
+      preLoaderRoute: typeof AgentConfigRouteImport
       parentRoute: typeof rootRouteImport
     }
     '/react19-demo': {
@@ -104,6 +137,7 @@ declare module '@tanstack/react-router' {
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
+  AgentConfigRoute: AgentConfigRoute,
   React19DemoRoute: React19DemoRoute,
   AgentAgentIdRoute: AgentAgentIdRoute,
   ChatAgentIdRoute: ChatAgentIdRoute,

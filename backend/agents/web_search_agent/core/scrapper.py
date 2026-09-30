@@ -2,10 +2,13 @@ import asyncio
 import re
 import time
 
+import structlog
 from bs4 import BeautifulSoup
 from curl_cffi import requests
 
 from api.services.agents.tools import generate_error_message, generate_result_message
+
+log = structlog.get_logger(__name__)
 
 
 def _scrape_url_sync(url: str) -> str:
@@ -34,7 +37,7 @@ def _scrape_url_sync(url: str) -> str:
         success_msg = generate_result_message(
             "success", f"Scraped {url} in {end_time - start_time:.2f}s"
         )
-        print(f"🔍 {success_msg}")
+        log.info("scrape_ok", message=success_msg)
 
         return text
 
@@ -43,7 +46,7 @@ def _scrape_url_sync(url: str) -> str:
         error_msg = generate_error_message(
             f"Failed to scrape {url} in {end_time - start_time:.2f}s: {e!s}"
         )
-        print(f"❌ {error_msg}")
+        log.error("scrape_failed", message=error_msg)
         return ""
 
 
@@ -67,7 +70,7 @@ async def perform_scraping(url: str) -> str:
         error_msg = generate_error_message(
             f"Error parsing {url} in {end_time - start_time:.2f}s: {e!s}"
         )
-        print(f"❌ {error_msg}")
+        log.error("scrape_exception", message=error_msg)
         return f"ERRO_EXCEPTION: {e!s}"
 
 
@@ -96,10 +99,11 @@ def smart_strip(text: str) -> str:
     text = re.sub(r"\n{5,}", "\n\n\n", text)
 
     # Substitui múltiplas quebras de linha (4) por 2
-    text = re.sub(r"\n{4}", "\n\n", text)
-
-    return text
+    return re.sub(r"\n{4}", "\n\n", text)
 
 
 if __name__ == "__main__":
-    print(_scrape_url_sync("https://br.linkedin.com/in/arnando-teixeira-silva-filho-613155240"))
+    log.info(
+        "scrape_result",
+        text=_scrape_url_sync("https://br.linkedin.com/in/arnando-teixeira-silva-filho-613155240"),
+    )
