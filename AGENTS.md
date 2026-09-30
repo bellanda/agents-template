@@ -8,6 +8,7 @@
 
 | Rule | Quando ler (globs) | Assunto |
 | ---- | ------------------ | ------- |
+| `.claude/rules/ai-agents.md` | `backend/agents/**`, `backend/src/api/core/agents/**`, `backend/src/api/**/agents/**`, `frontend/src/components/ai-elements/**`, `frontend/src/components/chat/**`, `frontend/src/components/agent-config/**` | AI Agents — stack única (decisão do usuário, 2026-09-30) |
 | `.claude/rules/backend.md` | `backend/**`, `**/*.py`, `config/app/**`, `config/docker/**`, `**/compose*.yaml` | Backend — Python Stack & Invariants |
 | `.claude/rules/frontend.md` | `frontend/**`, `config/nginx/**` | Frontend — TypeScript, React, TanStack & Architecture |
 | `.claude/rules/logs.md` | `**/*.py` | Logging |

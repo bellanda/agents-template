@@ -55,3 +55,12 @@ por browser ("Load failed" no WebKit/iOS, "NetworkError when attempting to fetch
 então casar por string manda justo o iPhone pro ramo genérico — o usuário lê "Load failed" em inglês e o
 erro nem chega como `NETWORK_ERROR`. A mensagem crua do browser vai só em `details.originalError`, nunca
 na tela.
+
+## Sessão sobrevive a queda de rede
+
+Bug class "voltei do metrô e caí no login": **só a recusa do SERVIDOR encerra a sessão; falha de transporte nunca.** Vale nos dois pontos:
+
+- **`ApiClient.runTokenRefresh`** — `endSession()` (limpa token + `auth-change {refreshFailed:true}`) só roda quando `/auth/token` responde **401/403** (`SESSION_ENDING_STATUSES`). 5xx/429, 200 sem token e o `catch` do fetch (`TypeError`, JSON malformado) só `return false`; a chamada original então falha como `NETWORK_ERROR`. Nunca dispare `auth-change` num `catch {}` cego.
+- **`DataProvider` (bootstrap `runFetchCurrentUser` + retentativa pós-401)** — com `sessionUser` conhecido, `isNetworkFailure(error)` (aceita `TypeError` cru e `ApiError` com `code === NETWORK_ERROR_CODE`) mantém `user`/`isAuthenticated` e retorna; só sem usuário conhecido ou com 401/403 reseta token + `authStore`.
+
+Helpers em `lib/api/network-error.ts` (`NETWORK_ERROR_CODE`, `isNetworkError`, `isNetworkFailure`). Canônico: `kailos/frontend/src/lib/api/{client.ts,context.tsx,network-error.ts}`; nos demais apps o formato (token store, camelCase, probe de sessionStorage) varia, a semântica não.
