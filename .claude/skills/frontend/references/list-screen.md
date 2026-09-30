@@ -2,13 +2,14 @@
 
 > Reference do gate `frontend` (item 8f). Anatomia canônica de qualquer tela que lista registros.
 > Componentes: `references/data-list.tsx`, `references/list-toolbar.tsx`,
-> `references/use-infinite-list.ts` (vendorados em `ui/data-list.tsx`, `ui/list-toolbar.tsx`,
-> `hooks/useInfiniteList.ts`). Contrato de backend: gate `database` → `references/list-pagination.md`.
+> `references/use-infinite-list.ts`, `references/bulk-actions-menu.tsx`,
+> `references/use-list-selection.ts` (vendorados em `ui/data-list.tsx`, `ui/list-toolbar.tsx`,
+> `hooks/useInfiniteList.ts`, `ui/bulk-actions-menu.tsx`, `hooks/useListSelection.ts`). Contrato de backend: gate `database` → `references/list-pagination.md`.
 
 ## Anatomia (não tem variação)
 
 ```
-<ListToolbar>        busca + filtros + ordenação + botão "Novo…"
+<ListToolbar>        busca + filtros + ordenação + [Ações ▾] (seleção) + botão "Novo…"
 <DataList>           tabela (≥768px) / cards (<768px) + contagem + "Carregar mais"
 <ConfirmDialog>      exclusão
 <XFormDialog>        criar/editar
@@ -16,6 +17,38 @@
 
 **Nada fica abaixo do `DataList`.** Com scroll infinito o fim da página nunca chega — botão de criar,
 totalizadores e ações de página vivem no `ListToolbar`.
+
+## Geometria do `ListToolbar` — UMA linha, controles à esquerda, ações à direita
+
+```
+≥768px   [ busca ][ filtro ][ filtro ][ ordenação ][ Limpar ]          [ ação ][ ação ]
+         └─ grupo da esquerda: flex-1 + flex-wrap (quebra controle a controle) ┘ └ ml-auto ┘
+640–768  [ busca ]                                                  [ Filtros ][ ação ]
+<640     [ busca ─────────────────────────────── ]
+         [ Filtros ][ ação ][ ação ]              (flex-wrap; filtros+ordenação no dialog)
+```
+
+- **Controles de recorte (busca, filtros, ordenação) moram no canto superior ESQUERDO**, na mesma
+  linha das ações. Sem busca, a ordenação sozinha abre a linha à esquerda.
+- **Ações à direita** (`sm:ml-auto`), alinhadas no topo (`items-start`) — quando os filtros quebram
+  em duas linhas, as ações não descem junto.
+- Os controles do desktop ficam num wrapper `hidden md:contents`: cada `Select` vira item do
+  `flex-wrap` da linha e quebra sozinho, em vez de o bloco inteiro descer de uma vez.
+- Sem busca, o grupo da esquerda é `max-md:hidden` — grupo vazio numa coluna flex deixa o `gap` como
+  espaço fantasma acima das ações no celular.
+- **Filtro do toolbar é controle de UMA altura (`h-9`), sem `<Label>` empilhado.** A linha é
+  `items-center`: o campo rotulado desce meia linha e fica torto. O rótulo visível mora DENTRO do
+  controle — `InputGroup` + `InputGroupAddon` (`[De | dd/mm/aaaa]`) para data/texto, valor "Todos os
+  status" para `Select` — e o nome acessível vai em `aria-label` contendo o texto visível ("De", não
+  "Data inicial": leitor de voz e `getByLabelText` procuram pelo que está na tela). Nada de `id`/`htmlFor`: os filtros
+  montam duas vezes (linha + dialog) e o `htmlFor` focaria a cópia escondida.
+
+**PROIBIDO:** filtros/ordenação numa **2ª linha** abaixo das ações · `ml-auto` num controle de
+recorte (empurra a ordenação pra direita, embaixo dos botões — a esquerda fica vazia e a tela parece
+quebrada) · toolbar ad-hoc (`div` com `Select` + `Button`) ao lado ou em vez do `ListToolbar`.
+Mesma regra para barra de filtros **sem lista** (dashboard, relatório): controles agrupados no topo
+à esquerda, acima das abas; no celular viram um botão "Filtros" que abre `FormDialog` — troca por
+CSS, nunca `useIsMobile()`.
 
 ## Invariantes
 
@@ -122,6 +155,67 @@ sentinela, sem "Carregar mais", sem contagem, sem `onClearFilters`. Ganha `table
 uso é fetch-all disfarçado; usar `DataList` numa tabela de 6 itens de orçamento paga sentinela,
 contagem e "Carregar mais" que nunca fazem sentido. O teste é uma pergunta só — **o número de linhas
 cresce com o uso do sistema?** Sim → `DataList` + `useInfiniteList`. Não → `StaticDataList`.
+
+## Filtro de status com contagem
+
+Quando o status é o recorte principal da tela (estoque, funil), o `Select` de status diz **quantos
+registros há em cada opção**, agrupado por etapa:
+
+```
+Todos os veículos · 212
+── Em negociação ──────────        SelectGroup + SelectLabel por etapa; a 1ª opção do grupo
+   Toda a negociação · 43          é a etapa inteira, depois os status dela
+   Em avaliação · 12
+── Estoque ────────────────
+   Todo o estoque · 169
+   Em estoque · 150
+── Outros ─────────────────        status fora de etapa: só aparece com registro (ou selecionado)
+```
+
+- **Um controle só.** Abas por etapa + filtro de status em cima são dois recortes do mesmo eixo que se
+  contradizem (aba "Estoque" com filtro "Em avaliação" = lista vazia sem motivo aparente).
+- **Backend:** `GET …/{recurso}/status-counts?search=`, declarado ANTES de `/{id}`, mesma permissão de
+  leitura da lista: `SELECT status, COUNT(*) {PREDICADO} GROUP BY status` reaproveitando o predicado
+  `Final` da listagem com o filtro de status **nulo** — a contagem respeita a busca, não o próprio
+  status (senão toda opção fora da escolhida marcaria 0).
+- **Resposta é lista `[{status, total}]`, nunca dict com o status como chave:** o `ApiClient`
+  camelcaseia chave de dict (`nova_proposta` chega como `novaProposta` e a contagem some).
+- **Query key sob o prefixo da lista** (`[endpoint, "status-counts", { search }]`): toda invalidação
+  de mutation já refresca a contagem. `keepPreviousData` para o número não piscar entre buscas.
+- Totais de etapa e "Todos" somados no cliente a partir do mapa etapa→status (fonte única em
+  `types/`). **O número some enquanto carrega** — nunca um `0` falso.
+- Na URL, `stage` e `status` são exclusivos: `validateSearch` descarta `stage` quando há `status`.
+
+## Seleção múltipla — menu `Ações` no slot de ações
+
+Ação em lote (publicar, arquivar, exportar os marcados) é um `DropdownMenu` **"Ações" com badge da
+contagem** no slot `actions` do `ListToolbar`, antes do "Novo…" (`BulkActionsMenu`). O estado mora
+na TELA (`useListSelection`); o `DataList` só desenha o checkbox (`selection={{ selectedIds,
+onToggle }}`, no canto do card).
+
+```
+[ busca ][ Todo o estoque · 169 ][ ordenação ]         [ Ações 3 ▾ ][ Importar ][ Novo ]
+                                                        │ 3 selecionados
+                                                        │ Selecionar os 24 desta página
+                                                        │ Limpar seleção
+                                                        │ ─────────────
+                                                        │ Publicar nos portais  2 em estoque
+```
+
+- **NUNCA barra de seleção solta entre o toolbar e a lista** — empurra a grade, some no scroll e não
+  cabe a segunda ação.
+- **A seleção guarda o ITEM, não só o id:** atravessa página/scroll, e a ação precisa do rótulo de
+  quem já saiu da tela.
+- **"Selecionar os N desta página"** (paginado) / **"os N carregados"** (scroll infinito,
+  `scopeLabel`) — nunca "Selecionar todos" marcando só o visível: o usuário publica 24 de 169 achando
+  que foi tudo.
+- **Cada ação declara a elegibilidade.** A seleção vale para a lista toda; a ação filtra os marcados
+  que ela alcança, mostra o alcance no item ("2 em estoque"), fica `disabled` com 0, e o dialog dela
+  diz quantos ficaram de fora.
+- **Limpar DENTRO dos handlers** de busca/filtro/ordenação, nunca num `useEffect` — um render depois,
+  o menu ainda ofereceria ação sobre item que o filtro já tirou da tela. Trocar de página não limpa.
+- Ação nova = um `DropdownMenuItem` a mais como `children`. Sem permissão para nenhuma ação em lote →
+  sem menu e sem checkbox.
 
 ## Sentinela de scroll infinito
 
@@ -238,4 +332,6 @@ Some da tela anterior: `PAGE_SIZE`, o param `page`, a aritmética de `lastPage`,
 - **NUNCA** paginação por número de página numa tela nova.
 - **NUNCA** `fetch-all` com `limit: 500` "porque a tabela é pequena" — ela não vai continuar pequena.
 - **NUNCA** colocar botão de criar (ou qualquer ação) abaixo da lista.
+- **NUNCA** barra de seleção/ação em lote entre o toolbar e a lista — é o menu `Ações` no toolbar.
+- **NUNCA** abas por etapa + filtro de status juntos — é um `Select` agrupado, com contagem.
 - **NUNCA** sort key que não esteja no whitelist do backend, nem coluna nullable como sort key.

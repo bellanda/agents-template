@@ -1,3 +1,15 @@
+---
+paths:
+  - "**/tests/**"
+  - "**/test_*.py"
+  - "**/conftest.py"
+  - "**/*.test.{ts,tsx}"
+  - "**/__tests__/**"
+  - "**/e2e/**"
+  - "**/playwright.config.*"
+  - "**/src/test/**"
+---
+
 # Backend Testing
 
 > Aplica-se **quando o user pede** para escrever/rodar testes ou para criar regression test do bug que está sendo corrigido. Não escreva testes especulativos (ver `agent-behavior.md > Restrictions`).
@@ -11,6 +23,22 @@
 ## F.I.R.S.T
 
 **Fast** (segundos) | **Independent** (qualquer ordem passa via rollback ou DB ephemeral) | **Repeatable** (determinístico — unique data para `UNIQUE` fields) | **Self-validating** (assertions explícitas, sem "olha o log") | **Timely** (junto com o código — bug fix = regression test).
+
+### Repeatable inclui o CALENDÁRIO — relógio e data são um PAR
+
+Todo teste que envolve tempo tem dois lados: o **dado** (a data semeada) e o **relógio** (o que o código chama de "agora"). Só existem duas combinações válidas, e a mistura das duas é a que apodrece:
+
+| Combinação                       | Como                                                           | Quando usar                                                                                   |
+| -------------------------------- | -------------------------------------------------------------- | --------------------------------------------------------------------------------------------- |
+| **Relógio fixo + dado fixo**     | injeta `now=`/`evaluated_at=` na função e crava a data literal | a função sob teste **aceita** o relógio (função pura, job, service com parâmetro)             |
+| **Relógio real + dado relativo** | `dt.datetime.now(dt.UTC) ± dt.timedelta(...)`                  | o serviço lê `now()` **por dentro** e a rota não expõe injeção — aí o único controle é o dado |
+
+**PROIBIDO: data absoluta + relógio real.** Passa hoje, falha num dia específico do futuro, e o culpado parece ser a mudança em curso — não o teste escrito meses antes. Já aconteceu duas vezes: 63 testes caíram quando a largada cravada em `2026-09-01` entrou no prazo de 3 dias antes da prova, e um teste de métricas quebrava **toda segunda-feira** (semeava "ontem" e exigia que ontem estivesse dentro da semana corrente, que na segunda começa hoje).
+
+- Janela de calendário (`wtd`/`mtd`, "semana atual", "mês até hoje") tem **fronteira**: semear "ontem" e afirmar pertencimento falha na segunda-feira e no dia 1º. Se o relógio for fixo, escolha uma referência **longe das bordas** (meio de semana, meio de mês) e **no passado**.
+- **Cravar um lado só não resolve.** Se a fixture semeia pelo relógio real e o teste consulta com um `now` fixo (ou vice-versa), os dois lados divergem — pin nos DOIS ou em nenhum.
+- **Acoplamento indireto**: dado relativo muda o **ano**. Constante derivada de ano (faixa etária, competência, exercício fiscal, safra) tem que derivar do MESMO lugar, senão o teste continua passando medindo outra coisa — falha silenciosa, pior que vermelho.
+- Data absoluta em par casado (`DEFAULT_EVAL_AT` + `DEFAULT_EVENT_START_AT`, ambos injetados) é **correta e deve continuar absoluta**: comente o porquê, ou alguém "conserta" e cria a falha que não existia.
 
 ## Scope
 

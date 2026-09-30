@@ -30,3 +30,8 @@ docker-compose.override.*
 temp
 *.temp*
 *temp.*
+
+
+# Dependências e cache de build. `frontend/.gitignore` já cobre o de lá; esta linha pega o
+# node_modules/.vite que o `bunx` cria na raiz quando rodado fora de frontend/.
+node_modules/

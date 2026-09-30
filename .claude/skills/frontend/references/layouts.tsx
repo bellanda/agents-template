@@ -3,7 +3,7 @@
 // The macro UI/UX lives HERE, in one place per layout — never spread across pages.
 // A page NEVER sets its own max-w; the layout owns width and framing.
 //
-//   SidebarLayout      → content capped at max-w-[1440px], centered (the default, ~95% of pages)
+//   SidebarLayout      → content capped at max-w-[1440px], centered, fluid gutter (the default)
 //   SidebarChatLayout  → same sidebar + header, but content is FULL-BLEED (chat / WhatsApp)
 //
 // Both share one internal `SidebarShell` (provider + sidebar + header, defined once). The only
@@ -27,8 +27,12 @@ import { usePageHeader } from "@/contexts/PageHeaderContext";
 import { Outlet } from "@tanstack/react-router";
 import type { ReactNode } from "react";
 
-// Single source of truth for the app content width. Caps Full HD / UltraWide so pages don't sprawl.
+// Single source of truth for the app content width. The cap is a brake for 2K/4K — on a 1920
+// screen at 125% scaling the CSS viewport is 1536, so the shell is already FLUID there and the
+// cap never engages. What the reader actually feels at that size is the gutter, so the gutter is
+// fluid too instead of a 16px/24px step: it grows with the viewport and stops at 32px.
 const CONTENT_MAX_W = "max-w-[1440px]";
+const CONTENT_PX = "px-[clamp(1rem,2vw,2rem)]";
 
 interface SidebarLayoutProps {
   children?: ReactNode;
@@ -46,9 +50,12 @@ function SidebarShell({
 }) {
   const { title, subtitle, actions } = usePageHeader();
 
+  // The header uses the SAME width cap and the SAME fluid gutter as the content — otherwise the
+  // title sits on a different left edge than the page below it, and the misalignment is visible
+  // at every viewport where the clamp is not at one of its ends.
   const headerInner = fullBleed
-    ? "flex w-full items-center justify-between px-4"
-    : `mx-auto flex w-full ${CONTENT_MAX_W} items-center justify-between px-4`;
+    ? `flex w-full items-center justify-between ${CONTENT_PX}`
+    : `mx-auto flex w-full ${CONTENT_MAX_W} items-center justify-between ${CONTENT_PX}`;
 
   return (
     <SidebarProvider>
@@ -84,7 +91,7 @@ function SidebarShell({
 export function SidebarLayout({ children }: SidebarLayoutProps) {
   return (
     <SidebarShell>
-      <div className={`mx-auto w-full ${CONTENT_MAX_W} px-4 py-4 md:px-6 md:py-6`}>
+      <div className={`mx-auto w-full ${CONTENT_MAX_W} ${CONTENT_PX} py-4 md:py-6`}>
         {children || <Outlet />}
       </div>
     </SidebarShell>

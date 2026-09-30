@@ -230,27 +230,67 @@ export function ListToolbar({
   className,
 }: ListToolbarProps) {
   const [filtersOpen, setFiltersOpen] = useState(false);
+  const hasSearch = Boolean(onSearchChange);
   const hasSort = Boolean(sortOptions?.length && onSortChange);
   const hasCollapsible = Boolean(filters) || hasSort;
 
   const closeFilters = useCallback(() => setFiltersOpen(false), []);
 
   return (
-    <div className={cn("space-y-3", className)}>
-      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-        {onSearchChange ? (
-          <SearchInput
-            value={search}
-            onCommit={onSearchChange}
-            placeholder={searchPlaceholder ?? "Buscar…"}
-            className="flex-1"
-          />
-        ) : (
-          // Sem busca as ações continuam à direita em vez de colarem na esquerda.
-          <div className="hidden flex-1 sm:block" />
-        )}
+    // UMA linha: busca + filtros + ordenação ancorados à ESQUERDA, ações à DIREITA. A versão
+    // anterior jogava filtros/ordenação numa 2ª linha com a ordenação em `ml-auto` — sem busca,
+    // a tela virava duas ilhas empilhadas à direita ("Mais recentes" embaixo dos botões) com a
+    // esquerda vazia.
+    <div className={cn("flex flex-col gap-3 sm:flex-row sm:items-start", className)}>
+      {(hasSearch || hasCollapsible) && (
+        // Sem busca, abaixo de 768px o grupo só teria controles escondidos: some inteiro para
+        // não deixar o `gap` da coluna como espaço fantasma acima das ações.
+        <div
+          className={cn("flex flex-1 flex-wrap items-center gap-2", !hasSearch && "max-md:hidden")}
+        >
+          {onSearchChange && (
+            <SearchInput
+              value={search}
+              onCommit={onSearchChange}
+              placeholder={searchPlaceholder ?? "Buscar…"}
+              className="sm:min-w-56 sm:flex-1"
+            />
+          )}
 
-        <div className="flex items-center gap-2">
+          {/* Desktop: filtros e ordenação inline. Mobile: dentro do dialog. `md:contents`
+              promove cada controle a item do flex-wrap da linha — quebram um a um quando
+              não cabem, em vez de o bloco inteiro descer de uma vez. */}
+          {hasCollapsible && (
+            <div className="hidden md:contents">
+              {filters}
+              {hasSort && (
+                <SortSelect
+                  sort={sort}
+                  order={order}
+                  options={sortOptions!}
+                  onChange={onSortChange!}
+                />
+              )}
+              {activeFilterCount > 0 && onClearFilters && (
+                <Button variant="ghost" size="sm" onClick={onClearFilters}>
+                  Limpar filtros
+                </Button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {(hasCollapsible || actions) && (
+        // `flex-wrap`: o `Button` é `shrink-0`, então "Filtros" + 2 ações da tela não cabem em
+        // 375px e a última era CLIPADA pelo shell. `sm:ml-auto` mantém as ações à direita
+        // quando o grupo da esquerda não existe ou está escondido.
+        <div
+          className={cn(
+            "flex flex-wrap items-center gap-2 sm:ml-auto sm:justify-end",
+            !actions && "md:hidden"
+          )}
+        >
           {hasCollapsible && (
             <Button
               variant="outline"
@@ -268,27 +308,6 @@ export function ListToolbar({
             </Button>
           )}
           {actions}
-        </div>
-      </div>
-
-      {/* Desktop: filtros e ordenação inline. Mobile: dentro do dialog. */}
-      {hasCollapsible && (
-        <div className="hidden flex-wrap items-center gap-2 md:flex">
-          {filters}
-          {hasSort && (
-            <SortSelect
-              sort={sort}
-              order={order}
-              options={sortOptions!}
-              onChange={onSortChange!}
-              className="ml-auto"
-            />
-          )}
-          {activeFilterCount > 0 && onClearFilters && (
-            <Button variant="ghost" size="sm" onClick={onClearFilters}>
-              Limpar filtros
-            </Button>
-          )}
         </div>
       )}
 

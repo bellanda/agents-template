@@ -15,6 +15,13 @@ import { useEffect, useRef, useState, type ReactNode, type UIEvent } from "react
 import { LuChevronsUpDown, LuPlus, LuX } from "react-icons/lu";
 
 const PAGE_SIZE = 10;
+/**
+ * Teto do `limit` — o MESMO `MAX_PAGE_LIMIT` do backend (`routes/shared/list_params.py`).
+ * Sem ele, uma lista com mais de 200 linhas rola até o fim, o degrau seguinte pede 210,
+ * o FastAPI devolve 422 e o picker fica vazio no meio da digitação. Quem tem tanta linha
+ * assim acha pela busca, não rolando.
+ */
+const MAX_LIMIT = 200;
 /** Distância do fim da lista que dispara o próximo degrau — ~meia linha. */
 const LOAD_MORE_THRESHOLD_PX = 32;
 
@@ -119,7 +126,7 @@ export function EntityPicker<T>({
   }, [open]);
 
   const items = data?.items ?? [];
-  const hasMore = items.length < (data?.total ?? 0);
+  const hasMore = items.length < (data?.total ?? 0) && limit < MAX_LIMIT;
   const selected = value ? items.find((item) => getId(item) === value) : undefined;
   const selectedLabel = value ? (selected ? getLabel(selected) : (valueLabel ?? null)) : null;
   const canCreate = Boolean(createLabel && onCreateNew);
@@ -138,7 +145,8 @@ export function EntityPicker<T>({
     if (!hasMore || isFetching) return;
     const list = event.currentTarget;
     const remaining = list.scrollHeight - list.scrollTop - list.clientHeight;
-    if (remaining <= LOAD_MORE_THRESHOLD_PX) setLimit((current) => current + PAGE_SIZE);
+    if (remaining <= LOAD_MORE_THRESHOLD_PX)
+      setLimit((current) => Math.min(current + PAGE_SIZE, MAX_LIMIT));
   };
 
   const startCreate = () => {

@@ -1,4 +1,5 @@
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -53,6 +54,12 @@ export interface DataListAction<T> {
   hidden?: (item: T) => boolean;
 }
 
+export interface DataListSelection {
+  selectedIds: ReadonlySet<string>;
+  /** Recebe o `getRowId` da linha — a tela é dona do Set (ver `use-list-selection.ts`). */
+  onToggle: (id: string) => void;
+}
+
 export interface DataListProps<T> {
   items: T[];
   columns: DataListColumn<T>[];
@@ -95,6 +102,17 @@ export interface DataListProps<T> {
    * container. Numa coleção textual, sair do default é regressão.
    */
   variant?: "table" | "grid" | "stack";
+  /**
+   * Seleção múltipla — opcional; tela que não passa `selection` renderiza igual.
+   * O estado e as ações em lote moram na tela (`useListSelection` + `BulkActionsMenu`
+   * no slot `actions` do `ListToolbar`); a lista só desenha o checkbox.
+   *
+   * O checkbox é absoluto sobre o CARD, o que cobre `grid`, `stack` e o mobile de
+   * `table` de uma vez, sem tocar em nenhum `renderCard` de tela. A tabela do
+   * desktop fica sem checkbox: seleção em lote é de coleção visual (estoque em
+   * `variant="grid"`), e uma coluna a mais mexeria no header de toda tela default.
+   */
+  selection?: DataListSelection;
   className?: string;
 }
 
@@ -204,6 +222,7 @@ function ResponsiveRows<T>({
   renderCard,
   variant,
   tableFooter,
+  selection,
 }: {
   items: T[];
   columns: DataListColumn<T>[];
@@ -213,6 +232,7 @@ function ResponsiveRows<T>({
   renderCard?: (item: T, context: { actions: ReactNode }) => ReactNode;
   variant: "table" | "grid" | "stack";
   tableFooter?: ReactNode;
+  selection?: DataListSelection;
 }) {
   const cardsOnly = variant !== "table";
   const cardsClassName = cardsClassNameFor(variant);
@@ -236,6 +256,27 @@ function ResponsiveRows<T>({
     if (!onRowClick || isInteractiveClick(event)) return;
     onRowClick(item);
   };
+
+  /**
+   * Checkbox de seleção sobre o card. O `<label>` de 44px é o alvo de toque —
+   * o quadrado do Radix sozinho tem 16px e não se acerta com o dedo.
+   *
+   * Marcar NÃO dispara `onRowClick`: `isInteractiveClick` já fecha em `label` e
+   * em `button`, e o Radix Checkbox é um `<button role="checkbox">`.
+   */
+  const selectionBox = (id: string) =>
+    selection ? (
+      <label
+        aria-label="Selecionar"
+        className="absolute top-1 left-1 z-10 flex size-11 cursor-pointer items-center justify-center"
+      >
+        <Checkbox
+          checked={selection.selectedIds.has(id)}
+          onCheckedChange={() => selection.onToggle(id)}
+          className="bg-background/90 border-foreground/30 shadow-sm"
+        />
+      </label>
+    ) : null;
 
   return (
     <>
@@ -291,7 +332,12 @@ function ResponsiveRows<T>({
 
           if (renderCard) {
             return (
-              <div key={getRowId(item)} onClick={rowClick(item)}>
+              <div
+                key={getRowId(item)}
+                onClick={rowClick(item)}
+                className={cn(selection && "relative")}
+              >
+                {selectionBox(getRowId(item))}
                 {renderCard(item, { actions: actionsNode })}
               </div>
             );
@@ -307,8 +353,11 @@ function ResponsiveRows<T>({
               className={cn(
                 "bg-card rounded-lg border p-4",
                 onRowClick && "active:bg-muted/50 cursor-pointer",
+                // O checkbox flutua sobre o canto; sem a calha o título passaria por baixo.
+                selection && "relative pl-14",
               )}
             >
+              {selectionBox(getRowId(item))}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{cardContent(primary, item)}</div>
@@ -510,6 +559,7 @@ export function DataList<T>({
   countLabel,
   renderCard,
   variant = "table",
+  selection,
   className,
 }: DataListProps<T>) {
   const sentinelRef = useInfiniteScrollSentinel({
@@ -567,6 +617,7 @@ export function DataList<T>({
           onRowClick={onRowClick}
           renderCard={renderCard}
           variant={variant}
+          selection={selection}
         />
       </div>
 

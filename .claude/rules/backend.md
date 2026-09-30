@@ -1,3 +1,12 @@
+---
+paths:
+  - "backend/**"
+  - "**/*.py"
+  - "config/app/**"
+  - "config/docker/**"
+  - "**/compose*.yaml"
+---
+
 # Backend — Python Stack & Invariants
 
 > Cada linha sublinhada aponta a skill com a implementação completa. Invoque a skill ANTES de escrever código.
@@ -35,7 +44,8 @@
 - **Concurrency**: fan-out, timeout, file I/O em handler async, capacity limiter, memory stream, cancel shield → SEMPRE skill `anyio-concurrency`.
 - **Cache + messaging**: TTL/contador/sliding window/invalidation (Valkey) e Pub/Sub/Queue/JetStream/KV (NATS) → gate `infra`. Valkey UDS only (`unix:///run/valkey/valkey.sock`), `decode_responses=False`, AOF everysec.
 - **Auth**: qualquer toque em `/auth/*`, refresh_tokens repo, middleware auth, login/logout/refresh, password hashing, Google OAuth, cookie → gate `auth`. NUNCA decode JWT sem `options={"require": [...]}` + `issuer=` + `audience=`. NUNCA JWT no refresh (opaco + SHA-256). NUNCA Argon2 com defaults. Rotação = `claim_if_unused` atômico (nunca find+mark_used); cookie de refresh = clear-then-set; logout SEMPRE limpa cookies (nunca 401 antes); janela de graça de reuso (10–30s) recupera Set-Cookie perdido sem queimar a família + GC gatado no sucessor; **login revoga a família que veio no cookie ANTES de cunhar a nova** — best-effort (cookie ausente/inválido/de outro app = no-op silencioso, login NUNCA falha por causa da limpeza), senão a família anterior fica órfã viva no Postgres. Quando o endpoint de login não recebe o cookie (path-scopado em `/auth/token`, então `/auth/google` nunca o vê), a revogação é o handshake do cliente: `POST /auth/token/logout` e só então o login.
-- **DateTime**: UTC only (`TIMESTAMPTZ`, `datetime.now(UTC)`). API responde ISO 8601 com sufixo `Z`.
+- **DateTime**: UTC only (`TIMESTAMPTZ`, `datetime.now(UTC)`). API responde ISO 8601 com sufixo `Z`. **Data montada em teste sai no MESMO fuso em que a query compara**: repositório de KPI/dashboard/aging converte (`AT TIME ZONE 'America/Sao_Paulo'`) antes de comparar `::date`, então setup com `CURRENT_DATE ± N` (fuso da sessão) ou `date.today()` (fuso do host) acerta ~21h por dia e erra nas 3h em que a data UTC já virou e a local não — falha reproduzível numa janela de horário, que some sozinha e parece regressão da mudança em curso.
+- **Seed de bootstrap (`scripts/load_default_data.py`) é INSERT-ONLY por padrão**. Ele é upsert por chave: linha que já existe fica intacta, e o UPDATE coluna-a-coluna só sai com `--update` explícito — em base viva ele apaga o que a app gravou em runtime (`last_login_at`, CNPJ, `custom_roles`, `permissions_override`). O guard de ambiente (`ENVIRONMENT=prod|staging` exige `--yes-i-know`) vale **SÓ para `--update`**: o `CMD` do Dockerfile é `load_default_data.py online && exec granian`, então barrar o insert-only em prod não protege linha nenhuma e **derruba a API inteira pelo `&&`** — já aconteceu em produção. Os JSONs de `default_data/` carregam só identidade de bootstrap; coluna que a aplicação é dona em runtime NÃO entra no payload.
 
 ## Directory Layout (FastAPI)
 

@@ -157,6 +157,9 @@ async def connect_embedded_signup(
     code = (body.get("code") or "").strip()
     phone_number_id = (body.get("phone_number_id") or "").strip()
     waba_id = (body.get("waba_id") or "").strip()
+    # v4: o FINISH passou a trazer o Business Manager do cliente. Opcional — nem toda
+    # variação do fluxo manda, e o handshake não depende dele.
+    business_id = (body.get("business_id") or "").strip() or None
     if not code or not phone_number_id or not waba_id:
         raise BadRequestError(detail="code, phone_number_id e waba_id obrigatórios")
 
@@ -185,12 +188,33 @@ async def connect_embedded_signup(
         metadata_extra={
             "waba_id": waba_id,
             "facebook_user_id": facebook_user_id,  # ← chave do mapping
+            "business_id": business_id,  # v4; fica no JSONB, nenhuma query lê hoje
+            "source": "embedded_signup",
             "quality_rating": phone_info.get("quality_rating"),
         },
     )
     return {"status": "active", "portal": portal,
             "external_username": connection["external_username"]}
 ```
+
+### 3b. Caminho de token manual — faz o MESMO handshake ou não faz nada
+
+Quase todo projeto ganha, para QA, um formulário que aceita `phone_number_id` + token
+colados à mão. **Ele não pode parar em `verify_credentials`.** Verificar credencial só
+prova que o token é válido; quem faz a Meta *entregar mensagem* é o
+`subscribe_app_to_waba`. Sem ele a conexão nasce com badge verde na tela e inbound morto —
+e o sintoma ("conectei e não chega nada") não aponta para o formulário.
+
+Então o caminho manual exige **três** campos (`phone_number_id`, `waba_id`, `api_token`) e
+roda a mesma sequência do ES, trocando o `exchange_es_code` pelo token informado:
+`subscribe_app_to_waba` → `register_phone_number` → `verify_credentials` → `upsert(...,
+waba_id=waba_id, metadata_extra={"source": "manual_token"})`.
+
+O que **continua** faltando, e precisa de comentário no código: um System User token não
+tem usuário do Facebook por trás, então não existe `facebook_user_id` — os webhooks
+Deauthorize e Data Deletion não conseguem mapear essa conexão (`revoke_by_metadata_field`
+não acha linha) e a revogação vira trabalho manual. Por isso o bloco fica **atrás de
+`isSuperuser`**, não exposto ao cliente final.
 
 ---
 
@@ -402,26 +426,62 @@ async def whatsapp_webhook_verify(
 // components/whatsapp-setup/FacebookBusinessLoginButton.tsx
 const FB_SDK_URL = "https://connect.facebook.net/en_US/sdk.js";
 const FB_SDK_SCRIPT_ID = "facebook-jssdk";
-const SESSION_INFO_VERSION = 3;
+
+// Origens EXATAS de onde o widget posta. Allowlist por igualdade — um sufixo
+// (`endsWith("facebook.com")`) tambem casa `https://evil-facebook.com`.
+const FB_EMBEDDED_SIGNUP_ORIGINS = new Set([
+  "https://www.facebook.com",
+  "https://web.facebook.com",
+  "https://business.facebook.com",
+]);
+
+// O `event` do postMessage é o DISCRIMINADOR do desfecho. Sem ele, "fechou a janela no
+// meio", "terminou sem escolher número" (a Meta permite desde a v3) e "o widget nunca
+// respondeu" chegam ao callback como o MESMO objeto vazio — e o usuário recebe a mesma
+// mensagem errada nos três casos.
+type SignupOutcome =
+  | { kind: "none" }
+  | { kind: "finished"; phoneNumberId?: string; wabaId?: string; businessId?: string }
+  | { kind: "cancelled"; currentStep?: string }
+  | { kind: "unsupported"; event: string };
+
+const readId = (v: unknown) => (typeof v === "string" && v.length > 0 ? v : undefined);
 
 export function FacebookBusinessLoginButton({
   appId, configId, graphApiVersion = "v25.0", onSuccess, onError,
 }: Props) {
   const [sdkReady, setSdkReady] = useState(typeof window !== "undefined" && !!window.FB);
-  const sessionInfoRef = useRef<{ phoneNumberId?: string; wabaId?: string }>({});
+  const outcomeRef = useRef<SignupOutcome>({ kind: "none" });
 
-  // postMessage do widget envia phone_number_id + waba_id ANTES do FB.login callback.
+  // Formas que a Meta envia:
+  //   FINISH → data: { phone_number_id, waba_id, business_id, … }
+  //   CANCEL → data: { current_step }
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
-      if (!event.origin.endsWith("facebook.com")) return;
-      const data = event.data;
-      if (data?.type !== "WA_EMBEDDED_SIGNUP") return;
-      if (data.event === "FINISH" && data.data) {
-        sessionInfoRef.current = {
-          phoneNumberId: data.data.phone_number_id,
-          wabaId: data.data.waba_id,
+      if (!FB_EMBEDDED_SIGNUP_ORIGINS.has(event.origin)) return;
+      const message = event.data;
+      if (!message || typeof message !== "object") return;
+      if (message.type !== "WA_EMBEDDED_SIGNUP") return;
+      const data = (message.data ?? {}) as Record<string, unknown>;
+      if (message.event === "FINISH") {
+        outcomeRef.current = {
+          kind: "finished",
+          phoneNumberId: readId(data.phone_number_id),
+          wabaId: readId(data.waba_id),
+          businessId: readId(data.business_id),
         };
+        return;
       }
+      if (message.event === "CANCEL") {
+        outcomeRef.current = { kind: "cancelled", currentStep: readId(data.current_step) };
+        return;
+      }
+      // Variações do fluxo que este app não implementa — hoje coexistência
+      // (`FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`) e WABA sem número
+      // (`FINISH_ONLY_WABA`). Só chegam se alguém marcar o produto na Configuration,
+      // e em v4 isso é decisão de painel, não de código. Nomear o evento é o que
+      // transforma "não funciona" numa frase que diz onde mexer.
+      outcomeRef.current = { kind: "unsupported", event: String(message.event ?? "") };
     }
     window.addEventListener("message", handleMessage);
     return () => window.removeEventListener("message", handleMessage);
@@ -450,22 +510,46 @@ export function FacebookBusinessLoginButton({
   }, [appId, graphApiVersion]);
 
   const handleClick = () => {
-    sessionInfoRef.current = {};
+    outcomeRef.current = { kind: "none" };
     window.FB!.login(
       (response) => {
-        const code = response?.authResponse?.code;
-        const { phoneNumberId, wabaId } = sessionInfoRef.current;
-        if (!code || !phoneNumberId || !wabaId) {
-          onError("ES cancelado ou sem session_info");
+        const outcome = outcomeRef.current;
+        // `cancelled` vem ANTES do teste de `code`: quem fecha o widget também volta
+        // sem code, e checar o code primeiro jogaria todo mundo na mensagem genérica
+        // — junto com o `current_step`, o único dado que diz onde ele parou.
+        if (outcome.kind === "cancelled") {
+          const step = outcome.currentStep ? ` (etapa: ${outcome.currentStep})` : "";
+          onError(`Você fechou o Embedded Signup antes de concluir${step}.`);
           return;
         }
-        onSuccess({ code, phoneNumberId, wabaId });
+        if (outcome.kind === "unsupported") {
+          onError(
+            `A Meta devolveu um evento que este app não trata (${outcome.event}). ` +
+              "Confira os produtos marcados na Configuration do Embedded Signup."
+          );
+          return;
+        }
+        const code = response?.authResponse?.code;
+        if (!code) return onError("Login cancelado ou code não retornado pela Meta.");
+        if (outcome.kind === "none")
+          return onError("O widget da Meta não respondeu. Verifique o bloqueador de pop-ups.");
+        if (!outcome.phoneNumberId)
+          return onError("O fluxo terminou sem número. Refaça e escolha um no widget.");
+        if (!outcome.wabaId)
+          return onError("O fluxo terminou sem WABA. Refaça e selecione a conta no widget.");
+        onSuccess({
+          code,
+          phoneNumberId: outcome.phoneNumberId,
+          wabaId: outcome.wabaId,
+          businessId: outcome.businessId,
+        });
       },
       {
         config_id: configId,
         response_type: "code",
         override_default_response_type: true,
-        extras: { feature: "whatsapp_embedded_signup", sessionInfoVersion: SESSION_INFO_VERSION, setup: {} },
+        // v4: `extras` só carrega `setup` (prefill opcional). Ver seção abaixo.
+        extras: { setup: {} },
       }
     );
   };
@@ -475,6 +559,62 @@ export function FacebookBusinessLoginButton({
 ```
 
 Vite expõe `VITE_META_APP_ID`, `VITE_META_ES_CONFIG_ID`, `VITE_META_GRAPH_API_VERSION` automaticamente a partir do bloco `vite:` do yaml.
+
+### Versão do Embedded Signup — v4 é a única viva
+
+O ES tem versão PRÓPRIA, independente da versão da Graph API (`v25.0` na URL não diz
+nada sobre isto). Meta descontinua **v2 e v3 em 15/10/2026**; v4 saiu em 08/10/2025.
+
+**Quem escolhe a versão é o `extras`**, e é por eliminação — não existe `version: "v4"`:
+
+| Versão | Selector no código                                      |
+| ------ | ------------------------------------------------------- |
+| v2     | `extras: { sessionInfoVersion: "3", featureType: ... }` |
+| v3     | `extras: { version: "v3", featureType: ... }`           |
+| **v4** | `extras: { setup: {} }` — **e nada mais**               |
+
+Ou seja: **`sessionInfoVersion` ou `version` presentes = você está numa versão morta.**
+`feature: "whatsapp_embedded_signup"` nunca foi parâmetro documentado — some junto.
+
+Em v4 o que era `featureType`/`features` no código passa a ser **produto marcado na
+Facebook Login for Business → Configurations**. O `config_id` deixou de ser só um
+ponteiro de escopos e virou o lugar onde a variação do fluxo é decidida: coexistência
+(WhatsApp Business app onboarding), Marketing Messages, Click to WhatsApp Ads.
+
+**Na virada, a maioria das integrações é convertida automaticamente para v4** — mas
+`only_waba_sharing`, `marketing_messages_lite` e **`coex`** (coexistência) **não são**, e
+param de funcionar. Se o `featureType` do projeto for um desses três, a migração é
+obrigatória e tem prazo; se o `extras` só tinha `sessionInfoVersion`/`feature`, a conversão
+é automática e a limpeza do código é higiene, não emergência.
+
+O `postMessage WA_EMBEDDED_SIGNUP` continua entregando `data.phone_number_id` e
+`data.waba_id` em v4, e ganhou `business_id` (guarde no `metadata_extra`, não em coluna —
+hoje nenhuma query lê) mais listas opcionais de assets. O que muda é o **handler**: além
+de `FINISH` e `CANCEL` (`data.current_step` — a etapa onde o lojista desistiu, o dado que
+o suporte precisa), existem `FINISH_ONLY_WABA` e
+`FINISH_WHATSAPP_BUSINESS_APP_ONBOARDING`. Tratar só `FINISH` faz os outros desfechos
+caírem no mesmo estado vazio de "o widget nunca respondeu" — três causas, uma mensagem, e
+ela errada em dois dos casos. O `code` continua com TTL de ~30s: mande pro backend na hora.
+
+### CSP — sem isto o botão NUNCA sai do spinner
+
+O SDK vem de `connect.facebook.net` e a app quase sempre serve um
+`Content-Security-Policy` restritivo. Três diretivas precisam ceder, e **o mesmo host
+entra em duas delas**:
+
+| Diretiva      | Hosts                                                                                                       | Por quê                                                                                     |
+| ------------- | ----------------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------- |
+| `script-src`  | `https://connect.facebook.net`                                                                              | serve o `sdk.js`                                                                            |
+| `connect-src` | `https://connect.facebook.net` · `https://graph.facebook.com` · `https://www.facebook.com`                  | a PRIMEIRA coisa que o SDK faz é `fetch` de `connect.facebook.net/app_config/json/<app_id>` |
+| `frame-src`   | `https://www.facebook.com` · `https://web.facebook.com` · `https://business.facebook.com` · `https://staticxx.facebook.com` | o SDK cria o iframe `xd_arbiter`, que carrega o `postMessage` do widget                     |
+
+**A armadilha é liberar só o `script-src`**: o script carrega, o `FB.init` roda, e o SDK
+morre no fetch seguinte. Nada aparece na tela — o botão fica desabilitado para sempre e o
+erro vive só no console. Regra geral: **host de terceiro que serve script quase sempre
+também precisa de `connect-src`**, e se ele renderiza iframe, de `frame-src`.
+
+`Cross-Origin-Opener-Policy` tem que ser `same-origin-allow-popups` (NUNCA `same-origin`),
+senão o popup do `FB.login` não devolve o `postMessage` para a página que o abriu.
 
 ---
 
@@ -542,7 +682,7 @@ Tudo populado → frontend mostra botão "Conectar com Facebook" funcional. Algu
 |---|---|---|
 | Botão FB desabilitado | `VITE_META_APP_ID` ou `VITE_META_ES_CONFIG_ID` vazio | Confirma yaml + restart `bun dev` |
 | FB.login retorna sem `code` | Cliente fechou o popup | Retry, nada a fazer |
-| ES finaliza sem phone_number_id/waba_id no `sessionInfoRef` | postMessage não chegou (listener filtra outras origens) | Confirma `origin.endsWith("facebook.com")` no listener |
+| ES finaliza sem phone_number_id/waba_id no `sessionInfoRef` | postMessage não chegou (listener filtra outras origens) | Confirma que a origem real está na allowlist exata `FB_EMBEDDED_SIGNUP_ORIGINS` — NUNCA "conserte" trocando por `endsWith` |
 | `Invalid OAuth access token` no exchange_es_code | `code` expirou (~10s) | Cliente lento; refazer flow |
 | Webhook `SIGNATURE MISMATCH` | `META_APP_SECRET` errado | Re-copia da Meta, restart |
 | `meta_deauthorize ... revoked=0` mas validou HMAC | Conexão criada via token manual (sem `facebook_user_id`) | Esperado — só ES grava esse campo |

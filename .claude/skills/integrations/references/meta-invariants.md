@@ -45,6 +45,37 @@ App ID, ES Config ID, Graph version são **PÚBLICOS** (aparecem no JS bundle). 
 - `signed_request` é **form field**, NÃO JSON body. Formato: `<base64url(sig)>.<base64url(json)>`.
 - **OBRIGATÓRIO** gravar `facebook_user_id` em `portal_connections.metadata_extra` durante `connect_embedded_signup` — sem isso Deauth/Data Deletion validam HMAC mas não acham a conexão.
 
+## Credencial do tenant — cifrada at rest
+
+O token de acesso que volta do Embedded Signup é **permanente** e dá acesso à WABA do cliente. Ele
+NUNCA fica legível no banco:
+
+- Cifre na camada de **repositório**, antes de todo write — não no route, senão um caminho novo
+  esquece.
+- Coluna dedicada com nome que denuncia o conteúdo (`api_token_encrypted`), com prefixo de versão no
+  valor (`v1:`) para permitir rotação de chave.
+- Guardar dentro de um JSONB genérico (`token_data`) é o anti-padrão: some no meio de outros campos e
+  vaza inteiro em qualquer dump, backup ou WAL.
+- Em fila/mensageria **NUNCA** trafegue o token no payload — mande `phone_number_id` e re-resolva a
+  credencial no consumer.
+
+## `postMessage` do Embedded Signup — allowlist exata
+
+O widget devolve `phone_number_id`/`waba_id` por `postMessage`. A checagem de origem é por
+**igualdade exata** contra um conjunto fechado:
+
+```ts
+const FB_EMBEDDED_SIGNUP_ORIGINS = new Set([
+  "https://www.facebook.com",
+  "https://web.facebook.com",
+  "https://business.facebook.com",
+]);
+if (!FB_EMBEDDED_SIGNUP_ORIGINS.has(event.origin)) return;
+```
+
+`event.origin.endsWith("facebook.com")` casa `https://evil-facebook.com` e deixa uma página hostil
+completar o handshake.
+
 ## Don'ts
 
 - **NUNCA** `WHATSAPP_APP_SECRET` separado — é `META_APP_SECRET`.
@@ -52,4 +83,7 @@ App ID, ES Config ID, Graph version são **PÚBLICOS** (aparecem no JS bundle). 
 - **NUNCA** log de `signed_request`/`X-Hub-Signature-256`/body bruto de webhook em prod.
 - **NUNCA** valide HMAC com `==` direto — sempre `hmac.compare_digest` (timing-safe).
 - **NUNCA** compartilhe 1 Meta App entre 2+ SaaS distintos.
+- **NUNCA** guarde token de portal em claro (coluna ou JSONB) — cifre no repositório, antes do write.
+- **NUNCA** valide `event.origin` por sufixo — allowlist de igualdade exata.
+- **NUNCA** ponha token em payload de NATS/fila — mande `phone_number_id` e re-resolva no consumer.
 - **NUNCA** marque Pages/Ad accounts/Catalogs/Pixels/Instagram como `required` na Configuration — trava clientes que não têm aquele asset.

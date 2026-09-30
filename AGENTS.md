@@ -1,3 +1,21 @@
+<!-- GERADO por rules.py (Config Files/agents) a partir de .claude/rules/*.md — não editar à mão.
+     Lido pelo Codex e OpenCode. Claude Code lê .claude/rules/ direto. Skills: .agents/skills/ (Codex)
+     e .claude/skills/ (Claude/OpenCode) — mesmo conteúdo. -->
+
+# Project Rules
+
+## Rules por área — LEIA o arquivo antes de criar/editar arquivos que casam os globs
+
+| Rule | Quando ler (globs) | Assunto |
+| ---- | ------------------ | ------- |
+| `.claude/rules/backend.md` | `backend/**`, `**/*.py`, `config/app/**`, `config/docker/**`, `**/compose*.yaml` | Backend — Python Stack & Invariants |
+| `.claude/rules/frontend.md` | `frontend/**`, `config/nginx/**` | Frontend — TypeScript, React, TanStack & Architecture |
+| `.claude/rules/logs.md` | `**/*.py` | Logging |
+| `.claude/rules/tests.md` | `**/tests/**`, `**/test_*.py`, `**/conftest.py`, `**/*.test.{ts,tsx}`, `**/__tests__/**`, `**/e2e/**`, `**/playwright.config.*`, `**/src/test/**` | Backend Testing |
+| `.claude/rules/uploads.md` | `backend/**`, `**/*upload*`, `**/*storage*` | Uploads & Storage — Invariantes |
+
+Skills (checklist + references profundas): `.agents/skills/<nome>/SKILL.md` (mesmo conteúdo de `.claude/skills/`). Invoque a skill do domínio antes de escrever código nele.
+
 # Code Quality — Functions, Modules & Boundaries
 
 Princípios para código que LLM lê, edita e mantém. Stack-alvo: Python, Rust, TypeScript, Go, C/C++.
@@ -82,3 +100,22 @@ Sempre inclua: valor ofensor, shape esperado, operação que falhou.
 Default da linguagem (`ruff`, `prettier`, `cargo fmt`, `gofmt`). Não discute estilo.
 
 **Alvo: código que lê como prosa. Boundaries explícitas, dependency graph limpo, swap de implementação = mudança em 1 arquivo.**
+
+# Project — Contexto Local
+
+> Rule LOCAL deste projeto (não vem do catálogo central; `rules.py` preserva). Descreva aqui o que
+> é específico e não-derivável do código: domínio, decisões fixas, convenções próprias, integrações
+> ativas, comandos de build/test, gotchas. Mantenha curto — invariantes de stack já vêm das rules
+> do catálogo (`backend.md`, `frontend.md`, `cleancode.md`, `logs.md`, `tests.md`, `uploads.md`).
+
+## O que é
+
+<!-- 1-3 linhas: que produto é, qual o core do domínio. -->
+
+## Decisões fixas (não re-derivar)
+
+<!-- Escolhas já tomadas que o agente deve respeitar sem reabrir. -->
+
+## Comandos
+
+<!-- build / test / lint / migrate específicos deste repo. -->

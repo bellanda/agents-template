@@ -184,6 +184,50 @@ absoluta via `uploadsUrl()`.
 - `getFileApiUrl(key)` — `GET /api/v1/files/{key}`; serve como `<img src>`/href.
 - `getPhotoDisplayUrl(v)` — resolve `data:` | http(s) | file key | `/api/v1/uploads/...`.
 
+## Anexar pelo menu — `preventDefault()` no `onSelect` prende a página
+
+`DropdownMenuItem` que abre `<input type="file">` **NÃO** chama `event.preventDefault()`. No Radix,
+prevenir o select mantém o menu ABERTO, e `DropdownMenu` é modal por default: o resto da página fica
+com `pointer-events: none` e o foco preso no content. O usuário escolhe o arquivo, o chip aparece —
+e o clique/tecla seguinte só serve para fechar o menu. O sintoma NUNCA aparece como "menu preso";
+aparece como **"o botão de enviar não funciona só com anexo"** e **"tenho que clicar no campo pra
+digitar"** — os dois foram reportados como bug de composer.
+
+```tsx
+// ERRADO — menu fica aberto, modal, com o foco preso
+onSelect={(event) => {
+  event.preventDefault();
+  attachments.openFileDialog();
+}}
+// CERTO — item de menu fecha (é o comportamento normal); o input.click() roda dentro do gesto
+onSelect={() => attachments.openFileDialog()}
+```
+
+**Depois que o anexo entra, o caret vai para o campo de texto.** Anexar é o começo da mensagem, não
+o fim. Só no CRESCIMENTO da lista (remover anexo não rouba foco; arquivo recusado pela validação
+abre dialog de erro, que ficaria com o foco roubado), e dentro de `requestAnimationFrame` — o
+`FocusScope` do Radix devolve o foco ao trigger do menu num `setTimeout(0)` ao fechar, então sem o
+rAF o restore chega depois e vence:
+
+```tsx
+const attachmentCountRef = useRef(files.length);
+useEffect(() => {
+  const grew = files.length > attachmentCountRef.current;
+  attachmentCountRef.current = files.length;
+  if (!grew) {
+    return;
+  }
+  const frame = requestAnimationFrame(() => {
+    formRef.current?.querySelector<HTMLTextAreaElement>('textarea[name="message"]')?.focus();
+  });
+  return () => cancelAnimationFrame(frame);
+}, [files.length]);
+```
+
+**Anexo sem texto é mensagem válida** (chat com IA): system prompt + documento já bastam para
+começar. O gate de envio é `hasText || hasAttachments` — nunca só texto, e o botão de enviar nunca
+é desabilitado por campo vazio quando há anexo.
+
 ## Don'ts
 
 - **NUNCA** mutation dentro do `useFileUpload` — é validator-only; mutation é custom por feature.
@@ -194,3 +238,5 @@ absoluta via `uploadsUrl()`.
 - **NUNCA** montar URL de upload na mão — `uploadsUrl`/`getFileApiUrl`/`getPhotoDisplayUrl`.
 - **NUNCA** acoplar fetch/mutation no componente apresentacional — ele recebe callbacks; dados ficam no hook do projeto.
 - **NUNCA** `accept`/whitelist divergente do backend — `DOC_ACCEPT_ATTR` espelha `ALLOWED_DOC_EXTS`.
+- **NUNCA** `event.preventDefault()` no `onSelect` do item que abre o file picker — prende o menu modal sobre a página (foco + `pointer-events`).
+- **NUNCA** exigir texto para enviar mensagem com anexo, nem deixar o foco fora do campo depois de anexar.

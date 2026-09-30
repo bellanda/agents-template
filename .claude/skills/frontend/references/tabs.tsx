@@ -52,9 +52,13 @@ function Tabs({
   onValueChange,
   ...props
 }: React.ComponentProps<typeof TabsPrimitive.Root>) {
-  // Espelho do valor ativo, só para o `TabsList` alimentar o Select do mobile.
-  // `value`/`defaultValue` seguem intactos para o Root — quem manda no controle
-  // continua sendo o Radix; aqui a gente só acompanha o que ele já decidiu.
+  // O espelho DIRIGE o Radix (`value={current}`), não só o acompanha. O Select do mobile
+  // não é um `TabsTrigger`: ele chama `setValue` daqui. Enquanto o Root ficava em
+  // `defaultValue`, o estado interno do Radix só mudava por clique num trigger — o call
+  // site NÃO controlado (`<Tabs defaultValue="…">`) trocava o rótulo do Select e continuava
+  // exibindo o painel da primeira aba. O controlado funcionava por acidente: o
+  // `onValueChange` subia pro `useState` do call site e voltava como `value`. Com o mirror
+  // no comando os dois modos andam igual.
   const [uncontrolled, setUncontrolled] = React.useState(defaultValue);
   const current = value ?? uncontrolled;
 
@@ -74,7 +78,7 @@ function Tabs({
         data-slot="tabs"
         data-orientation={orientation}
         className={cn("group/tabs flex gap-2 data-horizontal:flex-col", className)}
-        value={value}
+        value={current}
         defaultValue={defaultValue}
         onValueChange={setValue}
         {...props}

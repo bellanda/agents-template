@@ -6,7 +6,7 @@
 
 ## Quando usar
 
-- Sidebar com 2+ itens de configuração/administração (Membros, Filas, Integrações, Atendente IA,
+- Sidebar com 2+ itens de configuração/administração (Membros, Equipes, Integrações, Atendente IA,
   Configurações…) → consolidar num ÚNICO item "Configurações" que abre o hub.
 - As rotas-página antigas são **REMOVIDAS** (sem redirect/shim); o gate de permissão migra do
   `beforeLoad` das rotas para a nav do hub.
@@ -86,7 +86,7 @@ Dois params validados **JUNTOS** — `settings` + `settingsOrg`; um sem o outro 
 
 ## Sub-navegação interna
 
-- Conteúdo lista→detalhe dentro de uma seção (ex.: Filas) usa `useState` interno
+- Conteúdo lista→detalhe dentro de uma seção (ex.: Equipes) usa `useState` interno
   (`selectedId: string | null`), não rota.
 - Dialogs de ação (detail/confirm/create) abrem POR CIMA do hub com `useState` local —
   ver don'ts de `overlays.md` (hub→ação efêmera é o caso permitido de Dialog-em-Dialog).

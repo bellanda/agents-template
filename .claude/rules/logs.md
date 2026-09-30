@@ -1,3 +1,8 @@
+---
+paths:
+  - "**/*.py"
+---
+
 # Logging
 
 Stack já bootstrapado nos projetos. Para configurar do zero ou auditar setup, invoque skill `logging-setup`.

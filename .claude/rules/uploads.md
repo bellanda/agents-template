@@ -1,3 +1,10 @@
+---
+paths:
+  - "backend/**"
+  - "**/*upload*"
+  - "**/*storage*"
+---
+
 # Uploads & Storage — Invariantes
 
 > **MANDATÓRIO — invocar skill `uploads-storage` ANTES de codar.** Qualquer upload (arquivo/imagem/doc/mídia/áudio/vídeo/export) em qualquer linguagem (Python/Rust/Go) e qualquer storage (local NVMe / B2 / S3 / Azure / GCS). Esta rule é só invariantes + don'ts; API completa (`save_upload`, modes, filename regex, layout, Pydantic, repository, `StorageBackend` Protocol) na skill.
