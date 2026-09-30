@@ -184,16 +184,9 @@ Creates: `agent_message_usage`, `chat_history`, `checkpoints`, `checkpoint_write
 ### Step 5 — Add .env variables
 
 ```env
-# AI providers — add whichever your agents use
-OPENAI_API_KEY=
-GOOGLE_API_KEY=
-ANTHROPIC_API_KEY=
-NVIDIA_API_KEY=
-CHUTES_API_KEY=
-CEREBRAS_API_KEY=
-GROQ_API_KEY=
-OPENROUTER_API_KEY=
-DEEPSEEK_API_KEY=
+# AI providers
+OPENROUTER_API_KEY=   # single chat gateway
+GROQ_API_KEY=         # audio transcription (Whisper) only
 ```
 
 ---
@@ -393,14 +386,7 @@ POSTGRES_POOL_MAX_INACTIVE_CONNECTION_LIFETIME=300
 POSTGRES_POOL_COMMAND_TIMEOUT=60
 POSTGRES_POOL_TIMEOUT=30
 
-# AI Providers (add whichever you need)
-OPENAI_API_KEY=
-GOOGLE_API_KEY=
-ANTHROPIC_API_KEY=
-NVIDIA_API_KEY=
-CHUTES_API_KEY=
-CEREBRAS_API_KEY=
-GROQ_API_KEY=
-OPENROUTER_API_KEY=
-DEEPSEEK_API_KEY=
+# AI Providers
+OPENROUTER_API_KEY=   # single chat gateway
+GROQ_API_KEY=         # audio transcription (Whisper) only
 ```
