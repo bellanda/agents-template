@@ -193,6 +193,8 @@ export function useChatSession({
 
   const handleSubmit = useCallback(
     async (message: PromptInputMessage) => {
+      // Anexo SEM texto é mensagem válida: system prompt + documento já bastam para a IA
+      // começar. Nunca exija texto aqui nem desabilite o botão de enviar por causa dele.
       const hasText = Boolean(message.text);
       const hasAttachments = Boolean(message.files?.length);
       if (!(hasText || hasAttachments)) return;

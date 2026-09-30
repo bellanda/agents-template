@@ -315,13 +315,15 @@ export const PromptInputActionAddAttachments = ({
 }: PromptInputActionAddAttachmentsProps) => {
   const attachments = usePromptInputAttachments();
 
-  const handleSelect = useCallback(
-    (e: Event) => {
-      e.preventDefault();
-      attachments.openFileDialog();
-    },
-    [attachments]
-  );
+  // SEM `preventDefault()`: no Radix, prevenir o select mantém o menu ABERTO, e um
+  // DropdownMenu modal deixa o resto da página com `pointer-events: none` e o foco preso no
+  // content. O usuário escolhia o arquivo e o clique/tecla seguinte só servia para fechar o
+  // menu — daí a sensação de que não dá para enviar só com o anexo e de que precisa clicar
+  // para começar a digitar. Fechar é o comportamento normal de item de menu, e o
+  // `input.click()` roda dentro do gesto do usuário, então o picker abre do mesmo jeito.
+  const handleSelect = useCallback(() => {
+    attachments.openFileDialog();
+  }, [attachments]);
 
   return (
     <DropdownMenuItem {...props} onSelect={handleSelect}>
@@ -564,6 +566,24 @@ export const PromptInput = ({
       inputRef.current.value = "";
     }
   }, [files, syncHiddenInput]);
+
+  // Anexar é o começo da mensagem, não o fim: com o arquivo na régua o caret vai para o
+  // campo, sem o usuário ter que clicar de volta. Só no CRESCIMENTO da lista — remover
+  // anexo não rouba foco, e arquivo recusado pela validação não move nada (o erro abre
+  // dialog próprio, que ficaria com o foco roubado). O rAF entra porque o FocusScope do
+  // Radix devolve o foco ao trigger do menu num `setTimeout(0)` ao fechar.
+  const attachmentCountRef = useRef(files.length);
+  useEffect(() => {
+    const grew = files.length > attachmentCountRef.current;
+    attachmentCountRef.current = files.length;
+    if (!grew) {
+      return;
+    }
+    const frame = requestAnimationFrame(() => {
+      formRef.current?.querySelector<HTMLTextAreaElement>('textarea[name="message"]')?.focus();
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [files.length]);
 
   // Attach drop handlers on nearest form and document (opt-in)
   useEffect(() => {
