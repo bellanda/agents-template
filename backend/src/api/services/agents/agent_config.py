@@ -112,6 +112,7 @@ async def activate_config_version(
         agent_id=agent_id,
         system_prompt_markdown=snapshot["system_prompt_markdown"],
         model_id=snapshot["model_id"] if model_catalog.exists(snapshot["model_id"]) else None,
-        note=f"restored v{version}",
+        # Shown verbatim as the note in the pt-BR version history (frontend VersionsPanel).
+        note=f"Restaurada da v{version}",
         created_by=created_by,
     )

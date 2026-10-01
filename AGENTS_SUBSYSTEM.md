@@ -101,9 +101,8 @@ Cada um expõe `config: AgentConfig` + `create_root_agent(checkpointer=None)` + 
 `components/ai-elements/` (primitivas: Conversation, Message, Reasoning, PromptInput, Context…),
 `components/chat/` (`ChatView`, `use-chat-session` = `useChat` + transport SSE, anexos, picker,
 `tool-results/` = registry `type → card` do envelope, sugestões `fill|attach`),
-`components/agent-config/` (tela de instruções do tenant: `InstructionsCard` + `MarkdownPreview` +
-`chatgpt-builder-prompt` + `VersionsPanel`, canônico do balizap), rota `routes/agent-config.tsx`,
-`lib/api.ts` (fetchers + `MAX_PROMPT_MARKDOWN_CHARS`).
+`components/agent-config/` (tela de instruções do tenant — **canônica** para kailos/balizap/nexarena/akmeo,
+ver §14), rota `routes/agent-config.tsx`, `lib/api.ts` (fetchers + `MAX_PROMPT_MARKDOWN_CHARS`).
 
 ---
 
@@ -498,6 +497,28 @@ runtime.
   mesmo middleware (`request.override(model=init_model_by_id(...))`).
 - **O que fica no app, não aqui:** dados do negócio injetados em runtime (horário, filas, catálogo),
   flags de captura (balizap `sections`), `enabled` on/off do atendente, preview/tester da config.
+- **Frontend canônico (`components/agent-config/`, decisão 2026-10-01):** dois grupos de arquivo.
+  *Apresentacionais* — copie **verbatim**, nunca importam `@/lib/api` (props + view-model
+  `AgentVersionItem`): `InstructionsCard`, `VersionsPanel` (+ `VersionPreviewDialog`, `text-diff.ts`,
+  `agent-version.ts`), `MarkdownPreview` (Streamdown), `chatgpt-builder-prompt.ts`. *Ligados à API* —
+  o app adapta ao seu backend/permissão: `use-agent-config.ts` e `AgentConfigScreen.tsx`.
+  - `<InstructionsCard markdown maxChars builderContext? saving readOnly? title? description?
+    onSave(markdown, note?) />` — passos numerados, botão "Montar com o ChatGPT", textarea mono com
+    contador/limite, nota de publicação opcional (`note`, ≤500, vai no PUT), preview renderizado.
+    Monte com `key={activeVersion}` (save/restore remonta em leitura; save que falhou mantém o rascunho).
+  - `<VersionsPanel versions activeVersion isLoading? canActivate? activatingVersion onActivate />` —
+    "Ver" abre `VersionPreviewDialog` (aba Texto + aba Diferenças vs. versão ativa, diff de linhas);
+    "Restaurar" cria versão NOVA (sem confirm: nada se perde).
+  - `<AgentConfigScreen agentId onAgentChange builderContext? canEdit? renderBeforeInstructions?
+    renderAfterInstructions? />` — slots `(ctx: {agentId, config}) => ReactNode` p/ extras do app
+    (toggle on/off antes; tester/documentos/captura entre instruções e histórico) sem importá-los aqui.
+    A tela NÃO seta largura/scroll: o layout dita (a rota do template embrulha com 1440 só porque o
+    `SidebarLayout` do template é cru).
+  - **Prompt do ChatGPT:** o app só fornece texto de domínio via `ChatGptBuilderContext`
+    (`platformName`, `channel`, `businessName`, `businessDescription`, `knownFacts`, `platformHandles`,
+    `tools`, `domainTopics`, `domainSections`, `deliveryTitle`); o esqueleto (contexto → "a plataforma
+    JÁ cuida disto" → entrevista → UM bloco Markdown) é fixo. `buildChatGptBuilderUrl(context)`;
+    URL codificada < ~4k chars. Sempre preencha `platformHandles` com o que o SEU runtime injeta.
 
 ## 15. Setup num projeto novo
 
@@ -521,7 +542,8 @@ runtime.
 6. **Uploads org-owned:** se o projeto é org-owned, crie também `org_uploads` + `OrgUpload`/repo
    (o template ship só user-owned) — ver `uploads.md`.
 7. **Frontend:** copie `components/{ai-elements,chat,agent-config}/`, a rota `agent-config` e os
-   fetchers de `lib/api.ts`.
+   fetchers de `lib/api.ts`. Em `agent-config/` só `use-agent-config.ts`/`AgentConfigScreen.tsx` são
+   adaptados (§14); passe o `builderContext` do seu domínio.
 
 ## 16. Como estender e propagar (para o próximo agente)
 
@@ -560,11 +582,11 @@ Divergências encontradas ao consolidar. Cada app deve, ao rodar o sync:
   e mapear no callback (passar `tenant_id=str(org_id)`; `_as_uuid` fica no app), ou migrar para
   `tenant_id`. `usage_repository.py` → nome do template `repositories/agents/usage.py`.
   `describe_images` do app → o do template (retorna `VisionResult`, não tupla). Config do atendente
-  (`org_agent_configs`) continua do app; o front `agent-config/` deve ganhar `MarkdownPreview.tsx`.
+  (`org_agent_configs`) continua do app; o front `agent-config/` segue o canônico do §14.
 - **balizap:** mesmo mapeamento `organization_id`→`tenant_id`; `media.py` (CurlMime, sem retry, sem
   custo do Whisper) → template; `schemas.py` ganha `action` nas sugestões. `org_agent_configs` +
-  `AgentTester`/`ModelSetup` ficam no app (fonte canônica da tela: InstructionsCard/MarkdownPreview/
-  chatgpt-builder-prompt, já portados).
+  `AgentTester`/`ModelSetup`/`DocumentAiConfig` ficam no app, plugados pelos slots da
+  `AgentConfigScreen` (fonte canônica da tela: §14).
 - **nexarena:** `callbacks.py` grava `conversation_id` e usa `agent_message_usage_repository` — adotar o
   repo do template (`insert_agent_message_usage`) e levar `conversation_id` como `thread_id`/metadata
   do app; `custom_providers` perde `streaming=False` fixo (o template recebe `streaming` por kwarg).

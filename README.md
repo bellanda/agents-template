@@ -112,7 +112,7 @@ frontend/src/
 ├── components/
 │   ├── ai-elements/           # Chat UI primitives (Conversation, Message, Reasoning, PromptInput…)
 │   ├── chat/                  # ChatView, use-chat-session, tool-results registry, suggestions
-│   ├── agent-config/          # Tenant instructions screen (InstructionsCard, MarkdownPreview, versions)
+│   ├── agent-config/          # Tenant instructions screen (InstructionsCard, MarkdownPreview, VersionsPanel + diff, ChatGPT builder)
 │   └── sidebar/               # Thread history sidebar
 ├── lib/
 │   ├── api.ts                 # fetchAgents, fetchThreads, fetchThreadMessages
