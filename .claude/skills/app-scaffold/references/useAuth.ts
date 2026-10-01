@@ -1,45 +1,35 @@
 /**
- * Reference: the `useAuth()` composition hook (from the reference frontend).
+ * Reference: shape of the real `useAuth()` (kailos `frontend/src/hooks/useAuth.ts`, mirrored in
+ * promoservice/akmeo/balizap). Copy the real file from kailos — this stub only documents the contract.
  *
- * Composition hook over the zustand `useAuthStore` — the single public API for
- * auth inside React. NOT a Context: components subscribe to the store directly,
- * so there is no provider and no re-render storm.
+ * Corrected 2026-10-01: there is NO zustand `useAuthStore`. Auth state is:
+ *   - `lib/api/access-token-store.ts`  access token in memory (+ BroadcastChannel across tabs)
+ *   - `lib/auth/auth-store.ts`         vanilla `authStore` (`getState()`, `subscribe`, `ready`);
+ *                                      main.tsx awaits `authStore.ready` before mounting the router
+ *   - `lib/api/context.tsx`            `useDataProvider()` → { auth, user, isAuthenticated, isLoading }
  *
- * Tokens live in the store because `beforeLoad` (runs outside React) and the
- * ApiClient need synchronous access — those read `useAuthStore.getState()`
- * directly, never this hook.
+ * `beforeLoad` (outside React) reads `authStore.getState()`, never this hook.
  */
 
-import { useLogin } from "@/api/auth";
-import { useAuthStore } from "@/stores/auth";
+import { setAccessToken } from "@/lib/api/access-token-store";
+import { useDataProvider } from "@/lib/api/context";
+import type { LoginCredentials } from "@/lib/api/types";
+import { useMutation, useQueryClient } from "@tanstack/react-query";
 
 export function useAuth() {
-  const user = useAuthStore((s) => s.user);
-  const accessToken = useAuthStore((s) => s.accessToken);
-  const clear = useAuthStore((s) => s.clear);
-  const login = useLogin();
+  const { auth, user, isAuthenticated, isLoading } = useDataProvider();
+  const queryClient = useQueryClient();
 
-  return {
-    user,
-    isAuthenticated: !!accessToken,
-    login,
-    logout: clear,
-  };
+  const login = useMutation({
+    mutationFn: async (credentials: LoginCredentials) => {
+      // Login starts from zero: old token, previous account's cache and the server-side refresh
+      // family must die BEFORE the new session is minted.
+      setAccessToken(null);
+      queryClient.clear();
+      await auth.endServerSession();
+      return auth.login(credentials);
+    },
+  });
+
+  return { user, isAuthenticated, isLoading, login /* , logout, can helpers … see kailos */ };
 }
-
-/**
- * Companion store — src/stores/auth.ts. Tokens + a minimal user snapshot,
- * persisted to localStorage. `beforeLoad` reads `useAuthStore.getState()`.
- *
- *   interface AuthState {
- *     accessToken: string | null;
- *     refreshToken: string | null;
- *     user: AuthUser | null;
- *     setSession: (s: { accessToken; refreshToken; user }) => void;
- *     clear: () => void;
- *   }
- *
- *   export const useAuthStore = create<AuthState>()(
- *     persist((set) => ({ ... }), { name: "<app>-auth" })
- *   );
- */

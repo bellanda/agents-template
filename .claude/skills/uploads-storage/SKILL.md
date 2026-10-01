@@ -354,7 +354,7 @@ const onPick = async (file: File) => {
 };
 ```
 
-Para chat de agente: hook dedicado `useChatFileUpload` com mutation embutida + sessionId/modelId.
+Para chat de agente: a feature monta o `FormData` e chama `client.upload` via `useUploadMutation` (`hooks/useFileUpload.ts`, progresso real) com sessionId/modelId; `useFileUpload` segue validator-only (`frontend/references/file-upload.md`).
 
 ## 10. Pitfalls
 
@@ -362,7 +362,7 @@ Para chat de agente: hook dedicado `useChatFileUpload` com mutation embutida + s
 - **Nunca** levantar `ValueError`/`AlreadyExistsError` para MIME inválido. Sempre `BadRequestError`.
 - **Nunca** confiar em `file.content_type` sem validação — browsers mandam o que quiserem. Whitelist é defesa.
 - **Nunca** relaxar a coluna de tenancy para `NULL` — arquivo do usuário vai em `user_uploads`, da org em `org_uploads`.
-- **Nunca** colocar mutation no `useFileUpload` (validator-only).
+- **Nunca** colocar mutation no `useFileUpload` (validator-only). O envio com progresso é `useUploadMutation` + `ApiClient.upload` (XHR, `onProgress`) — ver `frontend` → `file-upload.md`.
 - **Nunca** servir arquivo `visibility != 'public'` direto pelo nginx sem passar pelo gate da API.
 - **B2/S3 — nunca** usar a master application key na S3 API (não funciona); só restricted/multi-bucket key (`B2_KEY_ID`/`B2_APP_KEY`).
 - **B2/S3 — nunca** misturar `public` e `private` no mesmo bucket: acesso é bucket-wide ⇒ 2 buckets por env (público + privado), o hint `public` roteia.

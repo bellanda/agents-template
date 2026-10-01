@@ -41,5 +41,5 @@ uploads/users/{user_id}/{domain}/{entity_id}/{slug}-{uuid4}.{ext}
 - **NUNCA** `delete_object` simples em bucket versionado (B2 versiona por default) esperando limpar — apague TODAS as versões (`list_object_versions` + `delete_objects`), senão a história fica órfã e é cobrada.
 - **NUNCA** `b2_public_base_url` = endpoint S3 cru em prod/staging — público serve via **custom domain Cloudflare** (`https://cdn.{domain}/file/{bucket}`; **um CNAME proxied** `cdn.{domain}` → `f<NNN>.backblazeb2.com` serve todos os envs pelo bucket no path), garantindo CDN + egress free (Bandwidth Alliance). Privado NUNCA passa por CDN — presigned-direto pelo gate.
 - **NUNCA** criar `kind` novo sem atualizar `CHECK CONSTRAINT` + `UploadKind` enum no mesmo PR.
-- **NUNCA** mutation de upload no `useFileUpload` (validator-only). Mutation custom por feature.
+- **NUNCA** mutation de upload dentro do `useFileUpload` (validator-only). O envio com progresso é `useUploadMutation` (mesmo arquivo `hooks/useFileUpload.ts`) + `ApiClient.upload` (XHR, `onProgress`) — ver skill `frontend` → `file-upload.md`.
 - **NUNCA** `<img src>` para `visibility != 'public'` — usar endpoint API que resolve URL (presigned em object storage privado).

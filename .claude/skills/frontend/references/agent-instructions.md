@@ -1,9 +1,36 @@
-# Instruções de agente de IA — tela de configuração do tenant
+# Instruções de agente de IA — tela de configuração (Markdown + ChatGPT + versões)
 
-> Reference do gate `frontend`. Vale para todo projeto em que o CLIENTE do SaaS configura o que um
-> agente de IA diz ao cliente final dele (atendente de WhatsApp por org). Backend do agente e política
-> de plataforma (disclosure, janela de 24h) → gate `integrations` (`meta-policy.md`,
-> `human-handoff-queues.md`).
+> Reference do gate `frontend`. Vale para **todo app com agente de IA configurável** — o CLIENTE do
+> SaaS configura o que um agente diz/faz (atendente de WhatsApp por org no kailos/balizap; agentes de
+> anúncios por org no akmeo; agente da plataforma no nexarena). Decisão de **2026-10-01**: UM
+> desenho em todos os apps. Backend do agente e política de plataforma (disclosure, janela de 24h) →
+> gate `integrations` (`meta-policy.md`, `human-handoff-queues.md`); gate `ai-agents`
+> (`tenant-config.md`).
+
+## Canônico (onde copiar)
+
+Template `~/code/github-templates/agents-template/frontend/src/components/agent-config/` — **copie
+por inteiro** para o app (cada app vendora; não importe entre repos):
+
+| Arquivo                      | Papel                                                                                          |
+| ---------------------------- | ---------------------------------------------------------------------------------------------- |
+| `AgentConfigScreen.tsx`      | Tela: seletor de agente (quando há vários) + `InstructionsCard` + `VersionsPanel`              |
+| `InstructionsCard.tsx`       | Passos 1-2-3, botão do ChatGPT, textarea mono, contador, Salvar nova versão; leitura = preview |
+| `MarkdownPreview.tsx`        | Renderiza o Markdown salvo (Streamdown) com o ritmo tipográfico da tela                        |
+| `VersionsPanel.tsx`          | Histórico (`vN`, Atual, nota, data) + Restaurar (cria versão nova)                             |
+| `chatgpt-builder-prompt.ts`  | Pré-prompt do ChatGPT — **o único lugar** que sabe o que o runtime já injeta                   |
+| `use-agent-config.ts`        | Queries/mutations de config e versões (`setQueryData` antes do `invalidateQueries`)            |
+
+Origem: balizap `agent-config/*` (estrutura) + `chatgpt-builder-prompt` do **kailos** (o mais
+completo: recebe `ChatGptStoreFacts` — nome, cidade, endereço, telefone já cadastrados — para o
+ChatGPT não perguntar de novo, e lista tudo que o runtime injeta). `AgentTester`, `DocumentAiConfig`
+e `ModelSetup` do balizap são **extras do balizap**, não fazem parte do padrão.
+
+**Onde monta:** seção "Atendente de IA" do hub de Settings (kailos/balizap — `settings-dialog.md`);
+página `/o/$id/agents/$agentId` com abas (akmeo — vários agentes por org); **área de superusuário**
+no nexarena (agente da plataforma: 1 número monitorado por superusuários, **sem Equipes**, com
+tabela de config/versões da plataforma — modelo do `tenant_agent_configs` do template, sem tenant).
+O **preview** é o modo de leitura do texto salvo (renderizado) — não um painel lateral ao vivo.
 
 ## O contrato em uma frase
 
@@ -54,7 +81,8 @@ export function buildChatGptBuilderUrl(storeName: string): string {
 É navegação, não `fetch`: nenhuma diretiva de CSP muda. O prompt mora num arquivo por projeto
 (`agent-config/chatgpt-builder-prompt.ts`) e carrega, nesta ordem:
 
-1. **Quem é:** plataforma, ramo, canal, nome da loja (vem do cache da org já carregada).
+1. **Quem é:** plataforma, ramo, canal e **o que o cadastro da org já sabe** (nome, cidade, endereço,
+   telefone — vem do cache da org já carregada; o ChatGPT não pergunta de novo).
 2. **O que a plataforma JÁ injeta — "não pergunte nem escreva nada a respeito":** o prompt-base
    (triagem, guardrails de preço/troca), a regra de identidade, e tudo que tem tela própria e entra em
    runtime (horário comercial, equipes e seus gatilhos, catálogo/estoque, data e hora). Repetir isso no
@@ -79,6 +107,50 @@ Mantenha a URL codificada abaixo de ~4 mil caracteres (acento vira 6, espaço vi
 - A regra de identidade do agente vai **depois** do Markdown do tenant na composição do prompt
   (`meta-policy.md`) — o texto é livre e pode tentar contradizê-la.
 
+## Agente com TOOLS — as ferramentas são PERMISSÕES (akmeo)
+
+Agente que age (chama ferramentas) não decide "o que pode fazer" num formulário de Selects por
+linha: é **concessão de permissão**, e a UI reaproveita o picker de duas colunas de permissões
+(akmeo `members/PermissionPickerColumns.tsx` — exporta `ColumnShell`/`DirectionChevron`/`EmptyRow`/`Direction`
+— reutilizado por `agents/ToolPickerColumns.tsx` (`ToolColumn`: linha de ferramenta + toggle "Com aprovação"
+= `GrantMode`) e pelo estado puro `agents/tool-picker.ts` (`ToolModes`, `groupTools`, `toolMatches`,
+`modesFromItems`, `grantsFromModes`, `modesDiffer`). `agents/AgentToolsPanel.tsx` monta as duas colunas
+no lugar dos antigos Selects por linha).
+
+```
+┌ Disponíveis ────────────┐   ┌ Permitidas ─────────────────────────────┐
+│ [ buscar ferramenta… ]  │   │ [ buscar… ]                              │
+│ ▸ Anúncios (3)          │ → │ ▸ Anúncios (2)                           │
+│   Ler campanhas      →  │   │   Pausar campanha   [ Com aprovação ⊙ ]  │
+│   Pausar campanha    →  │ ← │   Ajustar orçamento [ Com aprovação ⊙ ]  │
+└─────────────────────────┘   └──────────────────────────────────────────┘
+```
+
+- Itens = catálogo de tools do **backend** (`key`, `group`/`groupPt`, `labelPt`, `descriptionPt`,
+  `writes`, `risk`) agrupados por domínio — mesma regra de `permissions-display.md`; **busca
+  obrigatória** (local, NFD+lower); badges "Escreve"/"Alto risco" no item.
+- Clique move entre colunas (chevron de direção). Modo na coluna **Permitidas**: padrão `allow`;
+  **"Com aprovação"** (`require_approval`) é um **toggle compacto na linha**, só habilitado para tool
+  que `writes` fora do app (leitura pendente de aprovação humana não faz sentido). Exceção sancionada
+  do 8a: linha densa de picker, não card. Fora de Permitidas = `deny` (não vai ao `bind_tools`).
+- Salva com `DirtyBottomBar`/Salvar o **estado final** (o que não está na lista é revogado). Nível de
+  autonomia "Analisar" mostra aviso: mesmo liberada, nenhuma tool de escrita é entregue ao modelo.
+- Layout: `grid min-h-0 flex-1 gap-4 md:grid-cols-2` (mesma grade do dialog de permissões de
+  membros) — abaixo de 768px as colunas empilham, Disponíveis acima de Permitidas.
+
+## Templates, criação e o que o runtime lê (akmeo)
+
+- **Templates de agente moram no CÓDIGO** (app-owned, ex.: `services/agents/templates.py`), cada um
+  com **um** `instructions_markdown` (não mais N seções compiladas). A org cria agente **a partir de
+  template (cópia)** ou **do zero** (UI "Novo agente" → `useCreate`) e edita livremente o seu.
+- Editar = texto Markdown + ChatGPT (pré-prompt do domínio do agente, ex.: anúncios) + preview +
+  limite de caracteres (mesmo teto do backend) + versões.
+- **O runtime lê a VERSÃO ATIVA** — texto, concessões de tools e `extra_context` do snapshot
+  imutável — **nunca** o estado "ao vivo" que a tela está editando. (Bug do akmeo tratado na
+  padronização de 2026-10-01: `runner.py` lia grants/`extra_context` ao vivo, então edição em
+  rascunho vazava para a próxima execução.) Migration compila as `sections` antigas em `system_prompt_markdown` em `agents`
+  **e** `agent_versions` e só então remove `sections`/`markdown_overridden`/`prompt_compiler`.
+
 ## Don'ts
 
 - **NUNCA** formulário que compila Markdown, "modo guiado/avançado", nem preview lado a lado.
@@ -86,3 +158,7 @@ Mantenha a URL codificada abaixo de ~4 mil caracteres (acento vira 6, espaço vi
   equipes, estoque. Fonte única: runtime.
 - **NUNCA** `dangerouslySetInnerHTML`/parser caseiro para mostrar o salvo — Streamdown.
 - **NUNCA** salvar religando a IA: ligar é o `ToggleCard`, com o portão de canal conectado.
+- **NUNCA** um editor de agente por app — copie o `agent-config/` do template; o que muda por app é o
+  `chatgpt-builder-prompt.ts` (domínio) e o `use-agent-config.ts` (endpoints).
+- **NUNCA** Select por linha para conceder tool a agente — é o picker de colunas (tools = permissões).
+- **NUNCA** o runtime do agente ler config/grants "ao vivo" — sempre a versão ativa.

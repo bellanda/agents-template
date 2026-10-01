@@ -1,6 +1,6 @@
 /**
  * Reference: src/routes/index.tsx — the public epic-startup landing (from
- * the reference frontend). Full-screen, no app shell, single CTA → /login. Adapt the
+ * the reference frontend). Full-screen, no app shell, single CTA → /auth/login. Adapt the
  * wordmark, subtitle, eyebrow signature, and accent colors per project; keep
  * the layering (Particles → glow → vignette → content) and the contract.
  */
@@ -10,11 +10,11 @@ import { ArrowRight } from "lucide-react";
 
 import { Button } from "@/components/ui/button";
 import { Particles } from "@/components/ui/particles";
-import { useAuthStore } from "@/stores/auth";
+import { authStore } from "@/lib/auth/auth-store";
 
 export const Route = createFileRoute("/")({
   beforeLoad: () => {
-    if (useAuthStore.getState().accessToken) {
+    if (authStore.getState().isAuthenticated) {
       throw redirect({ to: "/app/dashboard" });
     }
   },
@@ -94,7 +94,7 @@ function LandingPage() {
           style={{ animationDelay: "300ms" }}
         >
           <Button size="lg" asChild className="group h-11 px-6 text-base">
-            <Link to="/login">
+            <Link to="/auth/login">
               Começar
               <ArrowRight
                 data-icon="inline-end"

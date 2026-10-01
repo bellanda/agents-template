@@ -1,54 +1,61 @@
-# File Upload UI — dropzone, preview, ações & validação
+# File Upload UI — dropzone, preview, ações, progresso & validação
 
 > Reference do gate `frontend`. Espelha no frontend o que a skill `uploads-storage` define no
 > backend. Abra ANTES de construir qualquer UI de upload (arquivo/imagem/logo/banner/doc/galeria).
-> **Reference impl viva: balizap** (`components/branding/` + `components/documents/`). Os utils
-> puros (`useFileUpload`, `upload-error`, `file-types`) são **vendoráveis verbatim**; os componentes
-> são apresentacionais (recebem callbacks) — a camada de dados (hooks/services/endpoints) é por
-> projeto.
+> **Canônico (2026-10-01): promoservice** — `components/uploads/*` (`DocumentDropzone`,
+> `DocumentSlot`, `DocumentList`, `DocumentPreviewDialog`, `PhotoGallery`, `UploadProgress`),
+> `components/branding/ImageDropzone.tsx`, `hooks/useFileUpload.ts` (`useFileUpload` +
+> `useUploadMutation`), `lib/api/client.ts` (`ApiClient.upload`), `lib/utils/image-compress.ts`,
+> `lib/utils/file-types.ts`. Kailos já vendora `hooks/useFileUpload.ts` + `components/uploads/{DocumentDropzone,DocumentSlot,UploadProgress}.tsx`. O `DocumentSlot` nasceu no **balizap** (`components/documents/
+> DocumentSlot.tsx`) e foi adaptado aos primitivos do promoservice. Os utils puros (`validate`,
+> `upload-error`, `file-types`) são **vendoráveis verbatim**; os componentes são apresentacionais
+> (recebem callbacks) — a camada de dados (hooks/services/endpoints) é por projeto.
 
 **Princípio:** upload é uma superfície com affordance clara — **dropzone** (clique OU arraste) no
 estado vazio; no estado cheio o próprio asset/card É o trigger de um **menu de ações** (sem botão
-three-dots solto). Validação client-side falha rápido com toast pt-BR; o servidor revalida. Delete
-SEMPRE via `ConfirmDialog` central (nunca tira inline). Backend: gate `uploads-storage` / `uploads.md`.
+three-dots solto). Validação client-side falha rápido com toast pt-BR; o servidor revalida. Todo
+envio com espera visível mostra **progresso real**. Delete SEMPRE via `ConfirmDialog` central (nunca
+tira inline). Backend: gate `uploads-storage` / `uploads.md`.
 
 ## Tabela de decisão
 
-| Cenário                                                          | Componente                                  |
-| --------------------------------------------------------------- | ------------------------------------------- |
-| Asset único de imagem (logo, banner, avatar)                    | **`ImageDropzone`** (preview + fullscreen)  |
-| Documento de **título predefinido** (Termos, Política, Cardápio) | **`DocumentSlot`** (`captureTitle=false`)   |
-| Documento livre com **título capturado** do usuário             | **`DocumentDropzone`** (`captureTitle=true`) |
-| Lista de documentos já enviados (ações por item)                | **`DocumentList`**                          |
-| Visualizar o arquivo (PDF/Office/imagem/link)                   | **`DocumentPreviewDialog`**                 |
-| Captura de câmera / base64 in-place (NÃO é upload de doc)        | widget próprio (fora deste padrão)          |
+| Cenário                                                           | Componente (canônico promoservice)                              |
+| ----------------------------------------------------------------- | --------------------------------------------------------------- |
+| Asset único de imagem (logo, banner, avatar)                      | **`ImageDropzone`** (preview + fullscreen + menu)               |
+| Várias fotos de uma entidade (OS, veículo, check-list)            | **`PhotoGallery`** (+ `compressImage`, ver "Redução no navegador") |
+| Documento de **título predefinido** (Termos, CNH, Orçamento assinado) | **`DocumentSlot`** (single-instance; subir de novo troca)   |
+| Anexo solto, sem título/slot (lista de anexos da entidade)        | `DocumentDropzone` (`onSelect(file)`) + `DocumentList`          |
+| Visualizar o arquivo (PDF/Office/imagem)                          | **`DocumentPreviewDialog`**                                     |
+| Documento livre com **título capturado** do usuário e/ou **link externo** | variante do **balizap** (`DocumentDropzone captureTitle` + `onLink`) — só onde o produto exige |
+| Arquivos escolhidos **antes** da entidade existir (form de criação) | variante **nexarena** (seção abaixo)                          |
+| Captura de câmera / base64 in-place (NÃO é upload de doc)         | widget próprio (fora deste padrão)                              |
 
 ## Os 2 fluxos de título (a distinção central)
 
-- **Título predefinido** (`DocumentSlot`, `captureTitle=false`): o slot já sabe o título/categoria
-  (ex.: "Termos de Uso"). Dropzone → upload direto, sem perguntar título.
-- **Título capturado** (`DocumentDropzone`, `captureTitle=true`): após escolher o arquivo, um input
-  inline pede o título (default = nome do arquivo sem extensão) antes de submeter. Também aceita
-  **link externo** (URL) como alternativa ao arquivo.
+- **Título predefinido** (`DocumentSlot`): o slot já sabe o título/categoria (ex.: "Termos de Uso").
+  Dropzone → upload direto, sem perguntar título. O `DocumentSlot` do promoservice é dono do preview
+  e da confirmação de exclusão; a feature só fornece o documento e as ações de rede.
+- **Título capturado** (balizap `DocumentDropzone captureTitle=true`): após escolher o arquivo, um
+  input inline pede o título (default = nome do arquivo sem extensão) antes de submeter. Também aceita
+  **link externo** (URL) como alternativa ao arquivo. Não faz parte do kit base do promoservice.
 
 ```tsx
-// Slot de título fixo — não pergunta título
-<DocumentSlot title="Termos de Uso" category="terms" doc={termsDoc}
-  onUpload={(f) => upload.mutate({ file: f, category: "terms" })}
-  onLink={(url) => link.mutate({ url, category: "terms" })}
-  onDelete={() => askDelete(termsDoc)} onPreview={openPreview}
-  onCopyLink={copyLink} onDownload={download} onError={toast.error} />
+// Slot de título fixo — não pergunta título (promoservice)
+<DocumentSlot title="Orçamento assinado" document={signedDoc}
+  uploading={upload.isPending} progress={upload.progress}
+  deleting={remove.isPending} readOnly={!can(P.UPDATE)}
+  onUpload={(file) => upload.mutate(file)} onDelete={() => remove.mutate()} onError={toast.error} />
 
-// Documento livre — captura título inline
-<DocumentDropzone captureTitle busy={upload.isPending}
-  onUpload={(file, title) => upload.mutate({ file, title })}
-  onLink={(url, title) => link.mutate({ url, title })} onError={toast.error} />
+// Anexo solto — o dropzone só valida e devolve o arquivo
+<DocumentDropzone uploading={upload.isPending} progress={upload.progress}
+  onSelect={(file) => upload.mutate(file)} onError={toast.error} />
 ```
 
 ## Validação — `useFileUpload` (validator-only, NUNCA mutation)
 
-Hook puro, vendorável verbatim. Retorna union discriminada pronta pra `toast.error`. A mutation é
-custom por feature (ver `uploads.md` Don'ts).
+Hook puro, vendorável verbatim. Retorna union discriminada pronta pra `toast.error`. **`validate` nunca
+envia nada** — a mutation é custom por feature (ver `uploads.md` Don'ts) e, para ter progresso, passa
+pelo `useUploadMutation` (próxima seção, no MESMO arquivo `hooks/useFileUpload.ts`).
 
 ```ts
 const ASSET_MAX_BYTES = 5 * 1024 * 1024;
@@ -102,6 +109,68 @@ export function useFileUpload({ maxBytes, allowedMime, allowedExt }: UseFileUplo
 }
 ```
 
+## Progresso de envio — `ApiClient.upload` + `useUploadMutation` + `UploadProgress` (2026-10-01)
+
+Todo upload com espera visível (foto, vídeo, documento, logo) mostra uma **barra de progresso real**.
+`fetch` não tem evento de progresso de upload — o transporte é **`XMLHttpRequest`** com
+`xhr.upload.onprogress`, encapsulado em `ApiClient.upload` (promoservice `lib/api/client.ts`):
+
+```ts
+client.upload<T>(url, form: FormData, { method?: "POST" | "PUT", onProgress?: (percent: number) => void }): Promise<ApiResponse<T>>
+// PUT = rotas "substituir a instância única" (logo/banner); padrão POST
+```
+
+- Mesmo contrato do `request()`: Bearer em memória; **um** refresh-and-retry em 401 pelo lock
+  compartilhado (o body é reenviado e o progresso recomeça em 0); resposta camelCased; falha de
+  transporte vira `TypeError` → `NETWORK_ERROR` (status 0), **nunca** encerra sessão; sem
+  `Content-Type` manual (o browser gera o boundary do multipart).
+- `onProgress` recebe inteiro 0–100 dos bytes do **body enviados** (só repassa mudança de %).
+  **100 = "os bytes saíram", não "o servidor terminou"** — o backend ainda valida/converte (AVIF,
+  thumbnail). Por isso a UI troca para "Processando…" (indeterminado, barra pulsando) aos 100%.
+
+```ts
+// hooks/useFileUpload.ts — envelope de useMutation que carrega o estado de progresso
+const uploadLogo = useUploadMutation({
+  mutationFn: async (file: File, onProgress) => {
+    const form = new FormData();
+    form.append("file", file);
+    return (await client.upload<OrgBranding>(`${base}/logo`, form, { onProgress })).data;
+  },
+  onSuccess: invalidate,
+  onError: (error) => toast.error(UploadError.fromUnknown(error).message),
+});
+// retorno = UseMutationResult + { progress: number | null }  (null ocioso · 0 ao iniciar, inclui a
+// redução no browser · 0–100 · volta a null no settled)
+
+<ImageDropzone busy={uploadLogo.isPending} progress={uploadLogo.progress} … />
+```
+
+- Componentes apresentacionais (`ImageDropzone`, `DocumentDropzone`, `DocumentSlot`, `PhotoGallery`)
+  ganham `progress?: number | null` e desenham `<UploadProgress value={progress} />`
+  (`components/uploads/UploadProgress.tsx`: `Progress` shadcn + rótulo `Enviando... 42%` →
+  `Processando...`; `role="status"`, `aria-live="polite"`; é `span`-wrapper para morar dentro de
+  `<button>`). Sem `progress`, cai no spinner "Enviando…" (compatível com mutation comum).
+- Quem faz `FormData` e chama `client.upload` é a **feature**; o dropzone só valida e devolve o
+  arquivo. `useFileUpload` continua **validator-only**.
+- Backend multipart sem mudança. Upload que NÃO é multipart (PUT presigned direto ao storage) usa o
+  mesmo XHR com `upload.onprogress` — a regra é "progresso real via XHR", nunca barra falsa por timer.
+
+## Redução no navegador — `compressImage(s)` (`lib/utils/image-compress.ts`)
+
+Foto de celular moderno passa de 10 MB (limite de entrada do backend) e o backend a reduz para 1920px
+em AVIF de qualquer jeito — subir o original gasta franquia de dados e dá 400. Antes do `FormData`:
+
+```ts
+const payload = await compressImages(files); // dentro do mutationFn → a barra já mostra 0% durante a redução
+```
+
+- Só reduz imagem > 1 MB; **GIF, SVG e AVIF passam intactos**; maior lado 1920, JPEG 0.85, fundo
+  branco (PNG com alfa não vira preto), EXIF **aplicado** no decode (`imageOrientation: "from-image"`:
+  o backend não aplica). Falha na redução devolve o arquivo original — o servidor segue validando.
+- O **teto do dropzone é o do arquivo ORIGINAL** (`MAX_SOURCE_BYTES` = 40 MB, o que o browser
+  decodifica sem travar a aba), **não** o do servidor — senão a foto de 12 MB é barrada aqui sem
+  motivo, ou passa e morre num 400.
+
 ## Erros do servidor — `UploadError` (normalizado, pt-BR)
 
 Mapeia HTTP status → código discriminado + mensagem pt-BR. Idêntico entre projetos.
@@ -147,8 +216,9 @@ export class UploadError extends Error {
 }
 ```
 
-Na mutation: `mutationFn` faz `FormData` (`file`, `title?`, `aliases?`, `category?`) e converte falha
-com `throw UploadError.fromUnknown(error)`; o `onError` do `useMutation` chama `toast.error(err.message)`.
+Na mutation: `mutationFn` faz `FormData` (`file`, `title?`, `aliases?`, `category?`) e chama
+`client.upload`; o `onError` converte com `UploadError.fromUnknown(error)` (o `ApiError` já traz
+`status`; falha de rede = status 0 → "network") e chama `toast.error(err.message)`.
 
 ## Ícones por tipo — `file-types.ts`
 
@@ -167,8 +237,11 @@ de extensões à do backend do projeto.
 No estado cheio, o card/imagem é o `DropdownMenuTrigger`. Itens canônicos, nesta ordem:
 **Visualizar** (`Eye`/`Expand`) · **Copiar link** (`Copy`) · **Baixar** (`Download`, oculto em link
 externo) · `DropdownMenuSeparator` · **Substituir** (`FileUp`, dispara `<input type="file" hidden>`)
-· **Excluir** (`Trash2`, `variant="destructive"` → abre `ConfirmDialog`). Ícones de ação inline =
-`lucide-react` (idiom shadcn); ícone de identidade de arquivo = `react-icons/fa6` (`file-types`).
+· **Excluir** (`Trash2`, `variant="destructive"` → abre `ConfirmDialog`). "Copiar link" só existe
+onde há URL pública (balizap); o `DocumentSlot`/`ImageDropzone` do promoservice têm Visualizar ·
+Baixar · Substituir · Excluir. Ícone de ação inline: o set do projeto (`react-icons/lu` nos apps
+novos — promoservice/kailos; `lucide-react` onde ainda é o idiom shadcn do arquivo); ícone de
+identidade de arquivo = `react-icons/fa6` (`file-types`).
 
 ## Preview — `DocumentPreviewDialog`
 
@@ -228,9 +301,40 @@ useEffect(() => {
 começar. O gate de envio é `hasText || hasAttachments` — nunca só texto, e o botão de enviar nunca
 é desabilitado por campo vazio quando há anexo.
 
+## Variante — arquivos pendentes dentro de um form de CRIAÇÃO (nexarena)
+
+Caso real: o usuário monta o evento e anexa documentos/banners **antes** do registro existir (sem
+`eventId`, não há endpoint para receber o arquivo). Esta variante **não muda** (decisão 2026-10-01;
+só ganha a barra de progresso) e é a referência para qualquer form de criação com anexos:
+nexarena `components/events/form-sections/DocumentsSection.tsx` e `MediaSection.tsx`
+(`components/organizations/OrgMediaSection.tsx` segue o mesmo desenho com `onPendingLogo/Banner/Gallery`).
+
+- A seção é uma **tab/bloco do form** que edita uma lista no state do form (`value: JsonList` /
+  `onChange`) e recebe `organizationId` + `eventId?` opcionais.
+- **Sem `eventId` (criação):** o arquivo escolhido vira item **pendente** em state local
+  (`{ file: File, title }`) — prévia por `URL.createObjectURL`, **revogada** no cleanup do effect e
+  quando o item sai. Nada vai à rede; o pendente é listado junto dos salvos, marcado como pendente.
+- **Com `eventId` (edição ou depois do 1º save):** o mesmo gesto envia na hora (`toast.promise`:
+  "Enviando <título>…" → sucesso/erro), o resultado entra no `value` do form e o pendente sai.
+- **Presets de título** (Regulamento, Termos, Termo de Responsabilidade…) aparecem como slots
+  vazios; documento livre pede título. Substituição de um salvo = item `replacement` até confirmar.
+- Remoção distingue os três tipos (salvo → `deleteDocument` no servidor; pendente/replacement →
+  só descarta do state) e confirma sempre por `ConfirmDialog`.
+- Validação de tamanho/tipo no `useFileUpload` antes de aceitar o arquivo no estado pendente (falha
+  rápido, mesmo sem rede).
+- Quando o envio ocorre (por arquivo), usar `useUploadMutation` para ter `progress` — nexarena ganha
+  só isto nesta rodada.
+
+Use esta variante **apenas** quando a entidade pode não existir ainda. Se o form já edita um registro
+salvo, o fluxo normal (dropzone → upload imediato) é o certo.
+
 ## Don'ts
 
-- **NUNCA** mutation dentro do `useFileUpload` — é validator-only; mutation é custom por feature.
+- **NUNCA** mutation dentro do `useFileUpload` — é validator-only; mutation é custom por feature e,
+  com progresso, passa por `useUploadMutation` + `client.upload` (XHR).
+- **NUNCA** barra de progresso falsa (timer/`setInterval`) nem `fetch` quando há progresso a mostrar.
+- **NUNCA** deixar a barra parada em 100% — aos 100 vira "Processando…".
+- **NUNCA** teto do dropzone de foto igual ao do servidor quando há `compressImage` (é o do original).
 - **NUNCA** confirmar delete com tira inline/accordion/button-swap — é `ConfirmDialog` (ref `overlays.md`).
 - **NUNCA** botão three-dots solto pra ações — o card/asset cheio JÁ é o trigger do menu.
 - **NUNCA** inferir extensão/ícone na mão — use `fileTypeMeta` (e no backend `ext_from_name`).

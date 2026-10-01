@@ -24,6 +24,11 @@ rg -n "permissions.map|permission.*Badge" frontend/src/components
 # Select de FK que cresce / Input de ID cru → EntityPicker
 rg -n "SelectTrigger" frontend/src/components frontend/src/routes --glob '!**/ui/**'
 rg -n 'placeholder=".*(ID|UUID|[Ii]dentificador)' frontend/src
+# feedback / casca: AlertDialog cru, confirm nativo, "Nenhum…" solto, resíduo morto
+rg -n "AlertDialog" frontend/src --glob '!**/ui/**'
+rg -n "window\.confirm|[^.]alert\(" frontend/src
+rg -n ">Nenhum" frontend/src --glob '!**/ui/**'
+fd -t f 'breadcrumb.tsx|Can.tsx|bulk-action-bar.tsx' frontend/src
 # form dialog cru + altura estática + 2ª fonte de foco (o React chama .focus() independente do Radix)
 rg -ln "DialogContent" frontend/src/components --glob '!**/ui/**'
 rg -n "max-h-\[8[05]vh\]|h-\[9[02]vh\]" frontend/src
@@ -40,7 +45,7 @@ rg -n '\? "default" : "outline"' frontend/src --glob '!**/ui/**'   # tira de se�
 # listas: tabela sem card, column-collapse, paginação por página, fetch-all, label empilhado no toolbar
 rg -n "<Table" frontend/src/routes frontend/src/components
 rg -n "hidden (sm|md|lg):table-cell" frontend/src
-rg -n "page: *number|lastPage|Anterior|Próxima" frontend/src/routes
+rg -n "page: *number|lastPage|Anterior|Próxima" frontend/src/routes   # só é achado em app em modo infinito
 rg -n "limit: *[1-9]\d{2,}" frontend/src
 rg -n "filters=\{" -A12 frontend/src --glob '!**/ui/**' | rg "<Label"
 # meta viewport (safe-area + teclado) · manifest · reload que descarta bundle + access
@@ -107,9 +112,23 @@ rg -o 'Content-Security-Policy "[^"]*"' config/nginx/snippets/security-headers-b
       (`toggle-card.md`).
 - [ ] **Nuvem plana de badges de permissões** (Dialog info, Efetivas) → `PermissionGroupList`
       agrupado por domínio (`permissions-display.md`).
-- [ ] **Select estático ou Input de ID/UUID cru para FK que cresce com uso** (cliente, veículo,
-      contato…) → `EntityPicker` + quick-create (`entity-picker.md`). Lista bounded administrativa
-      (membros/roles/enums) fica em Select — decisão consciente, não pendência.
+- [ ] **Select estático ou Input de ID/UUID cru para QUALQUER FK de entidade do tenant** (cliente,
+      veículo, fornecedor, membro…) → wrapper `XPicker` (`EntityPicker` + `usePickerLabel` + "Novo…",
+      `entity-picker.md`). Select só sobra para enum fechado/catálogo de sistema que **não** é FK —
+      "a lista é pequena" não é justificativa (ela cresce).
+- [ ] **`<AlertDialog*>` cru fora de `components/ui/`, `window.confirm`/`alert`** → `ConfirmDialog`
+      (`feedback-states.md`).
+- [ ] **"Nenhum X" em `<p>` solto, `EmptyState` privado dentro de componente, lista que mostra vazio
+      quando a query falhou** → `ui/empty-state.tsx` + `ErrorState` (`feedback-states.md`).
+- [ ] **App sem `NetworkStatusBanner` no shell** (ou deslogando/redirecionando por evento `offline`)
+      → faixa única, só leitura de `navigator.onLine` (`feedback-states.md`).
+- [ ] **Campo pt-BR (telefone/CPF/CNPJ/CEP/data/placa) com `onChange` + regex ad-hoc** →
+      `MaskedInput` + `lib/utils/masks.ts` (item 8h do `SKILL.md`).
+- [ ] **Impressão por `body * { visibility: hidden }`, `<iframe>`/`window.open` com HTML manual ou
+      lib de PDF no cliente** → `PrintSheet` + `Doc*` (`printing.md`).
+- [ ] **Resíduo morto da casca**: `ui/breadcrumb.tsx`, `auth/Can.tsx`, `ui/bulk-action-bar.tsx`,
+      `documents/DocumentPreviewDialog.tsx` do nexarena sem import → apagar (e imports órfãos);
+      login em `/login` → `/auth/login` (skill `app-scaffold`).
 - [ ] **`event.preventDefault()` no `onSelect` do item que abre o file picker** → tirar; o menu tem
       que fechar. Radix mantém o menu ABERTO e modal (`pointer-events: none` na página + foco preso),
       então o clique/tecla seguinte só fecha o menu — reportado como "não envia só com anexo" e
@@ -123,7 +142,11 @@ rg -o 'Content-Security-Policy "[^"]*"' config/nginx/snippets/security-headers-b
 
 - [ ] **`<Table>` sem card abaixo de 768px** → `DataList` (`list-screen.md`). Column-collapse
       (`hidden lg:table-cell`) fica, mas só pra densidade acima de 768px.
-- [ ] **Paginação por número de página / `limit: 100..500`** → `useInfiniteList` 10 em 10.
+- [ ] **`limit: 100..500` (fetch-all) ou mistura dos dois modos de lista no mesmo app** → o modo do app:
+      `useInfiniteList` 10 em 10 **ou** `usePagedList` + `ListPagination` com `page` na URL (`list-screen.md`).
+      Paginação numerada é VÁLIDA no app que a adotou (kailos) — não é achado.
+- [ ] **`useCrud.useList` sem `keepPreviousData`** (tabela pisca, picker volta ao topo) → restaurar
+      `placeholderData: keepPreviousData` (`list-screen.md`).
 - [ ] **Lista sem busca, sem filtro de status ou sem ordenação** → `ListToolbar` + `makeSortOptions`.
 - [ ] **Filtro/busca/sort em `useState`** → URL (`validateSearch`); só o draft do input é local.
 - [ ] **Ação (criar, totalizador) ABAIXO da lista** → subir pro `ListToolbar` (com scroll infinito o

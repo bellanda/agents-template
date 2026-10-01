@@ -1,6 +1,6 @@
 ---
 name: frontend
-description: PORTÃO obrigatório antes de QUALQUER construção/edição de UI (React 19 + TanStack + Tailwind 4 + shadcn) — layout, página, componente, overlay/dialog, form, tabela/lista/CRUD, abas, barra de filtros, upload de mídia, casca de app, PWA. Checklist ordenado de invariantes — layout dita a largura (1440 centrado, página sem max-w), Dialog-first sem Sheet lateral, grid p/ peers e 1 coluna p/ sequencial, onde mora o state, React 19, performance, Tailwind/shadcn semânticos, EntityPicker p/ FK, FormDialog (teclado do celular cobrindo campo ou botão salvar, dialog que sai da tela no mobile), ListToolbar+DataList (tabela vira card, scroll infinito, busca/filtros/ordenação na URL em UMA linha), 3+ abas viram Select no celular, responsivo por CSS (nunca useIsMobile), mobile-first bloqueante — e roteia pros skills profundos. MODO AUDITORIA: varrer/consertar a consistência de UI de um projeto (larguras divergentes, chat bugado, Sheet lateral, logo gigante, quebra no mobile, filtro torto ou em 2ª linha, tabela ilegível no celular, lista sem filtro/ordenação).
+description: PORTÃO obrigatório antes de QUALQUER construção/edição de UI (React 19 + TanStack + Tailwind 4 + shadcn) — layout, página, componente, overlay/dialog, form, tabela/lista/CRUD, abas, barra de filtros, upload de mídia, impressão/PDF, estados vazio/erro/offline, máscaras, casca de app, PWA, telas canônicas (Equipes, inbox WhatsApp, config de agente de IA). Checklist ordenado de invariantes — layout dita a largura (1440 centrado, página sem max-w), Dialog-first sem Sheet lateral, grid p/ peers e 1 coluna p/ sequencial, onde mora o state, React 19, performance, Tailwind/shadcn semânticos, EntityPicker p/ FK, FormDialog (teclado do celular cobrindo campo ou botão salvar, dialog que sai da tela no mobile), ListToolbar+DataList (tabela vira card, scroll infinito OU paginação numerada, busca/filtros/ordenação na URL em UMA linha), 3+ abas viram Select no celular, responsivo por CSS (nunca useIsMobile), mobile-first bloqueante — e roteia pros skills profundos. MODO AUDITORIA: varrer/consertar a consistência de UI de um projeto (larguras divergentes, chat bugado, Sheet lateral, logo gigante, quebra no mobile, filtro torto ou em 2ª linha, tabela ilegível no celular, lista sem filtro/ordenação).
 ---
 
 # Frontend — O Portão
@@ -36,7 +36,7 @@ standalone e são linkados no roteamento (fim do arquivo).
   medida de desktop (`max-h-[85vh]`, `max-w-4xl`) pro celular — no iOS `vh` é a viewport GRANDE.
   Campo nativo dentro do overlay vai a **`text-base` no celular** (< 16px = auto-zoom do iOS, que pana
   a visual viewport e leva o dialog pra fora da tela). Overlay bookmarkável (hub de settings, inspector) →
-  **deep-link via search param**; 2+ itens de config na sidebar → consolidar no hub. Confirmação
+  **deep-link via search param**; 2+ itens de config na sidebar → consolidar no hub (`?settings=<seção>`, padrão em todos os apps menos optimuslar). Confirmação
   destrutiva → **`ConfirmDialog`** central (NUNCA tira inline/accordion/button-swap/`window.confirm`).
   *deep: `references/overlays.md` + `references/settings-dialog.md` + `references/confirm-dialog.tsx`.*
 - [ ] **3. Grid vs Stack.** Itens paralelos/peers → **grid** (`grid-cols-1 sm:grid-cols-2
@@ -75,23 +75,35 @@ standalone e são linkados no roteamento (fim do arquivo).
   *deep: `references/permissions-display.md`.*
 - [ ] **8c. Uploads & Mídia.** Upload de arquivo/imagem → **dropzone** (clique/arraste) no vazio;
   cheio = asset/card é o trigger do menu (visualizar/copiar/baixar/substituir/excluir, sem
-  three-dots). Validação `useFileUpload` (validator-only) + erros pt-BR `UploadError` + ícones
-  `file-types`. Dois fluxos de título (slot predefinido vs captura inline). Preview
-  `DocumentPreviewDialog`; delete via `ConfirmDialog`. Componentes apresentacionais (callbacks); dados
-  por projeto. **Anexar pelo menu:** item que abre o file picker **NUNCA** chama
+  three-dots). Canônico = **promoservice** (`useFileUpload` + `ui/file-dropzone`/`image-dropzone`,
+  `upload-error`, `file-types`) + **`DocumentSlot`** do balizap (slot predefinido com título fixo).
+  **Progresso real de envio**: `ApiClient.upload(url, form, { onProgress })` (XHR) +
+  `useUploadMutation({ mutationFn: (vars, onProgress) => … })` → `{ …mutation, progress: number|null }`
+  alimenta `<UploadProgress value>` (100% = "Processando..."); `useFileUpload` segue sendo o
+  **validador puro** (tipo/tamanho → `UploadError` pt-BR). Dois fluxos de título (slot predefinido vs
+  captura inline). **Criar com arquivos pendentes** (entidade ainda sem id — variante do nexarena):
+  arquivos ficam em state local no form de criação e sobem em sequência após o `create` devolver o id.
+  Preview `DocumentPreviewDialog`; delete via `ConfirmDialog`. Componentes apresentacionais
+  (callbacks); dados por projeto. **Anexar pelo menu:** item que abre o file picker **NUNCA** chama
   `event.preventDefault()` no `onSelect` — o Radix mantém o menu aberto e modal (`pointer-events:
   none` na página + foco preso), e o sintoma sai como "não envia só com anexo"/"preciso clicar pra
   digitar". Depois que o anexo entra, o caret volta pro campo (crescimento da lista, em `rAF`), e
   **anexo sem texto é mensagem válida** (`hasText || hasAttachments`).
   Backend → gate `uploads-storage`. *deep: `references/file-upload.md`.*
-- [ ] **8d. FK / seleção de entidade relacionada.** Campo de FK em form → **`EntityPicker`**
-  (`ui/entity-picker.tsx`: Popover+Command `shouldFilter={false}`, busca **server-side** `?search=`
-  com `limit` começando em 10 e crescendo de 10 em 10 ao rolar, `enabled` só com popover aberto, CTA "Novo…" que abre o `*FormDialog` da
-  entidade e auto-seleciona no `onSaved`). **PROIBIDO**: `Select` estático p/ lista que cresce com
-  uso; `Input` de ID/UUID cru. `Select` residual SÓ p/ lista bounded administrativa (membros da
-  org, roles, enums); seletor de contexto global (trocar org ativa) segue `DropdownMenu`. Backend:
-  o MESMO list endpoint paginado (`PagedResponse` + `search` ILIKE), sem endpoint de autocomplete.
-  *deep: `references/entity-picker.md` + `references/entity-picker.tsx` (canônico).*
+- [ ] **8d. FK / seleção de entidade relacionada — `EntityPicker` em TODA FK.** Campo de FK em form
+  (cliente, veículo, fornecedor, produto, membro…) → **`EntityPicker`** (`ui/entity-picker.tsx`:
+  Popover+Command `shouldFilter={false}`, busca **server-side** `?search=` com `limit` começando em
+  10 e crescendo de 10 em 10 ao rolar, `enabled` só com popover aberto, CTA "Novo…" que abre o
+  `*FormDialog` da entidade e auto-seleciona no `onSaved`). **Um wrapper por entidade**
+  (`CustomerPicker`, `VehiclePicker`…) que fixa `useList`/rótulo/`FormDialog`, e o form usa o wrapper
+  + **`usePickerLabel`** (guarda o rótulo da seleção para o campo não mostrar UUID/"…" enquanto a
+  lista carrega ou na edição). **PROIBIDO**: `Select` estático p/ FK (mesmo "lista pequena" — ela
+  cresce); `Input` de ID/UUID cru; FK digitada solta. `Select` só para **enum fechado/catálogo de
+  sistema que não é FK** (status, tipo, role de sistema); seletor de contexto global (trocar org
+  ativa) segue `DropdownMenu`. Backend: o MESMO list endpoint paginado (`PagedResponse` + `search`
+  ILIKE), sem endpoint de autocomplete. **FK limpa**: ao auditar, nenhum `<Select>`/`Input` de id
+  para FK sobrando (receita `rg` em `entity-picker.md`). *deep: `references/entity-picker.md` +
+  `references/entity-picker.tsx` (canônico).*
 - [ ] **8e. Form dialog & teclado mobile — `DialogContent` cru é PROIBIDO em dialog com input.**
   Qualquer dialog com campo de formulário → **`FormDialog`** (`ui/form-dialog.tsx`: header fixo /
   corpo rolável / footer fixo, ancorado na **visual viewport** no mobile). No iOS o teclado **não**
@@ -102,16 +114,22 @@ standalone e são linkados no roteamento (fim do arquivo).
   viewport com `viewport-fit=cover` + `interactive-widget=resizes-content`, e as compensações de
   safe-area junto. *deep: `references/mobile-keyboard.md` + `references/form-dialog.tsx` (canônico).*
 - [ ] **8f. Tela de lista — tabela no PC vira card no mobile.** Lista de registros → **`ListToolbar`
-  + `DataList`** (`ui/list-toolbar.tsx`, `ui/data-list.tsx`, `hooks/useInfiniteList.ts`): UMA
-  definição de coluna renderiza a tabela (≥768px) e a pilha de cards (<768px); **scroll infinito de
-  10 em 10**; busca com debounce + mínimo 3 chars; filtros e ordenação. **Paginação por número de
-  página é PROIBIDA.** `q`/`status`/`sort`/`order` na URL (`validateSearch`) — nunca `useState`.
-  Nada abaixo da lista (o fim da página nunca chega). **Toolbar = UMA linha: busca/filtros/ordenação
-  no canto superior ESQUERDO, ações à direita** — nunca ordenação numa 2ª linha embaixo dos botões;
-  filtro é controle de UMA altura (rótulo dentro via `InputGroupAddon`, nunca `<Label>` empilhado);
-  barra de filtros de dashboard segue o mesmo desenho (topo à esquerda, acima das abas). Backend: gate `database`
-  (→ `list-pagination.md`). *deep: `references/list-screen.md` + `references/data-list.tsx` +
-  `references/list-toolbar.tsx` + `references/use-infinite-list.ts` (canônicos).*
+  + `DataList`** (`ui/list-toolbar.tsx`, `ui/data-list.tsx`): UMA definição de coluna renderiza a
+  tabela (≥768px) e a pilha de cards (<768px); busca com debounce + mínimo 3 chars; filtros e
+  ordenação. **Dois modos válidos — um por app** (decisão 2026-10-01): **scroll infinito de 10 em
+  10** (`hooks/useInfiniteList.ts`, default de app novo) **ou paginação numerada** com total exato
+  em toda página (kailos: `usePagedList` + `ui/list-pagination.tsx` + `page` na URL). `q`/`status`/
+  `sort`/`order` (e `page`) na URL (`validateSearch`) — nunca `useState`. No infinito, nada abaixo da
+  lista (o fim da página nunca chega). **Toolbar = UMA linha: busca/filtros/ordenação no canto
+  superior ESQUERDO, ações à direita** — nunca ordenação numa 2ª linha embaixo dos botões; filtro é
+  controle de UMA altura (rótulo dentro via `InputGroupAddon`, nunca `<Label>` empilhado); barra de
+  filtros de dashboard segue o mesmo desenho (topo à esquerda, acima das abas). Query que falhou ≠
+  lista vazia (`ErrorState`, 8i). **Criar/editar = `FormDialog`** aberto da lista; **detalhe = página
+  com abas**. Ação em lote só quando existir: `useListSelection` + `BulkActionsMenu` no toolbar
+  (nunca barra solta). Backend: gate `database` (→ `list-pagination.md`). *deep:
+  `references/list-screen.md` + `references/data-list.tsx` + `references/list-toolbar.tsx` +
+  `references/use-infinite-list.ts` + `references/bulk-actions-menu.tsx` +
+  `references/use-list-selection.ts` (canônicos).*
 - [ ] **8g. Abas no mobile — 3+ abas viram `Select`.** `TabsList` com 3+ triggers renderiza um
   `Select` abaixo de 768px, **automaticamente** (o componente conta os filhos; call site escreve
   `<TabsList>` puro). A troca é CSS (`md:hidden` / `max-md:hidden`) com as duas formas montadas —
@@ -122,6 +140,28 @@ standalone e são linkados no roteamento (fim do arquivo).
   com 3+ itens seguem a mesma regra: `Select` que navega abaixo de 768px + tira de `<Link>` acima,
   um array só. *deep: `references/responsive-tabs.md` +
   `references/tabs.tsx` (canônico).*
+- [ ] **8h. Máscaras de input — nunca `onChange` ad-hoc.** Campo pt-BR com formato (telefone, CPF,
+  CNPJ, CEP, data, **placa**) → **`MaskedInput`** (`ui/masked-input.tsx`, `react-imask`) com
+  `mask: "phone" | "cpf" | "cnpj" | "cep" | "date" | "plate"`. `value`/`onChange` trafegam o valor
+  **cru** (dígitos; `plate` = A-Z/0-9, "ABC1D23"/"ABC1234") — `unmaskOnSubmit={false}` devolve o
+  texto mascarado. Máscara nova = um caso em `getMaskOptions` + `unmaskValue` de
+  `lib/utils/masks.ts` (+ `formatX`, `isValidCNPJ`, `isValidPlate`, `unmaskPlate`), nunca regex solta
+  no call site. Canônico = kailos (`lib/utils/masks.ts` + `ui/masked-input.tsx`); os outros apps
+  sincronizam com ele (placa entra em todos). Dinheiro **não** é máscara compartilhada (por projeto).
+- [ ] **8i. Estados de feedback — um componente por situação.** Vazio → **`EmptyState`**
+  (`ui/empty-state.tsx`; o mesmo do `DataList`; nunca "Nenhum…" em `<p>` solto); **query que falhou
+  ≠ vazio** (`ErrorState` + "Tentar novamente"; `RouteErrorFallback` p/ rota); sem rede →
+  `NetworkStatusBanner` (+ `useOnlineStatus`) montado UMA vez no shell — faixa, nunca toast, nunca
+  desloga; confirmação destrutiva → **`ConfirmDialog` único** (`AlertDialog` cru PROIBIDO fora de
+  `ui/`); resultado de ação → toast sonner; primeira carga → `Skeleton` com a forma do conteúdo.
+  *deep: `references/feedback-states.md`.*
+- [ ] **8j. Impressão / PDF — `PrintSheet` + `Doc*`.** Documento imprimível (OS, orçamento,
+  contrato, termo, check-list, rota pública por token com "Imprimir") → **`window.print()` sobre uma
+  folha HTML**: `PrintSheet` (portal no `body`, A4 14mm, thead repetido, CSS embutido, rodapé de uma
+  linha, `DocSignatures` no `footer`) + primitivos `DocSection/DocItem/DocFacts/DocTable/DocFieldGrid/
+  DocTotals/DocPhotoGrid` (dados por props tipadas; kit em `components/print/` de kailos/promoservice) + `PrintableDocumentDialog` (`components/print/`) (prévia + "Imprimir / salvar PDF"). Zero lib de PDF
+  no cliente; **NUNCA** `body * { visibility: hidden }`, `<iframe>`/`window.open` com HTML à mão,
+  fonte variável na folha. *deep: `references/printing.md`.*
 - [ ] **9. Barra estética mínima.** Sem cara genérica de IA (nada de gradiente roxo + Inter + layout
   template); hierarquia/contraste/espaçamento; respeitar a identidade do projeto. *deep:
   `references/design-bar.md` (+ skill `ui-ux-pro-max` p/ paleta/fonte/estilo).*
@@ -166,8 +206,24 @@ inteiro — inventário por `rg`, punch-list, receitas de fix, ordem e verifica�
 | Bootstrap do Tailwind, novos tokens/tema OKLCH                   | `tailwind-4-setup`             |
 | Escolher paleta/fonte/estilo/direção estética de marca          | `ui-ux-pro-max`                |
 | Cena 3D / shader / R3F                                          | `threejs-r3f-patterns`         |
-| Montar casca de app autenticada (sidebar/auth/rotas) ou landing | `app-scaffold`                 |
+| Montar casca de app autenticada (sidebar/auth/rotas/org-selector/notificações/push) ou landing | `app-scaffold`                 |
 | "Fica lento depois de X min" / "preciso dar F5" / memória cresce | `frontend-performance-audit`   |
+
+## Telas canônicas — abra a reference ANTES de desenhar
+
+Padronizadas em 2026-10-01 (código canônico = kailos, salvo onde indicado). Não reinvente por app.
+
+| Tela / peça                                                         | Reference                                         |
+| ------------------------------------------------------------------- | ------------------------------------------------- |
+| Hub de configurações `?settings=` (empresa, membros, equipes, IA…)  | `references/settings-dialog.md`                   |
+| Equipes (filas humanas do atendente de IA): grid de cards + editor  | `references/queues-editor.md`                     |
+| Inbox WhatsApp `/chat` (conversas, janela, envio otimista, SSE)     | `references/whatsapp-inbox.md`                    |
+| Config do agente de IA do tenant (Markdown + ChatGPT + versões; tools como permissões) | `references/agent-instructions.md` (template `agent-config/`) |
+| Chat de IA streaming (`ai-elements/`) — o `chat/` de app é só ref.  | skill `ai-agents` → `frontend-chat.md`            |
+| Documento imprimível / PDF                                          | `references/printing.md`                          |
+| Vazio / erro / offline / confirmação / toast / skeleton             | `references/feedback-states.md`                   |
+| Dashboard de KPIs (**reference, não obrigatório**)                  | `references/dashboard-kpi.md`                     |
+| Casca: org-selector + `NewOrgDialog`, `can()` + `beforeLoad`, notificações, push, `/auth/login`, landing | skill `app-scaffold` |
 
 ## Verificação pré-merge
 
@@ -190,29 +246,42 @@ Confirme cada item do Modo 1 satisfeito + `tsgo --noEmit` e build do projeto ver
   visual viewport; por que `dvh` não resolve o teclado no iOS; meta viewport + safe-area; tabela de
   `size`; supressão dupla de autofocus; o que dá pra testar em jsdom/Playwright e o que exige device).
 - `references/list-screen.md` + `references/data-list.tsx` + `references/list-toolbar.tsx` +
-  `references/use-infinite-list.ts` — tela de lista (tabela↔card por role de coluna, scroll infinito
-  de 10 em 10, busca/filtro/ordenação na URL, prefixo de query key que mantém a invalidação, sentinela
-  sem double-fire; mata paginação por número de página e `<Table>` sem card no mobile). Filtro de
+  `references/use-infinite-list.ts` — tela de lista (tabela↔card por role de coluna, dois modos
+  válidos — scroll infinito de 10 em 10 ou paginação numerada —, busca/filtro/ordenação na URL,
+  prefixo de query key que mantém a invalidação, sentinela sem double-fire; `useCrud` com
+  `keepPreviousData`; mata `<Table>` sem card no mobile e `limit: 500`). Filtro de
   status com contagem por opção (`…/status-counts`) e ações em lote no menu `Ações` do toolbar
   (`references/bulk-actions-menu.tsx` + `references/use-list-selection.ts`).
-- `references/agent-instructions.md` — tela de instruções de agente de IA do tenant (Markdown único
-  montado no ChatGPT por botão com prompt do projeto, colado e mostrado renderizado; sem modos, sem
-  preview lateral; o que a plataforma injeta em runtime fica FORA do texto; versões com restaurar).
+- `references/agent-instructions.md` — config do agente de IA do tenant (Markdown único montado no
+  ChatGPT por botão com pré-prompt do domínio, colado e mostrado renderizado + prévia; o que a
+  plataforma injeta em runtime fica FORA do texto; versões com restaurar; tools como colunas de
+  permissão no akmeo; template canônico `agent-config/`).
+- `references/queues-editor.md` — Equipes: grid de cards + editor one-page (`FormDialog xl`, dados |
+  membros com dnd-kit, rodapé Excluir/Salvar); kailos canônico, balizap alinha.
+- `references/whatsapp-inbox.md` — inbox `/chat` do kailos (layout lista/janela, SSE keyed por ORG e
+  nunca pelo contato ativo, envio otimista, tema `--wa-*`); nexarena adota sem equipes.
+- `references/feedback-states.md` — `EmptyState`, erro≠vazio (`ErrorState`), `NetworkStatusBanner`,
+  `ConfirmDialog` único, toasts, skeletons.
+- `references/printing.md` — `PrintSheet` + `Doc*` + `PrintableDocumentDialog` + rota pública por token.
+- `references/dashboard-kpi.md` — `PeriodSelector`/`StatCard`/`ui/chart.tsx` (reference opcional).
 - `references/pwa-mobile.md` — PWA instalado no celular (`minimal-ui` vs standalone e por que o iOS
   ignora; afordância de recarga obrigatória via `invalidateQueries`; `useIsStandalone`/pull-to-refresh
   com as constantes reais; safe-area + `viewport-fit=cover`; metas apple-\*; checklist de manifest).
-- `references/settings-dialog.md` — hub de Settings deep-linkado (anatomia `h-[85vh] lg:max-w-6xl`,
-  nav com grupos+busca, mobile lista→detalhe, permission gating, variante org-scoped).
+- `references/settings-dialog.md` — hub de Settings deep-linkado (kailos canônico: `sections-config`
+  com `gate`+`render`, `?settings=`, anatomia `h-[85vh] lg:max-w-6xl`, header com HelpButton nos dois
+  tamanhos, nav com grupos+busca, mobile nav sobreposta, membros/convites, permission gating).
 - `references/toggle-card.md` + `references/toggle-card.tsx` — ToggleCard (toggle boolean como card
   clicável; chip + liquid wash + beam sincronizado; tabela de decisão vs CardCheckbox/Switch residual; keyframes).
 - `references/confirm-dialog.tsx` — ConfirmDialog (padrão ÚNICO de confirmação destrutiva: AlertDialog
   central, `busy` async; mata tira inline/accordion/button-swap/`window.confirm`). Doc na seção confirm de `overlays.md`.
 - `references/file-upload.md` — padrão de UI de upload (dropzone, 2 fluxos de título, menu de ações,
-  preview PDF/Office/imagem, `useFileUpload`/`upload-error`/`file-types` canônicos). Espelha backend `uploads-storage`.
-- `references/entity-picker.md` + `references/entity-picker.tsx` — EntityPicker (FK em form como
-  combobox pesquisável no servidor + quick-create "Novo…" que auto-seleciona; tabela de decisão vs
-  Select/DropdownMenu; contrato `useList`/`PagedResponse`+`search`; receitas de adaptação; mata
-  Select estático e Input de ID cru).
+  preview PDF/Office/imagem, progresso via XHR `useUploadMutation`/`UploadProgress`, `DocumentSlot`,
+  variante "arquivos pendentes no form de criação", `useFileUpload`/`upload-error`/`file-types`
+  canônicos). Espelha backend `uploads-storage`.
+- `references/entity-picker.md` + `references/entity-picker.tsx` — EntityPicker (TODA FK em form
+  como combobox pesquisável no servidor + quick-create "Novo…" que auto-seleciona; wrapper por
+  entidade + `usePickerLabel`; regra "FK limpa" + `rg` de auditoria; contrato
+  `useList`/`PagedResponse`+`search`; receitas de adaptação; mata Select estático e Input de ID cru).
 - `references/permissions-display.md` — display de permissões agrupado por domínio + tabela canônica
   de verbos (ordem/cor/ícone); metadata no catálogo Pydantic; `PermissionGroupList`.
 - `references/state-management.md` — os 5 níveis de state + anti-padrões.

@@ -11,22 +11,25 @@ Most existing projects already have the **sidebar shape right** — shadcn `<Sid
 
 ## What differs (normalize it)
 
+Auth contract is **already standard** in kailos/promoservice/akmeo/balizap: `useAuth()` over
+`useDataProvider()`, `authStore` (vanilla, `ready` gate in `main.tsx`) and `access-token-store.ts`.
+(An earlier revision of this file prescribed a zustand `persist` store — wrong, never built, and
+persisting tokens is an XSS hole. Corrected 2026-10-01.) A project that deviates: copy those three
+files + `useAuth.ts` from kailos.
+
 | Off-standard | Standard |
 | --- | --- |
-| `useAuth()` resolves from a `DataProvider` **React Context** holding auth state | `useAuth()` is a composition hook over the zustand `useAuthStore`; no auth Context |
-| Auth state (`user`, token) in Context / a vanilla class store | Tokens + user snapshot in zustand `persist` store |
-| `beforeLoad` can't synchronously read auth, or uses a workaround | `beforeLoad` reads `useAuthStore.getState()` directly |
-| Guard scattered per-route or absent | One `beforeLoad` on the `/app` layout route |
-| Authenticated routes at top level (`/dashboard`, `/leads`, ...) | Nested under `/app/*` |
+| `beforeLoad` polls/awaits network or can't read auth synchronously | `main.tsx` awaits `authStore.ready`; `beforeLoad` reads `authStore.getState()` |
+| Token in localStorage / zustand `persist` | Token in memory (`access-token-store.ts`), refresh in HttpOnly cookie |
+| Guard scattered per-route or absent | One `beforeLoad` on the `_authenticated` (or `/app`) layout route |
+| Authenticated routes at top level | Nested under the layout route |
 
 ## Steps
 
-1. **Auth store.** Create `src/stores/auth.ts` — zustand + `persist`, holding `accessToken`, `refreshToken`, `user` snapshot, `setSession()`, `clear()`. Port whatever the old `DataProvider` / class store held.
-2. **`useAuth()` hook.** Replace the Context-backed `useAuth()` with the composition hook (`references/useAuth.ts`). Keep the **name and return shape** as close as possible (`{ user, isAuthenticated, login, logout }`) so call sites barely change. Delete the `DataProvider` auth Context and its `<Provider>` wrapper.
-3. **Login flow.** On successful login, call `setSession(...)`; the ApiClient and `beforeLoad` now read the store.
-4. **Route split.** Add `app/route.tsx` with the single `beforeLoad` guard + `<SidebarLayout>`; add `app/index.tsx` redirecting to the default authenticated route. Reduce `__root.tsx` to bare `<Outlet/>`. Move authenticated route files under `src/routes/app/**`.
-5. **Fix references.** The TanStack Router Vite plugin rewrites `createFileRoute` ids on file move, but **`Link to=`, `redirect({ to })`, `navigate({ to })`, and `useParams({ from })` must be updated by hand**. `bunx tsgo --noEmit` flags every stale one (the router is typed).
-6. **Regenerate + verify.** `bun run routes:gen`, then `bunx tsgo --noEmit`, then `bun run build`.
+1. **Auth modules.** Copy `lib/api/access-token-store.ts`, `lib/auth/auth-store.ts`, `hooks/useAuth.ts`, `lib/api/context.tsx` from kailos; gate `RouterProvider` on `authStore.ready` in `main.tsx`.
+2. **Route split.** Add `_authenticated.tsx` (pathless; or `app/route.tsx`) with the single `beforeLoad` guard + `<SidebarLayout>`. Reduce `__root.tsx` to bare `<Outlet/>`. Move authenticated route files under it.
+3. **Fix references.** The TanStack Router Vite plugin rewrites `createFileRoute` ids on file move, but **`Link to=`, `redirect({ to })`, `navigate({ to })`, and `useParams({ from })` must be updated by hand**. `bunx tsgo --noEmit` flags every stale one.
+4. **Regenerate + verify.** `bun run routes:gen`, then `bunx tsgo --noEmit`, then `bun run build`.
 
 ## Per-project notes
 

@@ -1,22 +1,49 @@
-# Tela de lista — DataList, scroll infinito, filtros e ordenação
+# Tela de lista — DataList, modos de paginação, filtros e ordenação
 
 > Reference do gate `frontend` (item 8f). Anatomia canônica de qualquer tela que lista registros.
 > Componentes: `references/data-list.tsx`, `references/list-toolbar.tsx`,
 > `references/use-infinite-list.ts`, `references/bulk-actions-menu.tsx`,
 > `references/use-list-selection.ts` (vendorados em `ui/data-list.tsx`, `ui/list-toolbar.tsx`,
-> `hooks/useInfiniteList.ts`, `ui/bulk-actions-menu.tsx`, `hooks/useListSelection.ts`). Contrato de backend: gate `database` → `references/list-pagination.md`.
+> `hooks/useInfiniteList.ts`, `ui/bulk-actions-menu.tsx`, `hooks/useListSelection.ts`). Contrato de
+> backend: gate `database` → `references/list-pagination.md`.
 
 ## Anatomia (não tem variação)
 
 ```
 <ListToolbar>        busca + filtros + ordenação + [Ações ▾] (seleção) + botão "Novo…"
-<DataList>           tabela (≥768px) / cards (<768px) + contagem + "Carregar mais"
+<DataList>           tabela (≥768px) / cards (<768px) + contagem + "Carregar mais" OU rodapé de páginas
 <ConfirmDialog>      exclusão
 <XFormDialog>        criar/editar
 ```
 
-**Nada fica abaixo do `DataList`.** Com scroll infinito o fim da página nunca chega — botão de criar,
-totalizadores e ações de página vivem no `ListToolbar`.
+**Nada fica abaixo do `DataList`** (no modo infinito o fim da página nunca chega) — botão de criar,
+totalizadores e ações de página vivem no `ListToolbar`. O rodapé de páginas do modo paginado é parte
+do próprio `DataList`, não "ação abaixo da lista".
+
+## Dois modos de lista VÁLIDOS (decisão 2026-10-01) — cada app mantém o seu
+
+| | **Modo 1 — scroll infinito** (default de app novo) | **Modo 2 — paginação numerada** (kailos) |
+| --- | --- | --- |
+| Hook | `useInfiniteList` (10 em 10, query key `[endpoint,"list","infinite",params]`) | `usePagedList(endpoint, params, { page })` (20/página; grade de cards 24; key `[endpoint,"list","paged",{…params,page,limit}]`) |
+| Rodapé | sentinela + `<Button>Carregar mais</Button>` | `ListPagination` (`ui/list-pagination.tsx`): "21–40 de 1.355", números com reticências; celular "‹ Página 2 de 68 ›" com alvos de 44px |
+| `DataList` recebe | `{...list}` com `isFetchingNextPage/hasNextPage/fetchNextPage` | `{...paged}` com `page/pageSize/pageCount/onPageChange` |
+| Estado na URL | `q/sort/order` (+ filtros) | `q/sort/order` (+ filtros) **+ `page`** (`validateSearch`) |
+| Reset | filtro/sort/busca mudam a key → recomeça sozinho | busca/filtro/ordenação/aba **voltam à página 1 no próprio handler** (nunca `useEffect`) |
+| Backend `total` | exato em `skip == 0` (cabeçalho lê `pages[0].total`) | **exato em TODA página** — `COUNT(*)` separado a cada request (abrir a página 7 por link precisa do total; `sentinel(rows, params, total)` com `total` obrigatório); `COUNT(*) OVER()` continua proibido — ver `database` → `list-pagination.md` |
+| Canônico | promoservice/balizap/nexarena/akmeo/optimuslar `hooks/useInfiniteList.ts` | kailos `hooks/usePagedList.ts` + `ui/list-pagination.tsx` + `ui/data-list.tsx` |
+
+- **Um modo por app.** Misturar os dois no mesmo app é regressão (exceção nomeada: vitrine pública
+  do kailos `/lojas/{slug}` segue infinita — é catálogo, não tela de trabalho). Mudar de modo é
+  decisão do dono do produto, não do agente.
+- **O resto é igual nos dois:** `ListToolbar` em UMA linha, `DataList` tabela↔card por role, busca +
+  ordenação + filtros na URL, `StaticDataList` para conjunto bounded, filtro de status com contagem,
+  seleção em lote. O `useCrud` (abaixo) é o mesmo.
+- `ui/data-list.tsx` do kailos é um **superset**: além do modo paginado traz o `ErrorState` (query
+  que falhou ≠ lista vazia — `isError/error/refetch/onRetry`, ver `feedback-states.md`) e o
+  `EmptyState` standalone. App em modo infinito que ainda não tem o `ErrorState` deve portá-lo.
+- Modo 2 no mobile: `scrollIntoView({ block: "nearest" })` no topo da lista ao trocar de página (só
+  rola se o topo já saiu da tela); `placeholderData: keepPreviousData` segura a página anterior
+  (escurecida) até a próxima chegar; `staleTime: 30_000`.
 
 ## Geometria do `ListToolbar` — UMA linha, controles à esquerda, ações à direita
 
@@ -55,7 +82,8 @@ CSS, nunca `useIsMobile()`.
 - **Tabela no desktop vira card no mobile.** UMA definição de coluna produz as duas renderizações.
   Column-collapse (`hidden lg:table-cell`) continua existindo — mas para densidade **acima** de 768px,
   não como substituto do card.
-- **Scroll infinito de 10 em 10.** Paginação por número de página está **abolida** — sem exceção.
+- **Um dos dois modos** (infinito de 10 em 10 **ou** paginação numerada com total) — o do app, nunca
+  `limit: 500` "porque a tabela é pequena".
 - **Toda lista tem busca.** Toda lista com coluna de status tem filtro de status.
 - **Toda lista tem ordenação** (`makeSortOptions`): mais recentes (default) · mais antigos · A→Z ·
   Z→A · atualizados por último.
@@ -186,7 +214,13 @@ Todos os veículos · 212
   `types/`). **O número some enquanto carrega** — nunca um `0` falso.
 - Na URL, `stage` e `status` são exclusivos: `validateSearch` descarta `stage` quando há `status`.
 
-## Seleção múltipla — menu `Ações` no slot de ações
+## Seleção múltipla — menu `Ações` no slot de ações (só quando a lista precisar)
+
+Canônico: kailos `hooks/useListSelection.ts` + `ui/bulk-actions-menu.tsx` (vendorados também em
+`references/use-list-selection.ts`/`bulk-actions-menu.tsx`). **Não é obrigatório** em toda lista —
+adote quando há ação em lote real (publicar, arquivar, exportar os marcados); sem ação em lote, sem
+menu e sem checkbox. A "barra de seleção" solta do akmeo (`ui/bulk-action-bar.tsx`) estava sem uso e
+foi **apagada** (2026-10-01) — é o menu `Ações`, nunca barra.
 
 Ação em lote (publicar, arquivar, exportar os marcados) é um `DropdownMenu` **"Ações" com badge da
 contagem** no slot `actions` do `ListToolbar`, antes do "Novo…" (`BulkActionsMenu`). O estado mora
@@ -251,14 +285,38 @@ A URL carrega `q/sort/order` — **não** quantas páginas foram carregadas, de 
 Persistir `?pages=12` produziria uma URL que mente assim que o dado muda, 12 requests sequenciais no
 load, e um param que ninguém compartilharia.
 
-## Paginação por número de página: abolida
+## Paginação numerada — quando e como (Modo 2)
 
-"Pular pra página N" só faz sentido se N for endereço estável — com dado mutável não é. A necessidade
-real é *achar um registro* (busca + filtro + sort) ou *saber quantos são* (o `total` exato no
-cabeçalho, que o backend preserva calculando o COUNT em `skip == 0`).
+Escolhida pelo usuário final do kailos (loja de seminovos quer "página + total"). "Pular pra página
+N" só é endereço estável se o dado não muda — por isso a página mora na **URL** (F5 e link
+compartilhado abrem a mesma página) e o backend devolve o total exato em toda página. Regras:
 
-Único caso que merece ser nomeado e recusado: export/auditoria que enumera tudo. Isso é **endpoint de
-export** (CSV/PDF streamado), não tela de lista.
+- `page` em `validateSearch` (inteiro ≥ 1, default omitido); `usePagedList` calcula `pageCount`
+  de `total`/`pageSize`.
+- Qualquer mudança de recorte (busca, filtro, ordenação, aba) faz `page: undefined` **no mesmo
+  `navigate`** do handler.
+- Query key mantém o prefixo `[endpoint, "list"]` (as mutations do `useCrud` invalidam por prefixo).
+- Export/auditoria que enumera tudo é **endpoint de export** (CSV/PDF streamado), não tela de lista.
+
+## `useCrud` canônico — invariantes que não podem regredir
+
+Fonte: kailos/promoservice `hooks/useCrud.ts` (idênticos; os demais apps sincronizam com eles).
+
+- `useList(params, queryOptions)`: **`placeholderData: keepPreviousData`**, `staleTime: 0` +
+  `refetchOnMount: "always"` (frescor pós-mutation; a invalidação ignora `staleTime`), aceita
+  `enabled`. Sem `keepPreviousData` a tabela pisca e o `EntityPicker` volta o scroll ao topo.
+  (Regressão de 2026-10-01 corrigida no nexarena: o `useCrud` dele tinha perdido os dois.)
+- Mutations invalidam `[endpoint, "list"]` (prefixo); `useCreate` devolve a entidade criada (o
+  quick-create do `EntityPicker` usa o objeto retornado).
+- O service é `useMemo` por endpoint — sem isso a `queryFn` captura instância nova a cada render.
+
+## CRUD: onde cada coisa vive (decisão 2026-10-01)
+
+- **Criar/editar = `FormDialog`** aberto da lista (`entity={null}` cria; `entity={obj}` edita) —
+  mesmo dialog usado pelo quick-create do `EntityPicker`. Nada de página `/novo` para entidade simples.
+- **Detalhe = página com abas** (`TabsList` 3+ vira `Select` no mobile): kailos `vehicle/tabs/*`
+  (Ficha, Avaliação, Preços, Portais, Histórico…). Complexidade → **Página → Abas → Dialogs**.
+- Clique na linha/card navega ao detalhe (`primary` renderiza `<Link>`); excluir = `ConfirmDialog`.
 
 ## `EntityPicker` não muda
 
@@ -329,7 +387,8 @@ Some da tela anterior: `PAGE_SIZE`, o param `page`, a aritmética de `lastPage`,
 - **NUNCA** `useState` pra filtro, busca commitada, sort ou página — é URL (`validateSearch`).
 - **NUNCA** passar o objeto `query` nas deps do effect do `IntersectionObserver`.
 - **NUNCA** `<Table>` sem alternativa em card abaixo de 768px.
-- **NUNCA** paginação por número de página numa tela nova.
+- **NUNCA** misturar infinito e paginação numerada no mesmo app (a vitrine pública do kailos é a exceção nomeada).
+- **NUNCA** `useCrud` sem `keepPreviousData` no `useList`.
 - **NUNCA** `fetch-all` com `limit: 500` "porque a tabela é pequena" — ela não vai continuar pequena.
 - **NUNCA** colocar botão de criar (ou qualquer ação) abaixo da lista.
 - **NUNCA** barra de seleção/ação em lote entre o toolbar e a lista — é o menu `Ações` no toolbar.

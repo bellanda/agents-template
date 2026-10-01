@@ -17,6 +17,13 @@
    então `pages[0].total` é o número que vai pro cabeçalho.
 4. **Todo `ORDER BY` termina com desempate por `id`.** Ver abaixo — não é preciosismo.
 
+> **Variante paginação numerada (decisão 2026-10-01 — kailos; ver `frontend` → `list-screen.md`).**
+> App que mostra "21–40 de 1.355" e deixa abrir a página N por link precisa do `total` **exato em
+> TODA página**: a regra 3 muda para "`COUNT(*)` separado a cada request, não só em `skip == 0`" (kailos
+> `api/repositories/shared/listing.py`: `sentinel(rows, params, total)` com `total` obrigatório). As
+> regras 1, 2 e 4 não mudam — `COUNT(*) OVER()` continua proibido e o desempate por `id` também. É
+> escolha **por app**, declarada no `.claude/rules/project.md` dele; os demais seguem a regra 3 como está.
+
 ## Por que o desempate é obrigatório
 
 SQL garante que linhas com a mesma chave de ordenação apareçam **contíguas**, não em que ordem entre

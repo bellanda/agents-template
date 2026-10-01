@@ -368,7 +368,7 @@ function AppRouter() {
 
 O bootstrap tem duas formas equivalentes — **ou** `refreshToken()` explícito e depois `/accounts/me`, **ou** `/accounts/me` direto (sai sem Bearer, toma 401, o interceptor do §11 roda `/auth/token` com o cookie e repete). Escolha uma por projeto e mantenha; a segunda gasta um round-trip a mais no cold start e **duas** chamadas a `/accounts/me` — o que muda a asserção dos testes.
 
-**Por que o gate:** com o router montado antes, um `beforeLoad` roda com `isLoading` ainda `true` e manda usuário autenticado pro `/login` — só F5 recupera. É o sintoma nº 1 em celular/3G. O `beforeLoad` fica **síncrono** (lê `getState()`, `throw redirect(...)`), sem `await`, sem fetch, sem `waitForAuthCheck` com deadline.
+**Por que o gate:** com o router montado antes, um `beforeLoad` roda com `isLoading` ainda `true` e manda usuário autenticado pro `/auth/login` — só F5 recupera. É o sintoma nº 1 em celular/3G. O `beforeLoad` fica **síncrono** (lê `getState()`, `throw redirect(...)`), sem `await`, sem fetch, sem `waitForAuthCheck` com deadline.
 
 **Resume de background** (crítico no iOS, que congela a WebView do PWA instalado): ao voltar de um período REAL em background (~60s), revalida a sessão pelo mesmo caminho do bootstrap, em vez de esperar o próximo 401. Troca rápida de aba não pode custar round-trip.
 
@@ -403,7 +403,7 @@ useEffect(() => {
 }
 ```
 
-Um `catch {}` cego aqui é o bug do **resume sem sinal**: o celular volta do metrô/elevador, o `/accounts/me` do resume falha por rede, o app derruba o token e joga no `/login` quem só perdeu a conexão — com o cookie de refresh intacto. O que o usuário vê disso é a mensagem de rede em pt-BR do `ApiClient` (`rules/frontend.md > API Layer`), **não** um logout.
+Um `catch {}` cego aqui é o bug do **resume sem sinal**: o celular volta do metrô/elevador, o `/accounts/me` do resume falha por rede, o app derruba o token e joga no `/auth/login` quem só perdeu a conexão — com o cookie de refresh intacto. O que o usuário vê disso é a mensagem de rede em pt-BR do `ApiClient` (`rules/frontend.md > API Layer`), **não** um logout.
 
 ## 11. Frontend — refresh on 401 (Web Locks API)
 
