@@ -269,6 +269,45 @@ services:
       LOG_LEVEL: INFO
 ```
 
+## Healthcheck do `compose.yaml` base — o ritmo é um anchor só
+
+O `up` é serializado pela cadeia de `depends_on: service_healthy`
+(postgres → pgbouncer/valkey/nats → migrate → backend → nginx). Cada elo espera o
+**próximo poll**, então o `interval` de cada serviço vira latência pura de boot — com
+1s/5s/10s/10s pela cadeia dava ~26s só de espera, e o `down && up` do dev pagava tudo.
+
+A saída é `start_interval`, que separa os dois regimes: polling rápido durante o
+`start_period` e relaxado depois. Um anchor no topo carrega o ritmo comum; `test`,
+`timeout` e `start_period` ficam por serviço.
+
+```yaml
+x-healthcheck-pace: &healthcheck-pace
+  interval: 10s # regime permanente
+  start_interval: 1s # boot: detecta em ~1s
+  retries: 3
+
+services:
+  postgres:
+    healthcheck:
+      <<: *healthcheck-pace
+      test: ["CMD-SHELL", "pg_isready -d app -U app"]
+      timeout: 3s
+      start_period: 15s # quanto ESTE processo leva para ficar de pé
+```
+
+- **`start_interval` SEM `start_period` é erro DURO**: `healthcheck.start_interval
+  requires healthcheck.start_period to be set`, e o container não sobe. Andam sempre
+  juntos — serviço que não tinha `start_period` precisa ganhar um.
+- Requer Docker ≥ 25 (API 1.44+). Medido em 02/10/2026 com Docker 29 / Compose 5.3:
+  a cadeia de infra do akmeo caiu de ~10.1s para ~7.1s, e os elos de `backend` e
+  `nginx` (interval 10s cada) são onde está o resto do ganho.
+- **Não baixe o `interval` permanente para 1–2s** tentando acelerar o boot: em Compose
+  puro o healthcheck não reinicia ninguém — só porteia o `depends_on` e rotula o
+  `docker compose ps`. Um `pg_isready` por segundo para sempre é fork de processo sem
+  consumidor. Quem acelera o boot é o `start_interval`.
+- `stop_grace_period` é eixo separado e **não** é ritmo de healthcheck: ele protege
+  shutdown limpo (Postgres) e trabalho em voo (worker com run longo). Não corte junto.
+
 ## Granian env vars
 
 `GRANIAN_*` env vars são consumidas pelo Dockerfile CMD via shell:

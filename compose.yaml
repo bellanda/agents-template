@@ -12,6 +12,24 @@ x-no-new-privs: &no-new-privs
 
 # `${VAR}` interpolation here is ONLY for secrets from `.env`; anything env-aware is a literal
 # in config/docker/compose.<env>.yaml (skill python-config-bootstrap).
+# =============================================================================
+# Healthcheck — one pace for every service; the rest is per-service.
+# BOOT: `start_interval: 1s` polls once a second during `start_period`, so the
+# `depends_on: service_healthy` chain stops paying a whole `interval` per link.
+# STEADY STATE: `interval: 10s`. A 1s `pg_isready` forever had no consumer — in
+# plain Compose a healthcheck restarts nothing, it only gates `depends_on` and
+# labels `docker compose ps`.
+# TRAP: `start_interval` WITHOUT `start_period` is a HARD Compose error
+# ("healthcheck.start_interval requires healthcheck.start_period to be set") and
+# the container never starts. They always travel together — measured 2026-10-02.
+# PER-SERVICE: `test`, `timeout` (weight of the check itself) and `start_period`
+# (how long that process honestly takes to come up).
+# =============================================================================
+x-healthcheck-pace: &healthcheck-pace
+  interval: 10s
+  start_interval: 1s
+  retries: 3
+
 services:
   postgres:
     container_name: agents-template-postgres
@@ -26,10 +44,10 @@ services:
     networks:
       - internal
     healthcheck:
+      <<: *healthcheck-pace
       test: ["CMD-SHELL", "pg_isready -d agents_template -U agents_template"]
-      interval: 1s
       timeout: 1s
-      retries: 10
+      start_period: 15s
     restart: always
     stop_grace_period: 60s
     logging:
@@ -99,14 +117,13 @@ services:
       migrate:
         condition: service_completed_successfully
     healthcheck:
+      <<: *healthcheck-pace
       test:
         - CMD
         - python3
         - -c
         - "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/health', timeout=3)"
-      interval: 10s
       timeout: 5s
-      retries: 3
       start_period: 30s
     restart: always
     stop_grace_period: 30s
@@ -142,10 +159,9 @@ services:
       backend:
         condition: service_healthy
     healthcheck:
+      <<: *healthcheck-pace
       test: ["CMD-SHELL", "curl -fsS http://localhost/healthz >/dev/null || exit 1"]
-      interval: 10s
       timeout: 3s
-      retries: 3
       start_period: 10s
     restart: always
     stop_grace_period: 10s
