@@ -217,6 +217,48 @@ for msg in msgs:
 - `msg.ack()` — tells JetStream this message was processed. Without ack, it will be redelivered after `ack_wait` (default 30s).
 - In production, set `num_replicas=3` on the stream for HA across a NATS cluster.
 
+### Gotcha: catch `TimeoutError`, not `nats.errors.TimeoutError`
+
+An empty queue is the normal outcome of `fetch()`, so the idle branch of a `run_forever` loop must
+catch **the builtin `TimeoutError`** (which *is* `asyncio.TimeoutError` on Python 3.11+).
+`nats.errors.TimeoutError` is a **subclass** of it, so `except NatsTimeoutError` catches the child
+and misses the parent:
+
+| `fetch()` exit | raises | caught by `NatsTimeoutError`? |
+| --- | --- | --- |
+| `batch == 1` -> `_fetch_one` | `nats.errors.TimeoutError` | yes |
+| `batch > 1` -> `_fetch_n`, deadline exhausted | **bare `asyncio.TimeoutError`** | **NO** |
+| `batch > 1` -> `_fetch_n`, no response | `nats.js.errors.FetchTimeoutError` | yes |
+
+The bare-parent exit was **added in nats-py 2.16.0** (`js/client.py:1295`/`:1302`); in 2.14.0 every
+timeout exit raised a nats subclass, so the narrow catch worked and this was invisible. After the
+bump, every idle poll of a `batch > 1` consumer fell through to `except Exception` and logged a
+stack trace at `error` level. Found in prod on 02/10/2026: 21 consumers across akmeo, kailos,
+balizap and promoservice, ~400-600 lines/hour per deployed app, drowning every real event in the
+worker log. Nothing broke (the loop retried anyway) — but the signal was gone.
+
+```python
+            try:
+                msgs = await sub.fetch(batch=FETCH_BATCH_SIZE, timeout=FETCH_TIMEOUT_SECONDS)
+            except TimeoutError:  # o PAI: cobre as tres saidas da tabela acima
+                continue
+            except anyio.get_cancelled_exc_class():
+                raise
+            except ServiceUnavailableError:  # JetStream reiniciando: re-garante o consumer
+                await anyio.sleep(1.0)
+                with contextlib.suppress(Exception):
+                    await ensure_consumer()
+                continue
+            except Exception:  # aqui so sobra falha de verdade
+                log.exception("consumer_fetch_failed", durable=DURABLE_NAME)
+                await anyio.sleep(1.0)
+                continue
+```
+
+Catching the builtin also keeps the loop free of an `asyncio.*` import, which `anyio-concurrency`
+bans. `sub.next_msg()` (core NATS, e.g. an SSE heartbeat) is a different call site and is not
+affected by this regression.
+
 ---
 
 ## 5. KV Store (JetStream)
