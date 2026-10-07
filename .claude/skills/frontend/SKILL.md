@@ -176,7 +176,11 @@ standalone e são linkados no roteamento (fim do arquivo).
   instalado (`display-mode` + `navigator.standalone`) e pull-to-refresh próprio, ambos chamando
   `queryClient.invalidateQueries()` (**nunca `location.reload()`**, que descarta o bundle e o access
   em memória); metas `apple-mobile-web-app-*` + `apple-touch-icon`; `overscroll-behavior-y: contain`.
-  Service worker só com pedido explícito. *deep: `references/pwa-mobile.md`.*
+  **"Instalar app" obrigatório em app real, SÓ no menu do usuário (rodapé da sidebar, área
+  logada — nunca login/landing/header)**: `beforeinstallprompt` capturado no boot + dialog de
+  passos no iOS/iPadOS, dialog irmão do `DropdownMenu`. `sw.js` push-only (sem `fetch`/cache)
+  registrado no boot; cache offline só com pedido explícito. *deep: `references/pwa-mobile.md` §6
+  + `references/install-prompt.ts`/`pwa-platform.ts`/`install-app-button.tsx` (canônicos).*
 - [ ] **11. PADRÃO vs IDENTIDADE.** Padroniza (cross-projeto): layout, larguras (1440), enquadramento,
   overlays, grid-vs-stack, mobile-first, `react-icons`, `html { font-size: 17px }`. **NÃO** padroniza
   (por-projeto): font-**family**, **cores**, **estilo shadcn** (baseColor/new-york etc.). Nunca

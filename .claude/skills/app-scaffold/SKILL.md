@@ -159,8 +159,10 @@ nomes/endpoints.
   `public/sw.js` (`push` + `notificationclick`; o push ACORDA o SW) e `public/manifest.json`
   (`display: "minimal-ui"`, `start_url: "/dashboard"`, ícones 192/512/maskable com `?v=`, `lang: pt-BR`).
   Detalhe de PWA instalado (`minimal-ui` vs standalone, reload no iOS, safe-area) →
-  `frontend/references/pwa-mobile.md`. Service worker **só** para push — nada de cache offline
-  automático sem pedido explícito.
+  `frontend/references/pwa-mobile.md`. Service worker **só** para push (sem `fetch`/cache offline
+  sem pedido explícito), **registrado no boot** via `initInstallPrompt()` no `main.tsx`. O menu do
+  usuário do rodapé carrega o item **"Instalar app"** (`InstallAppMenuItem` antes do Sair +
+  `InstallInstructionsDialog` irmão do `DropdownMenu`) — único lugar do botão (pwa-mobile §6).
 - Backend (VAPID, tabela de inscrições, entrega) → gate `integrations`/`infra`.
 
 **4. O que a casca NÃO tem mais.** `ui/breadcrumb.tsx` (apagado nos 4 apps que o tinham sem uso),

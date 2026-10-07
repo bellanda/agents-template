@@ -4,8 +4,8 @@ O app adicionado à tela de início **não tem F5, não tem barra de endereço e
 pull-to-refresh do navegador**. Sem afordância própria, o usuário fica preso com dado velho
 e a única saída é fechar e reabrir. Este arquivo é o contrato mínimo para instalar sem quebrar.
 
-Sem service worker, sem `vite-plugin-pwa`, sem dependência nova — tudo aqui é manifest, meta
-tag, CSS e dois hooks.
+Sem `vite-plugin-pwa`, sem cache offline, sem dependência nova — tudo aqui é manifest, meta tag,
+CSS, dois hooks, o item "Instalar app" (§6) e um `sw.js` push-only registrado no boot.
 
 ## 1. Manifest — `display: minimal-ui`
 
@@ -112,7 +112,50 @@ Gesto no scroller do layout (o `<main>`), não no documento. Regras que não sã
 - Resistência (~0.5 do deslocamento), threshold (~72px) e teto (~110px) são constantes nomeadas.
 - No fim do gesto além do threshold: `invalidateQueries()` — mesma ação do botão.
 
-## 6. Testes
+## 6. Instalar app — obrigatório em todo app real (padrão da frota, 2026-10-07)
+
+**Onde:** **SÓ** no menu do usuário, no rodapé da sidebar (canto inferior esquerdo), na área
+logada — item "Instalar app" antes do "Sair". **Nunca** na tela de login, nunca na landing, nunca
+no header (o slot do header é do botão de recarregar). Decisão do usuário: quem instala é quem já
+usa; o app instalado abre direto no painel.
+
+**Como (código canônico nesta pasta — copie, só troque ícones pela lib do app):**
+
+- `install-prompt.ts` → `src/lib/pwa/install-prompt.ts`: `initInstallPrompt()` chamado no
+  `main.tsx` **antes do render** (o `beforeinstallprompt` dispara uma vez, cedo, e some se ninguém
+  escutar); `preventDefault()` + guarda o evento numa store vanilla lida via
+  `useSyncExternalStore`; `appinstalled` limpa; `promptNativeInstall()` usa o evento uma vez.
+- `pwa-platform.ts` → `src/lib/pwa/platform.ts`: `isIosDevice()` — iPadOS 13+ se diz `Macintosh`
+  no UA; a pista é `Macintosh` + `navigator.maxTouchPoints > 1`. Use o MESMO helper no
+  `usePushSubscription` (o `/iPad|iPhone/` cru erra o iPad).
+- `install-app-button.tsx` → `src/components/pwa/InstallAppButton.tsx`: `InstallAppMenuItem`
+  (Android/desktop → prompt nativo; iPhone/iPad → abre o dialog) e `InstallInstructionsDialog`
+  (Compartilhar → Adicionar à Tela de Início → Adicionar; "só no Safari"). O item **some** quando
+  já instalado (`useIsStandalone`) ou quando não há como instalar (sem prompt e não iOS).
+- **O dialog é IRMÃO do `DropdownMenu`** (dentro do mesmo `SidebarMenuItem`, depois de
+  `</DropdownMenu>`): o item do menu desmonta quando o menu fecha e levaria um dialog filho junto.
+- **Service worker:** `public/sw.js` **push-only, sem `fetch` handler** (= sem cache offline) e
+  `registerServiceWorkerAtBoot()` em `src/lib/push/register-sw.ts`, chamado pelo
+  `initInstallPrompt()` — "fire and forget", nunca lança, não espera `ready`. App sem push usa o
+  mesmo `sw.js` vazio de handlers (só existe para a instalabilidade em Chromium mais antigo).
+
+```ts
+/** Registro "fire and forget" no boot — instalabilidade do PWA. Nunca lança. */
+export async function registerServiceWorkerAtBoot(): Promise<void> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) return;
+  try {
+    await navigator.serviceWorker.register("/sw.js", { scope: "/" });
+  } catch {
+    // Sem SW o app só perde a instalabilidade; nunca pode quebrar o boot.
+  }
+}
+```
+
+**Armadilha (achada no optimuslar, 2026-10-07):** `overscroll-behavior-y: contain` no `body` sem o
+`usePullToRefresh` ligado no `<main>` do layout = app instalado **sem gesto nenhum** de recarregar
+(o `contain` mata o pull nativo). Os dois andam juntos, sempre no layout autenticado.
+
+## 7. Testes
 
 - **vitest**: `mockDisplayMode(installed)` do `auth-harness` → botão presente instalado,
   ausente no navegador; gesto além do threshold chama `invalidateQueries`, abaixo não chama.
@@ -130,5 +173,7 @@ Gesto no scroller do layout (o `<main>`), não no documento. Regras que não sã
 - **NUNCA** `viewport-fit=cover` sem as compensações de safe-area no mesmo commit.
 - **NUNCA** `preventDefault()` no `touchmove` do pull-to-refresh (trava o scroll do iOS).
 - **NUNCA** deixar `name`/`short_name`/`theme_color` de scaffold no manifest.
-- **NUNCA** service worker "de brinde" — cache offline sem estratégia de invalidação serve
-  bundle velho e vira bug de sessão fantasma. Só com pedido explícito e plano de versionamento.
+- **NUNCA** `fetch` handler / cache offline no `sw.js` "de brinde" — cache sem estratégia de
+  invalidação serve bundle velho e vira bug de sessão fantasma. Só com pedido explícito e plano de
+  versionamento. (O `sw.js` push-only registrado no boot do §6 é o padrão, não é isso.)
+- **NUNCA** botão "Instalar app" no login, na landing ou no header (§6).

@@ -19,6 +19,8 @@ import {
   Table2,
 } from "lucide-react";
 
+// "Instalar app" mora SÓ aqui (pwa-mobile.md §6) — copie de frontend/references/install-app-button.tsx.
+import { InstallAppMenuItem, InstallInstructionsDialog } from "@/components/pwa/InstallAppButton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import {
   DropdownMenu,
@@ -155,12 +157,15 @@ export function AppSidebar() {
                   </div>
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
+                <InstallAppMenuItem />
                 <DropdownMenuItem variant="destructive" onClick={handleLogout}>
                   <LogOut />
                   Logout
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
+            {/* Irmão do menu: o item desmonta ao fechar o dropdown e levaria o dialog junto. */}
+            <InstallInstructionsDialog />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
