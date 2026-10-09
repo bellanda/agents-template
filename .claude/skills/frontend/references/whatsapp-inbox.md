@@ -64,6 +64,13 @@ Invariantes do stream (todas já no canônico — não remova ao adaptar):
   `no-transform` a **Cloudflare** comprime e bufferiza o stream: o nginx entrega os heartbeats, o
   browser não recebe nada, a conexão cai em ~125s e a tela "só atualiza com F5" (Kailos prod,
   2026-10-09). Diagnóstico: `body_bytes_sent` crescendo no log do nginx + nenhum evento no browser.
+- **O nginx do app repassa o `X-Accel-Buffering`** (`proxy_pass_header X-Accel-Buffering;` em
+  `config/nginx/snippets/api-proxy-pass.conf`). O nginx consome os headers `X-Accel-*` por
+  default; em `INGRESS_MODE=gateway` o gateway central é OUTRO nginx com buffering ligado e, sem
+  o header, segura o SSE inteiro até a conexão cair (~125s). Foi a causa real do "só atualiza com
+  F5" no Kailos prod (2026-10-09) — o `no-transform` sozinho não resolveu. Local (loopback) não
+  tem gateway e por isso funciona. Teste: stream direto em `http://<app>-nginx` entrega na hora;
+  pelo domínio público, nada até ~125s.
 - **Ressincroniza ao reconectar:** não há replay, então a cada reabertura (menos a primeira) o loop
   invalida `["whatsapp","conversations"]` e `["whatsapp","messages"]` — o que aconteceu com o
   stream fora do ar só aparece via REST (`onReconnect` do `useReconnectingStream` no balizap; loop
@@ -109,6 +116,7 @@ dentro de componente do inbox — sempre `var(--wa-*)`.
   ganha o stream).
 - **NUNCA** `EventSource` (sem `Authorization`) nem stream sem `org_id`.
 - **NUNCA** `text/event-stream` sem `no-transform` no `Cache-Control` (Cloudflare bufferiza).
+- **NUNCA** remover `proxy_pass_header X-Accel-Buffering;` do nginx do app (gateway central bufferiza).
 - **NUNCA** conteúdo de mensagem no evento SSE; **NUNCA** `useIsMobile()` para trocar lista/chat.
 - **NUNCA** `h-[calc(100dvh-Xrem)]` no chat; **NUNCA** botão de enviar desabilitado com anexo e sem texto.
 - **NUNCA** inbox próprio por app — copie o do kailos; diferença legítima é só a presença de equipes.
