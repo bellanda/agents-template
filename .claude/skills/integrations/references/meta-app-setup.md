@@ -459,8 +459,17 @@ export function FacebookBusinessLoginButton({
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
       if (!FB_EMBEDDED_SIGNUP_ORIGINS.has(event.origin)) return;
-      const message = event.data;
-      if (!message || typeof message !== "object") return;
+      // A Meta posta `event.data` como STRING JSON (o exemplo oficial faz JSON.parse).
+      // Aceitar só objeto descartou todo FINISH em prod (Kailos, 2026-10-09): o `code`
+      // chegava, o desfecho ficava `none` e o usuário via "widget não respondeu".
+      let message: Record<string, unknown> | undefined;
+      try {
+        const raw: unknown = typeof event.data === "string" ? JSON.parse(event.data) : event.data;
+        if (raw && typeof raw === "object") message = raw as Record<string, unknown>;
+      } catch {
+        return; // outros frames do facebook.com postam string não-JSON no mesmo canal
+      }
+      if (!message) return;
       if (message.type !== "WA_EMBEDDED_SIGNUP") return;
       const data = (message.data ?? {}) as Record<string, unknown>;
       if (message.event === "FINISH") {
