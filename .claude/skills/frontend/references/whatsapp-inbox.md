@@ -31,6 +31,13 @@
   `userId` (filtro de atendente, só com `read_all`) na **URL**; busca com debounce (250ms) em
   state local. Selecionar zera o badge de não-lidas otimista
   (`useMarkConversationReadOptimistic`, espelha o side-effect do `GET …/messages` no backend).
+- **Seletor de escopo** ("Minhas / Todas / Conversas de <pessoa>", só com `read_all`): NÃO é `Select`
+  (decisão 2026-10-09: a equipe cresce). `ConversationScopePicker` = Popover modal + `Command`
+  (`shouldFilter={false}`): busca no topo (sem acento), "Minhas"/"Todas" fixas primeiro, membros em ordem
+  alfabética pt-BR (`localeCompare("pt-BR",{sensitivity:"base"})`, nome → e-mail) e rolagem incremental
+  (lotes de 20 + `useInfiniteScrollSentinel` + "Carregar mais"). A rota de membros não é paginada → ordena/
+  filtra/pagina no cliente; se virar `PagedResponse` com `search`/`sort`, trocar para `EntityPicker`.
+  Contrato `onChange({scope, userId})` inalterado.
 - **Lista:** scroll infinito de 20 (`useInfiniteQuery` + `useInfiniteScrollSentinel` + "Carregar mais"; sem `IntersectionObserver`, ver `list-screen.md`), estado da
   conversa em badge (IA · atendente · Finalizada), prévia por tipo de mídia, hora relativa.
 - **Janela:** header (estado, atribuição, menu de transferência quando `canManage`), `WindowBanner`
@@ -117,6 +124,9 @@ dentro de componente do inbox — sempre `var(--wa-*)`.
 - **NUNCA** `EventSource` (sem `Authorization`) nem stream sem `org_id`.
 - **NUNCA** `text/event-stream` sem `no-transform` no `Cache-Control` (Cloudflare bufferiza).
 - **NUNCA** remover `proxy_pass_header X-Accel-Buffering;` do nginx do app (gateway central bufferiza).
+- **NUNCA** `microphone=()` no `Permissions-Policy` do nginx (`security-headers-base.conf`): o
+  composer grava áudio via `getUserMedia` e o browser recusa sem perguntar. Use `microphone=(self)`.
+  Só aparece em prod — o `bun dev` não passa pelo nginx (Kailos, 2026-10-09).
 - **NUNCA** conteúdo de mensagem no evento SSE; **NUNCA** `useIsMobile()` para trocar lista/chat.
 - **NUNCA** `h-[calc(100dvh-Xrem)]` no chat; **NUNCA** botão de enviar desabilitado com anexo e sem texto.
 - **NUNCA** inbox próprio por app — copie o do kailos; diferença legítima é só a presença de equipes.
