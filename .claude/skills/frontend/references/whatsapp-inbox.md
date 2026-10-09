@@ -31,7 +31,7 @@
   `userId` (filtro de atendente, só com `read_all`) na **URL**; busca com debounce (250ms) em
   state local. Selecionar zera o badge de não-lidas otimista
   (`useMarkConversationReadOptimistic`, espelha o side-effect do `GET …/messages` no backend).
-- **Lista:** scroll infinito de 20 (`useInfiniteQuery` + sentinela, `rootMargin: 200px`), estado da
+- **Lista:** scroll infinito de 20 (`useInfiniteQuery` + `useInfiniteScrollSentinel` + "Carregar mais"; sem `IntersectionObserver`, ver `list-screen.md`), estado da
   conversa em badge (IA · atendente · Finalizada), prévia por tipo de mídia, hora relativa.
 - **Janela:** header (estado, atribuição, menu de transferência quando `canManage`), `WindowBanner`
   (aviso a ≤3h do fim da janela de 24h, vermelho quando expirou — envio livre bloqueado, só
@@ -58,6 +58,16 @@ handler **não precisa** saber a conversa ativa: ele invalida `["whatsapp","conv
 conversa aberta.
 
 Invariantes do stream (todas já no canônico — não remova ao adaptar):
+
+- **Resposta SSE do backend com `Cache-Control: no-cache, no-transform` + `X-Accel-Buffering: no`**
+  (vale para TODO `text/event-stream`: inbox, chat de agente, quadro de pedidos). Sem o
+  `no-transform` a **Cloudflare** comprime e bufferiza o stream: o nginx entrega os heartbeats, o
+  browser não recebe nada, a conexão cai em ~125s e a tela "só atualiza com F5" (Kailos prod,
+  2026-10-09). Diagnóstico: `body_bytes_sent` crescendo no log do nginx + nenhum evento no browser.
+- **Ressincroniza ao reconectar:** não há replay, então a cada reabertura (menos a primeira) o loop
+  invalida `["whatsapp","conversations"]` e `["whatsapp","messages"]` — o que aconteceu com o
+  stream fora do ar só aparece via REST (`onReconnect` do `useReconnectingStream` no balizap; loop
+  inline no kailos).
 
 - **Um stream por org**, aberto com `?org_id=` explícito. Sem isso o backend adivinha o primeiro
   vínculo e quem tem duas lojas via a caixa de uma com eventos da outra.
@@ -98,6 +108,7 @@ dentro de componente do inbox — sempre `var(--wa-*)`.
 - **NUNCA** polling (`refetchInterval`) no lugar do SSE (nexarena hoje faz 10s — migra; backend
   ganha o stream).
 - **NUNCA** `EventSource` (sem `Authorization`) nem stream sem `org_id`.
+- **NUNCA** `text/event-stream` sem `no-transform` no `Cache-Control` (Cloudflare bufferiza).
 - **NUNCA** conteúdo de mensagem no evento SSE; **NUNCA** `useIsMobile()` para trocar lista/chat.
 - **NUNCA** `h-[calc(100dvh-Xrem)]` no chat; **NUNCA** botão de enviar desabilitado com anexo e sem texto.
 - **NUNCA** inbox próprio por app — copie o do kailos; diferença legítima é só a presença de equipes.

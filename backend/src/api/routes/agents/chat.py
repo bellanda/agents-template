@@ -441,7 +441,9 @@ async def chat_completions(
                 generate_stream(),
                 media_type="text/event-stream",
                 headers={
-                    "Cache-Control": "no-cache",
+                    # `no-transform`: sem ele a Cloudflare comprime/bufferiza o text/event-stream e
+                    # nada chega ao browser até a conexão cair (~125s) — Kailos prod 2026-10-09.
+                    "Cache-Control": "no-cache, no-transform",
                     "Connection": "keep-alive",
                     "X-Accel-Buffering": "no",
                     "x-vercel-ai-ui-message-stream": "v1",
