@@ -723,4 +723,5 @@ Tudo populado → frontend mostra botão "Conectar com Facebook" funcional. Algu
 | `meta_deauthorize ... revoked=0` mas validou HMAC | Conexão criada via token manual (sem `facebook_user_id`) | Esperado — só ES grava esse campo |
 | Status page sempre "processing" | `deletion_completed_at` nunca é populado | Não implementamos purge físico ainda — só marca |
 | `register_phone_number failed: 133005` | Número já registrado | Já tratamos — `{"already_registered": true}` |
+| Conectou (portal `active`), cliente manda mensagem e nada chega — zero POST em `/webhooks/whatsapp` | Campos de webhook do app todos "Unsubscribed" (o default do painel) | App Dashboard → WhatsApp → Configuration → Webhook fields: **Subscribe** em `messages` (obrigatório) + `message_template_status_update`, `template_category_update`, `message_template_quality_update` (os únicos que o handler trata). Mensagem enviada antes não é reentregue (Kailos prod, 2026-10-09) |
 | Verify token GET retorna 403 | Token em `.env` ≠ token no dashboard | Re-copia caractere por caractere |
