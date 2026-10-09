@@ -39,8 +39,12 @@ também.
   Deauth/Data-Deletion validam HMAC mas não acham a conexão.
 - NUNCA logar `signed_request`/assinatura/body bruto em prod; NUNCA marcar Pages/Ads/Catalog/Pixel/IG como `required`.
 - **Token de portal SEMPRE cifrado at rest** — nunca token vivo em coluna ou JSONB legível.
-- **Origin de `postMessage`** (Embedded Signup) por **igualdade exata** contra allowlist — NUNCA
-  `endsWith("facebook.com")`, que casa `evil-facebook.com`.
+- **Origin de `postMessage`** (Embedded Signup): `new URL(origin).hostname` igual a `facebook.com`
+  ou terminando em **`.facebook.com`** (com o ponto), `https:` — NUNCA `origin.endsWith("facebook.com")`
+  cru (casa `evil-facebook.com`) e NUNCA lista fixa de 3 subdomínios (descartou o FINISH em prod,
+  2026-10-09). `event.data` chega como **string JSON** (parse), e a ordem mensagem↔callback do
+  `FB.login` **não é garantida** — o callback espera o desfecho (até ~5s); callback NUNCA `async`
+  (o SDK rejeita).
 - **Embedded Signup é v4** — `extras: { setup: {} }` e nada mais. `sessionInfoVersion` (v2) ou
   `version: "v3"` no `extras` = versão descontinuada em **15/10/2026**; `feature:
   "whatsapp_embedded_signup"` nunca foi parâmetro documentado. Em v4 a variação do fluxo

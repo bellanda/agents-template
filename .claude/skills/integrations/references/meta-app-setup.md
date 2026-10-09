@@ -427,13 +427,30 @@ async def whatsapp_webhook_verify(
 const FB_SDK_URL = "https://connect.facebook.net/en_US/sdk.js";
 const FB_SDK_SCRIPT_ID = "facebook-jssdk";
 
-// Origens EXATAS de onde o widget posta. Allowlist por igualdade — um sufixo
-// (`endsWith("facebook.com")`) tambem casa `https://evil-facebook.com`.
-const FB_EMBEDDED_SIGNUP_ORIGINS = new Set([
-  "https://www.facebook.com",
-  "https://web.facebook.com",
-  "https://business.facebook.com",
-]);
+// Implementação canônica completa: kailos `frontend/src/components/whatsapp-setup/
+// FacebookBusinessLoginButton.tsx` (o trecho abaixo é o esqueleto).
+// Subdomínio do widget varia (www/web/business/m…): hostname parseado ancorado em
+// `.facebook.com`. `endsWith("facebook.com")` cru casa `evil-facebook.com`; lista fixa
+// de 3 subdomínios descartou o FINISH em prod (2026-10-09).
+const FB_ROOT_HOSTNAME = "facebook.com";
+function isFacebookOrigin(origin: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(origin);
+    if (protocol !== "https:") return false;
+    return hostname === FB_ROOT_HOSTNAME || hostname.endsWith(`.${FB_ROOT_HOSTNAME}`);
+  } catch {
+    return false;
+  }
+}
+// Ordem postMessage ↔ callback do FB.login NÃO é garantida (doc da Meta).
+const WIDGET_MESSAGE_WAIT_MS = 5000;
+const WIDGET_MESSAGE_POLL_MS = 100;
+async function waitForWidgetOutcome(ref: { current: SignupOutcome }) {
+  for (let waited = 0; waited < WIDGET_MESSAGE_WAIT_MS; waited += WIDGET_MESSAGE_POLL_MS) {
+    if (ref.current.kind !== "none") return;
+    await new Promise((r) => setTimeout(r, WIDGET_MESSAGE_POLL_MS));
+  }
+}
 
 // O `event` do postMessage é o DISCRIMINADOR do desfecho. Sem ele, "fechou a janela no
 // meio", "terminou sem escolher número" (a Meta permite desde a v3) e "o widget nunca
@@ -443,6 +460,7 @@ type SignupOutcome =
   | { kind: "none" }
   | { kind: "finished"; phoneNumberId?: string; wabaId?: string; businessId?: string }
   | { kind: "cancelled"; currentStep?: string }
+  | { kind: "failed"; errorMessage: string; errorCode?: string } // ERROR, ou CANCEL c/ error_message
   | { kind: "unsupported"; event: string };
 
 const readId = (v: unknown) => (typeof v === "string" && v.length > 0 ? v : undefined);
@@ -458,7 +476,7 @@ export function FacebookBusinessLoginButton({
   //   CANCEL → data: { current_step }
   useEffect(() => {
     function handleMessage(event: MessageEvent) {
-      if (!FB_EMBEDDED_SIGNUP_ORIGINS.has(event.origin)) return;
+      if (!isFacebookOrigin(event.origin)) return;
       // A Meta posta `event.data` como STRING JSON (o exemplo oficial faz JSON.parse).
       // Aceitar só objeto descartou todo FINISH em prod (Kailos, 2026-10-09): o `code`
       // chegava, o desfecho ficava `none` e o usuário via "widget não respondeu".
@@ -520,8 +538,10 @@ export function FacebookBusinessLoginButton({
 
   const handleClick = () => {
     outcomeRef.current = { kind: "none" };
-    window.FB!.login(
-      (response) => {
+    // Callback do FB.login NUNCA `async` (o SDK lança "Expression is of type asyncfunction"):
+    // ele só dispara este helper, que espera o postMessage antes de decidir.
+    const resolveSignupOutcome = async (response: FBLoginResponse) => {
+        if (response?.authResponse?.code) await waitForWidgetOutcome(outcomeRef);
         const outcome = outcomeRef.current;
         // `cancelled` vem ANTES do teste de `code`: quem fecha o widget também volta
         // sem code, e checar o code primeiro jogaria todo mundo na mensagem genérica
@@ -541,7 +561,9 @@ export function FacebookBusinessLoginButton({
         const code = response?.authResponse?.code;
         if (!code) return onError("Login cancelado ou code não retornado pela Meta.");
         if (outcome.kind === "none")
-          return onError("O widget da Meta não respondeu. Verifique o bloqueador de pop-ups.");
+          // Inclua no texto as mensagens WA_EMBEDDED_SIGNUP vistas (origem + event): o próximo
+          // incidente vira um print em vez de um palpite.
+          return onError("A Meta concluiu o login, mas não enviou o número e a conta escolhidos.");
         if (!outcome.phoneNumberId)
           return onError("O fluxo terminou sem número. Refaça e escolha um no widget.");
         if (!outcome.wabaId)
@@ -552,6 +574,10 @@ export function FacebookBusinessLoginButton({
           wabaId: outcome.wabaId,
           businessId: outcome.businessId,
         });
+    };
+    window.FB!.login(
+      (response) => {
+        void resolveSignupOutcome(response);
       },
       {
         config_id: configId,
@@ -691,7 +717,7 @@ Tudo populado → frontend mostra botão "Conectar com Facebook" funcional. Algu
 |---|---|---|
 | Botão FB desabilitado | `VITE_META_APP_ID` ou `VITE_META_ES_CONFIG_ID` vazio | Confirma yaml + restart `bun dev` |
 | FB.login retorna sem `code` | Cliente fechou o popup | Retry, nada a fazer |
-| ES finaliza sem phone_number_id/waba_id no `sessionInfoRef` | postMessage não chegou (listener filtra outras origens) | Confirma que a origem real está na allowlist exata `FB_EMBEDDED_SIGNUP_ORIGINS` — NUNCA "conserte" trocando por `endsWith` |
+| "A Meta concluiu o login, mas não enviou o número…" | (a) `event.data` tratado como objeto (é string JSON); (b) origem filtrada por lista fixa; (c) callback decidiu antes do postMessage; (d) domínio do app fora de "Allowed domains"/"Valid OAuth redirect URIs" no Facebook Login for Business | (a–c) já cobertos pelo componente canônico; a mensagem lista as mensagens recebidas — "nenhuma" aponta para (d): cadastre o domínio HTTPS no painel da Meta |
 | `Invalid OAuth access token` no exchange_es_code | `code` expirou (~10s) | Cliente lento; refazer flow |
 | Webhook `SIGNATURE MISMATCH` | `META_APP_SECRET` errado | Re-copia da Meta, restart |
 | `meta_deauthorize ... revoked=0` mas validou HMAC | Conexão criada via token manual (sem `facebook_user_id`) | Esperado — só ES grava esse campo |

@@ -59,22 +59,36 @@ NUNCA fica legível no banco:
 - Em fila/mensageria **NUNCA** trafegue o token no payload — mande `phone_number_id` e re-resolva a
   credencial no consumer.
 
-## `postMessage` do Embedded Signup — allowlist exata
+## `postMessage` do Embedded Signup — hostname ancorado no ponto
 
-O widget devolve `phone_number_id`/`waba_id` por `postMessage`. A checagem de origem é por
-**igualdade exata** contra um conjunto fechado:
+O widget devolve `phone_number_id`/`waba_id` por `postMessage`. A checagem de origem é pelo
+**hostname parseado**, ancorado em `.facebook.com`:
 
 ```ts
-const FB_EMBEDDED_SIGNUP_ORIGINS = new Set([
-  "https://www.facebook.com",
-  "https://web.facebook.com",
-  "https://business.facebook.com",
-]);
-if (!FB_EMBEDDED_SIGNUP_ORIGINS.has(event.origin)) return;
+const FB_ROOT_HOSTNAME = "facebook.com";
+function isFacebookOrigin(origin: string): boolean {
+  try {
+    const { protocol, hostname } = new URL(origin);
+    if (protocol !== "https:") return false;
+    return hostname === FB_ROOT_HOSTNAME || hostname.endsWith(`.${FB_ROOT_HOSTNAME}`);
+  } catch {
+    return false;
+  }
+}
+if (!isFacebookOrigin(event.origin)) return;
 ```
 
-`event.origin.endsWith("facebook.com")` casa `https://evil-facebook.com` e deixa uma página hostil
-completar o handshake.
+- `event.origin.endsWith("facebook.com")` cru casa `https://evil-facebook.com` e deixa uma página
+  hostil completar o handshake (auditoria 2026-06).
+- Lista fixa de subdomínios (`www`/`web`/`business`) é o erro oposto: o subdomínio varia por
+  conta/locale e o FINISH era descartado em silêncio (Kailos prod, 2026-10-09).
+- `event.data` vem como **string JSON** (exemplo oficial faz `JSON.parse`); aceitar só objeto
+  descarta tudo.
+- A ordem entre o postMessage e o callback do `FB.login` **não é garantida** (doc da Meta): o
+  callback espera o desfecho por alguns segundos antes de decidir. Callback do `FB.login` NUNCA
+  `async` — o SDK lança "Expression is of type asyncfunction"; chame um helper async por dentro.
+- Erro do widget chega como `event: "ERROR"` ou `CANCEL` com `data.error_message`/`error_code` —
+  mostre o texto da Meta, não "você fechou".
 
 ## Don'ts
 
@@ -84,6 +98,6 @@ completar o handshake.
 - **NUNCA** valide HMAC com `==` direto — sempre `hmac.compare_digest` (timing-safe).
 - **NUNCA** compartilhe 1 Meta App entre 2+ SaaS distintos.
 - **NUNCA** guarde token de portal em claro (coluna ou JSONB) — cifre no repositório, antes do write.
-- **NUNCA** valide `event.origin` por sufixo — allowlist de igualdade exata.
+- **NUNCA** valide `event.origin` por sufixo cru nem por lista fixa de subdomínios — hostname parseado ancorado em `.facebook.com`.
 - **NUNCA** ponha token em payload de NATS/fila — mande `phone_number_id` e re-resolva no consumer.
 - **NUNCA** marque Pages/Ad accounts/Catalogs/Pixels/Instagram como `required` na Configuration — trava clientes que não têm aquele asset.
