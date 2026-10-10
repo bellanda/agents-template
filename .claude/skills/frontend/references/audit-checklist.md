@@ -36,6 +36,11 @@ rg -n "autoFocus" frontend/src/components
 # base do DialogContent (2 eixos + trava max-md:) · compactStyle zera transform E translate?
 rg -n "max-h-|overflow-y|max-md:" frontend/src/components/ui/dialog.tsx
 rg -n "transform|translate" frontend/src/components/ui/form-dialog.tsx
+# largura útil: grid/flex de página em viewport (deveria ser @…/main:), dialog com vh/vw, abas com h-auto, subtítulo sem truncate
+rg -n "\b(sm|md|lg|xl):(grid-cols|flex-row)" frontend/src/routes frontend/src/components --glob '!**/ui/**'
+rg -n "h-\[\d+vh\]|max-h-\[\d+vh\]|w-\[\d+vw\]" frontend/src --glob '!**/ui/**'
+rg -n "<TabsList[^>]*(h-auto|flex-wrap)" frontend/src
+rg -n "subtitle" frontend/src/components/layouts | rg -v "truncate"
 # campo nativo < 16px → auto-zoom do iOS
 rg -n "text-(xs|sm)" frontend/src/components/ui/{input,textarea,command,input-group,combobox}.tsx
 # responsivo resolvido em JS (pisca + remonta) em vez de CSS
@@ -45,7 +50,13 @@ rg -n '\? "default" : "outline"' frontend/src --glob '!**/ui/**'   # tira de se�
 # listas: tabela sem card, column-collapse, paginação por página, fetch-all, label empilhado no toolbar
 rg -n "<Table" frontend/src/routes frontend/src/components
 rg -n "hidden (sm|md|lg):table-cell" frontend/src
-rg -n "page: *number|lastPage|Anterior|Próxima" frontend/src/routes   # só é achado em app em modo infinito
+rg -n "page: *number|lastPage|Anterior|Próxima" frontend/src/routes   # paginação feita à mão (usar usePagedList/ListPagination)
+# lista no padrão 2026-10-09: ⋮ na toolbar, sem IntersectionObserver, picker sem limit crescente, CTA fora do CommandList
+rg -L "ListOptionsMenu" $(rg -l "<ListToolbar" frontend/src/routes frontend/src/components)   # tela de lista sem o ⋮ (sub-lista em aba é exceção)
+rg -n "IntersectionObserver" frontend/src/hooks frontend/src/components/ui   # sentinela de lista/picker tem que ser scroll listener
+rg -n "params\.limit|limit: *\w+\.limit" frontend/src/hooks frontend/src/components --glob '*[Pp]icker*' --glob '*use[A-Z]*'   # limit na key de adapter de picker
+rg -n "CommandList" -A30 frontend/src/components/ui/entity-picker.tsx | rg "onCreateNew|createLabel"   # CTA "Novo" dentro do CommandList
+rg -n "<DataList" -A12 frontend/src/routes | rg -v "countLabel" | rg "total="   # total só no rodapé: contagem vem do ListSummary no topo
 rg -n "limit: *[1-9]\d{2,}" frontend/src
 rg -n "filters=\{" -A12 frontend/src --glob '!**/ui/**' | rg "<Label"
 # meta viewport (safe-area + teclado) · manifest · reload que descarta bundle + access
@@ -80,11 +91,30 @@ rg -o 'Content-Security-Policy "[^"]*"' config/nginx/snippets/security-headers-b
 - [ ] **`font-size` base ausente/divergente** → `html { font-size: 17px }` (salvo exceção registrada
       do projeto).
 
+### Largura útil (2026-10-09)
+
+- [ ] **`(sm|md|lg|xl):grid-cols-*`/`flex-row` de layout em `routes/` ou componente de domínio** →
+      `@xl/main:`/`@2xl/main:`/`@4xl/main:`/`@6xl/main:` (ou `@container` próprio no componente reusável).
+- [ ] **Card que é célula de grid de várias colunas medindo `/main`** → `@container` no próprio card +
+      `@sm:`/`@lg:` (a página é larga, o card não — ex.: card de listagem de veículo, 2026-10-09).
+- [ ] **`/main` dentro de Dialog/Popover/Drawer** → nunca casa (o conteúdo é portaled para fora do
+      `@container/main`; fica preso no layout de 1 coluna). Dentro de overlay: viewport `md:/lg:`
+      (overlay é `fixed` na viewport) ou `@container` no corpo do dialog. Vale para o hub de Settings.
+- [ ] **`\@` literal em className** (`rg -n '\\@' src`) → classe não compila e o layout quebra calado;
+      vem de escape de shell em edição em massa (`sd`/`sed`). Edite com Edit/script Python.
+- [ ] **Wrapper de conteúdo do shell sem `@container/main`** → adicionar (e no `<main>` do full-bleed).
+- [ ] **`TabsList` com `h-auto`/`flex-wrap`** → remover; o componente compacta e vira `Select`.
+- [ ] **Subtítulo do header sem `truncate max-sm:hidden`** / bloco do título sem `min-w-0`.
+- [ ] **Texto secundário largo virando altura no celular** → `max-sm:hidden` ou `truncate`/`line-clamp-1`.
+- [ ] **Valor monetário/KPI cortado** → `tabular-nums whitespace-nowrap` + tamanho por container.
+- [ ] **Conferência visual** em 1024 / 1280 / 1366 com a sidebar ABERTA e em 390: sem 2ª linha de
+      abas, sem scroll horizontal, sem valor cortado.
+
 ### Overlays & forms
 
 - [ ] **Sheet lateral** (detalhe/confirm/form) → Dialog (a geometria vem da base do `DialogContent`;
       com campo → `FormDialog`). **Sheet de filtro/nav mobile** → Drawer (vaul) ou Dialog.
-- [ ] **Dialog com input em `DialogContent` cru / `max-h-[85vh]` / `h-[90vh]`** → `FormDialog`
+- [ ] **`vh`/`vw` em `DialogContent` (`h-[85vh]`, `max-h-[92vh]`, `w-[95vw]`) / dialog com input em `DialogContent` cru** → `FormDialog`
       (`mobile-keyboard.md`). Tirar `autoFocus` do primeiro input e `overflow-y-auto` do `className`.
 - [ ] **Base do `DialogContent` sem `max-h`/`overflow-y`** → `max-h-[calc(100dvh-2rem)]
       w-[calc(100%-2rem)] overflow-y-auto overscroll-contain` (e o `w-full` da base vira `w-[...]`).
@@ -142,15 +172,22 @@ rg -o 'Content-Security-Policy "[^"]*"' config/nginx/snippets/security-headers-b
 
 - [ ] **`<Table>` sem card abaixo de 768px** → `DataList` (`list-screen.md`). Column-collapse
       (`hidden lg:table-cell`) fica, mas só pra densidade acima de 768px.
-- [ ] **`limit: 100..500` (fetch-all) ou mistura dos dois modos de lista no mesmo app** → o modo do app:
-      `useInfiniteList` 10 em 10 **ou** `usePagedList` + `ListPagination` com `page` na URL (`list-screen.md`).
-      Paginação numerada é VÁLIDA no app que a adotou (kailos) — não é achado.
-- [ ] **`useCrud.useList` sem `keepPreviousData`** (tabela pisca, picker volta ao topo) → restaurar
+- [ ] **`limit: 100..500` (fetch-all)** → `useCollectionList` (rolagem contínua default, páginas no ⋮;
+      `list-screen.md`). Modo fixo no código sem o usuário poder trocar também é achado.
+- [ ] **Tela de lista sem `menu={<ListOptionsMenu …/>}` na `ListToolbar`** (exceto sub-lista em
+      aba/painel: movimentações, notificações, timeline) → adicionar o ⋮ + `useListPreferences`.
+- [ ] **Contagem só no rodapé / pílula sticky / "Carregar mais" sem total** → `ListSummary` no TOPO
+      (o `data-list.tsx` canônico já faz; re-vendorar).
+- [ ] **`IntersectionObserver`/`rootMargin` no sentinel de lista ou picker** → `useInfiniteScrollSentinel`
+      (scroll listener) + botão "Carregar mais"; o observer encadeia páginas sem o usuário rolar.
+- [ ] **Adapter de `EntityPicker` com `limit` crescente na query key** (`params.limit`, "10 em 10") →
+      `useInfiniteList`/`useInfinitePages` (páginas anexadas; `entity-picker.md`). CTA "Novo…" dentro
+      do `CommandList` → rodapé fixo fora do scroll. Item sem wrapper `flex-1 min-w-0` → 2ª coluna torta.
+- [ ] **`useCrud.useList` sem `keepPreviousData`** (tabela pisca ao trocar página/filtro) → restaurar
       `placeholderData: keepPreviousData` (`list-screen.md`).
 - [ ] **Lista sem busca, sem filtro de status ou sem ordenação** → `ListToolbar` + `makeSortOptions`.
 - [ ] **Filtro/busca/sort em `useState`** → URL (`validateSearch`); só o draft do input é local.
-- [ ] **Ação (criar, totalizador) ABAIXO da lista** → subir pro `ListToolbar` (com scroll infinito o
-      fim da página nunca chega).
+- [ ] **Ação (criar, totalizador) ABAIXO da lista** → subir pro `ListToolbar`/topo.
 - [ ] **Filtro/ordenação numa 2ª linha à direita, embaixo das ações** → re-vendorar `list-toolbar.tsx`;
       barra ad-hoc → controles no topo à esquerda, ações à direita (`list-screen.md` → Geometria).
 - [ ] **`<Label>` empilhado sobre filtro do toolbar** (data "De/Até" desce meia linha) → rótulo dentro

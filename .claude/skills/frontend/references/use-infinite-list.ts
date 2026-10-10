@@ -7,11 +7,10 @@ import { useEffect, useMemo, useRef, useState } from "react";
 export const LIST_PAGE_SIZE = 10;
 
 /**
- * Distância do fim que dispara a próxima página. ~4 cards — busca antes do
- * usuário chegar no fim, sem pré-carregar página que ele nunca veria. Abaixo de
- * ~200px o spinner aparece.
+ * Folga para considerar "chegou ao fim": a sentinela a até ~meia linha abaixo da borda
+ * visível já conta. Não é pré-busca — é tolerância de arredondamento/padding.
  */
-const SENTINEL_ROOT_MARGIN = "400px 0px";
+const END_REACHED_TOLERANCE_PX = 24;
 
 export type InfiniteListParams = Omit<ListRequest, "page" | "skip" | "limit">;
 
@@ -33,9 +32,42 @@ export function useInfiniteList<T = unknown>(
   const service = useMemo(() => createCrudService<T>(endpoint), [createCrudService, endpoint]);
   const pageSize = options?.pageSize ?? LIST_PAGE_SIZE;
 
-  const query = useInfiniteQuery({
+  return useInfinitePages<T>({
     queryKey: [endpoint, "list", "infinite", { ...params, limit: pageSize }],
-    queryFn: ({ pageParam }) => service.list({ ...params, skip: pageParam, limit: pageSize }),
+    fetchPage: ({ skip, limit }) => service.list({ ...params, skip, limit }),
+    enabled: options?.enabled,
+    pageSize,
+  });
+}
+
+export interface InfinitePagesOptions<T> {
+  /** Sem `skip`/`limit` — a página é o `pageParam`, não parte da chave. */
+  queryKey: readonly unknown[];
+  fetchPage: (page: { skip: number; limit: number }) => Promise<PagedResponse<T>>;
+  enabled?: boolean;
+  pageSize?: number;
+}
+
+/**
+ * Motor de páginas acumuladas para QUALQUER endpoint `PagedResponse` — o `useInfiniteList`
+ * (CrudService) e os adapters de `EntityPicker` cujo endpoint não cabe no CrudService
+ * (`/contacts?org_id=`, rota de plataforma) passam todos por aqui.
+ *
+ * Página nova é ANEXADA às anteriores. Era o que faltava no picker antigo, que crescia o
+ * `limit` (10 → 20 → 30…) com o `limit` na query key: cada degrau era uma chave nova sem
+ * dado, a lista colapsava em "Carregando…", o scroll voltava a 0 e a lista nunca passava
+ * do começo (bug relatado em 2026-10-09 no picker de Contato da Ficha). De quebra cada
+ * degrau rebaixava as linhas já vistas e havia um teto de 200.
+ */
+export function useInfinitePages<T>({
+  queryKey,
+  fetchPage,
+  enabled = true,
+  pageSize = LIST_PAGE_SIZE,
+}: InfinitePagesOptions<T>) {
+  const query = useInfiniteQuery({
+    queryKey,
+    queryFn: ({ pageParam }) => fetchPage({ skip: pageParam, limit: pageSize }),
     initialPageParam: 0,
     getNextPageParam: (lastPage: PagedResponse<T>) => {
       // `skip` ecoado pelo servidor, não acumulado no cliente: se o backend
@@ -46,7 +78,7 @@ export function useInfiniteList<T = unknown>(
       const more = lastPage.hasMore ?? nextSkip < lastPage.total;
       return more ? nextSkip : undefined;
     },
-    enabled: options?.enabled ?? true,
+    enabled,
     // Divergência deliberada do `staleTime: 0` do `useList`. O frescor pós-mutation
     // vem da INVALIDAÇÃO, que ignora staleTime. Com 0 + refetchOnMount:"always", a
     // navegação lista → detalhe → voltar refaz TODAS as páginas carregadas em
@@ -58,25 +90,32 @@ export function useInfiniteList<T = unknown>(
   });
 
   const items = useMemo(() => query.data?.pages.flatMap((page) => page.items) ?? [], [query.data]);
-  // Só a página 0 carrega o total exato — contrato do envelope (o backend só roda
-  // o COUNT quando skip === 0).
+  // Lido da página 0: é nela que o `removeRowFromListCaches` do `useCrud` desconta a
+  // linha excluída, então é ela que fica certa depois de um splice local.
   const total = query.data?.pages[0]?.total ?? 0;
 
   return { ...query, items, total };
 }
 
 /**
- * Sentinela de scroll infinito. Devolve um **callback ref**.
+ * Sentinela de scroll infinito. Devolve um **callback ref** para o elemento no fim da lista.
  *
- * Ref-espelho do estado é obrigatório: `observe()` dispara o callback com o alvo
- * AINDA visível, então qualquer valor que muda por render viraria dep, recriaria
- * o observer e re-dispararia. Passar o objeto `query` como dep é o erro clássico
- * — ele é uma referência nova a cada render.
+ * Carrega a próxima página SÓ quando o usuário ROLA e o fim do que já está carregado entra
+ * na tela (pedido do usuário, 2026-10-09: "carrega somente depois de rolar até o final da
+ * lista carregada atual, não fica carregando sozinho"). Nada de pré-busca nem de reavaliar
+ * sozinho depois que uma página chega — a versão com IntersectionObserver fazia as duas e
+ * encadeava páginas sem ninguém rolar ("rolando sem rolar"): o `root` era achado pelo
+ * `overflow-y` computado, e um ancestral com `overflow-x-hidden` vira `overflow-y: auto` sem
+ * rolar nada — sentinela "sempre visível", lista inteira carregada.
  *
- * O NÓ, porém, precisa ser dep: a lista nasce em `isLoading` (sem sentinela no
- * DOM) e só monta o nó quando a primeira página chega. Com `useRef` + deps
- * vazias o efeito já teria rodado com `null` e nunca mais — o observer nunca
- * observaria nada e o scroll infinito viraria só o botão "Carregar mais".
+ * Como: um listener de `scroll` em CAPTURA no `document` pega a rolagem de qualquer
+ * contêiner (o `<main>` do `SidebarLayout`, a lista do picker, a janela na vitrine) sem
+ * precisar descobrir qual é. Lista que não enche a tela não gera rolagem — aí vale o botão
+ * "Carregar mais" que toda lista infinita mostra junto da sentinela.
+ *
+ * Ref-espelho do estado: o listener lê `hasNextPage`/`fetchNextPage` do espelho, nunca de
+ * dep — passar o objeto `query` como dep é o erro clássico (referência nova a cada render).
+ * O NÓ é dep: a lista nasce em `isLoading` e só monta a sentinela quando a 1ª página chega.
  */
 export function useInfiniteScrollSentinel({
   hasNextPage,
@@ -85,29 +124,30 @@ export function useInfiniteScrollSentinel({
 }: {
   hasNextPage: boolean;
   isFetchingNextPage: boolean;
-  fetchNextPage: () => void;
+  fetchNextPage: () => unknown;
 }) {
   const [node, setNode] = useState<HTMLDivElement | null>(null);
   const state = useRef({ hasNextPage, isFetchingNextPage, fetchNextPage });
   state.current = { hasNextPage, isFetchingNextPage, fetchNextPage };
 
   useEffect(() => {
-    if (!node || typeof IntersectionObserver === "undefined") return;
+    if (!node) return;
 
-    const observer = new IntersectionObserver(
-      (entries) => {
-        if (!entries[0]?.isIntersecting) return;
-        const current = state.current;
-        // Guarda redundante com o dedupe do TanStack, de propósito: dois callbacks
-        // no mesmo tick veriam o mesmo `isFetchingNextPage` pré-commit.
-        if (!current.hasNextPage || current.isFetchingNextPage) return;
+    const loadIfReachedEnd = (event: Event) => {
+      const current = state.current;
+      if (!current.hasNextPage || current.isFetchingNextPage) return;
+      const scroller = event.target;
+      // Rolagem de OUTRO contêiner (um dialog, outra lista) não é desta lista.
+      if (scroller instanceof Element && !scroller.contains(node)) return;
+      const visibleBottom =
+        scroller instanceof Element ? scroller.getBoundingClientRect().bottom : window.innerHeight;
+      if (node.getBoundingClientRect().top <= visibleBottom + END_REACHED_TOLERANCE_PX) {
         current.fetchNextPage();
-      },
-      { rootMargin: SENTINEL_ROOT_MARGIN }
-    );
-    observer.observe(node);
-    return () => observer.disconnect();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- ver ref-espelho acima
+      }
+    };
+
+    document.addEventListener("scroll", loadIfReachedEnd, { capture: true, passive: true });
+    return () => document.removeEventListener("scroll", loadIfReachedEnd, { capture: true });
   }, [node]);
 
   return setNode;

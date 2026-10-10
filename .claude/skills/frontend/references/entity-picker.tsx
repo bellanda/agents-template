@@ -5,32 +5,33 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
 } from "@/components/ui/command";
 import { FIELD_TRIGGER_CLASS } from "@/components/ui/input";
+import { formatCount } from "@/components/ui/list-pagination";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import type { ListRequest, PagedResponse } from "@/lib/api/types";
+import { useInfiniteScrollSentinel } from "@/hooks/useInfiniteList";
 import { cn } from "@/lib/utils";
-import { useEffect, useRef, useState, type ReactNode, type UIEvent } from "react";
+import { useRef, useState, type ReactNode } from "react";
 import { LuChevronsUpDown, LuPlus, LuX } from "react-icons/lu";
 
-const PAGE_SIZE = 10;
 /**
- * Teto do `limit` — o MESMO `MAX_PAGE_LIMIT` do backend (`routes/shared/list_params.py`).
- * Sem ele, uma lista com mais de 200 linhas rola até o fim, o degrau seguinte pede 210,
- * o FastAPI devolve 422 e o picker fica vazio no meio da digitação. Quem tem tanta linha
- * assim acha pela busca, não rolando.
+ * O que o `useList` de um picker devolve — o shape do `useInfiniteList`/`useInfinitePages`
+ * (`hooks/useInfiniteList.ts`), então `useList={(p, o) => useInfiniteList(endpoint, p, o)}`
+ * encaixa direto. Páginas ANEXADAS, nunca um `limit` crescente na query key: ver o porquê
+ * em `useInfinitePages`.
  */
-const MAX_LIMIT = 200;
-/** Distância do fim da lista que dispara o próximo degrau — ~meia linha. */
-const LOAD_MORE_THRESHOLD_PX = 32;
+export interface EntityPickerSource<T> {
+  items: T[];
+  total: number;
+  hasNextPage: boolean;
+  isFetching: boolean;
+  isFetchingNextPage: boolean;
+  fetchNextPage: () => unknown;
+}
 
 interface EntityPickerProps<T> {
-  /** Hook de lista do caller (ex.: `useVehicles(orgId).useList`) — chamado incondicionalmente. */
-  useList: (
-    params: ListRequest,
-    options: { enabled: boolean }
-  ) => { data?: PagedResponse<T>; isFetching?: boolean };
+  /** Hook de lista do caller — chamado incondicionalmente, `enabled` só com o popover aberto. */
+  useList: (params: { search?: string }, options: { enabled: boolean }) => EntityPickerSource<T>;
   value: string | null;
   /** Label já conhecido (edição) — evita "carregando" antes da lista chegar. */
   valueLabel?: string | null;
@@ -52,8 +53,13 @@ interface EntityPickerProps<T> {
 
 /**
  * Busca no servidor (`search`), sem filtro client-side — a lista é sempre um recorte.
- * Rola até o fim para subir o próprio `limit` de 10 em 10: a query key carrega o `limit`,
- * então cada degrau é uma entrada de cache e o TanStack serve o anterior enquanto busca.
+ * Rolar até o fim anexa a próxima página (sentinela), sem teto: quem tem 2.000 contatos
+ * rola até o 2.000º se quiser.
+ *
+ * Rodapé FIXO fora da área de rolagem: "10 de 1.355" + o CTA "Novo…", a faixa inteira
+ * clicável. O CTA ficava no fim
+ * da lista rolável — com scroll infinito ele só aparecia depois de rolar tudo (pedido do
+ * usuário, 2026-10-09: criar novo sempre à vista, estilo admin do Django).
  */
 export function EntityPicker<T>({
   useList,
@@ -74,80 +80,20 @@ export function EntityPicker<T>({
 }: EntityPickerProps<T>) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
-  const [limit, setLimit] = useState(PAGE_SIZE);
   // Guarda o foco de retorno do Popover quando "Novo…" abre um Dialog: sem isso o
   // focus-restore do Popover briga com o onOpenAutoFocus do Dialog aninhado.
   const creatingRef = useRef(false);
-  const contentRef = useRef<HTMLDivElement | null>(null);
-  const { data, isFetching } = useList({ search: query || undefined, limit }, { enabled: open });
+  const list = useList({ search: query || undefined }, { enabled: open });
+  const sentinelRef = useInfiniteScrollSentinel({
+    hasNextPage: list.hasNextPage,
+    isFetchingNextPage: list.isFetchingNextPage,
+    fetchNextPage: list.fetchNextPage,
+  });
 
-  // Quando o picker abre dentro de um Dialog, o Radix trava o scroll (react-remove-scroll)
-  // e o PopoverContent é portalado pra fora do lock → roda do mouse e toque são bloqueados
-  // (só a barra escapa). React trata `wheel` como passivo, então reinjetamos o scroll num
-  // listener nativo não-passivo na lista. No boundary deixa o chaining seguir pra página.
-  useEffect(() => {
-    if (!open) return;
-    const list = contentRef.current?.querySelector<HTMLElement>('[data-slot="command-list"]');
-    if (!list) return;
-
-    const scrollByDelta = (deltaY: number) => {
-      if (list.scrollHeight <= list.clientHeight) return false;
-      const atTop = list.scrollTop <= 0;
-      const atBottom = list.scrollTop + list.clientHeight >= list.scrollHeight - 1;
-      if ((deltaY < 0 && atTop) || (deltaY > 0 && atBottom)) return false;
-      list.scrollTop += deltaY;
-      return true;
-    };
-
-    const onWheel = (event: WheelEvent) => {
-      const factor = event.deltaMode === 1 ? 16 : event.deltaMode === 2 ? list.clientHeight : 1;
-      if (scrollByDelta(event.deltaY * factor)) event.preventDefault();
-    };
-
-    let lastTouchY = 0;
-    const onTouchStart = (event: TouchEvent) => {
-      lastTouchY = event.touches[0]?.clientY ?? 0;
-    };
-    const onTouchMove = (event: TouchEvent) => {
-      const y = event.touches[0]?.clientY ?? 0;
-      const delta = lastTouchY - y;
-      lastTouchY = y;
-      if (scrollByDelta(delta)) event.preventDefault();
-    };
-
-    list.addEventListener("wheel", onWheel, { passive: false });
-    list.addEventListener("touchstart", onTouchStart, { passive: false });
-    list.addEventListener("touchmove", onTouchMove, { passive: false });
-    return () => {
-      list.removeEventListener("wheel", onWheel);
-      list.removeEventListener("touchstart", onTouchStart);
-      list.removeEventListener("touchmove", onTouchMove);
-    };
-  }, [open]);
-
-  const items = data?.items ?? [];
-  const hasMore = items.length < (data?.total ?? 0) && limit < MAX_LIMIT;
+  const { items, total } = list;
   const selected = value ? items.find((item) => getId(item) === value) : undefined;
   const selectedLabel = value ? (selected ? getLabel(selected) : (valueLabel ?? null)) : null;
   const canCreate = Boolean(createLabel && onCreateNew);
-
-  const search = (next: string) => {
-    setQuery(next);
-    setLimit(PAGE_SIZE);
-  };
-
-  const toggle = (next: boolean) => {
-    setOpen(next);
-    if (!next) setLimit(PAGE_SIZE);
-  };
-
-  const loadMoreOnScroll = (event: UIEvent<HTMLDivElement>) => {
-    if (!hasMore || isFetching) return;
-    const list = event.currentTarget;
-    const remaining = list.scrollHeight - list.scrollTop - list.clientHeight;
-    if (remaining <= LOAD_MORE_THRESHOLD_PX)
-      setLimit((current) => Math.min(current + PAGE_SIZE, MAX_LIMIT));
-  };
 
   const startCreate = () => {
     creatingRef.current = true;
@@ -157,7 +103,11 @@ export function EntityPicker<T>({
 
   return (
     <div className="flex items-center gap-2">
-      <Popover open={open} onOpenChange={toggle}>
+      {/* `modal`: dentro de um Dialog o Radix trava o scroll (react-remove-scroll) e o
+          conteúdo portalado ficava FORA da trava — a roda do mouse não rolava a lista, só a
+          barra arrastada. Modal, o Popover empilha a própria trava (a última vence) e libera
+          o próprio conteúdo. Substitui o listener de `wheel`/`touchmove` reinjetado à mão. */}
+      <Popover open={open} onOpenChange={setOpen} modal>
         <PopoverTrigger asChild>
           <Button
             type="button"
@@ -181,7 +131,6 @@ export function EntityPicker<T>({
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          ref={contentRef}
           className="w-(--radix-popover-trigger-width) p-0"
           align="start"
           onCloseAutoFocus={(event) => {
@@ -192,13 +141,13 @@ export function EntityPicker<T>({
           }}
         >
           <Command shouldFilter={false}>
-            <CommandInput placeholder={searchPlaceholder} value={query} onValueChange={search} />
-            <CommandList onScroll={loadMoreOnScroll}>
+            <CommandInput placeholder={searchPlaceholder} value={query} onValueChange={setQuery} />
+            <CommandList>
               {/* shouldFilter=false: o vazio é decidido pelo servidor (items.length),
-                  nunca pelo auto-hide do CommandEmpty — o CTA sempre-presente o mataria. */}
+                  nunca pelo auto-hide do CommandEmpty. */}
               {items.length === 0 && (
                 <p className="text-muted-foreground py-6 text-center text-sm">
-                  {isFetching ? "Carregando…" : emptyText}
+                  {list.isFetching ? "Carregando…" : emptyText}
                 </p>
               )}
               {items.length > 0 && (
@@ -212,32 +161,61 @@ export function EntityPicker<T>({
                         setOpen(false);
                       }}
                     >
-                      {renderItem ? (
-                        renderItem(item)
-                      ) : (
-                        <span className="truncate">{getLabel(item)}</span>
-                      )}
+                      {/* Wrapper `flex-1`: o `CommandItem` já termina num ícone de check com
+                          `ml-auto`; um `ml-auto` do `renderItem` (telefone, placa) dividia a
+                          sobra com ele e a 2ª coluna saía torta, cada linha numa posição. */}
+                      <span className="flex min-w-0 flex-1 items-center gap-2">
+                        {renderItem ? (
+                          renderItem(item)
+                        ) : (
+                          <span className="truncate">{getLabel(item)}</span>
+                        )}
+                      </span>
                     </CommandItem>
                   ))}
                 </CommandGroup>
               )}
-              {hasMore && (
-                <p className="text-muted-foreground py-2 text-center text-xs">
-                  Role para carregar mais…
-                </p>
-              )}
-              {canCreate && (
-                <>
-                  {items.length > 0 && <CommandSeparator />}
-                  <CommandGroup>
-                    <CommandItem value="__create__" onSelect={startCreate}>
-                      <LuPlus className="size-4" />
-                      {createLabel}
-                    </CommandItem>
-                  </CommandGroup>
-                </>
+              {list.hasNextPage && (
+                // Clicável: lista que não enche a altura não gera rolagem, e a sentinela só
+                // carrega com rolagem de verdade (`useInfiniteScrollSentinel`).
+                <div ref={sentinelRef} className="flex justify-center py-1">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="text-muted-foreground text-xs"
+                    disabled={list.isFetchingNextPage}
+                    onClick={() => list.fetchNextPage()}
+                  >
+                    {list.isFetchingNextPage ? "Carregando…" : "Carregar mais"}
+                  </Button>
+                </div>
               )}
             </CommandList>
+            {canCreate ? (
+              // A faixa INTEIRA é o botão (contagem incluída): alvo grande, sempre à vista.
+              // "Novo…" à esquerda, alinhado ao texto dos itens como mais uma opção da lista;
+              // no canto direito ele ficava solto, longe de tudo (feedback 2026-10-09).
+              <button
+                type="button"
+                onClick={startCreate}
+                className="hover:bg-muted focus-visible:bg-muted mt-1 flex w-full items-center gap-2 rounded-md border-t px-2.5 py-2 text-left text-xs outline-hidden"
+              >
+                <LuPlus className="size-3.5 shrink-0" />
+                <span className="font-medium">{createLabel}</span>
+                {total > 0 && (
+                  <span className="ml-auto">
+                    <FooterCount loaded={items.length} total={total} />
+                  </span>
+                )}
+              </button>
+            ) : (
+              total > 0 && (
+                <div className="mt-1 border-t px-2.5 py-2 text-xs">
+                  <FooterCount loaded={items.length} total={total} />
+                </div>
+              )
+            )}
           </Command>
         </PopoverContent>
       </Popover>
@@ -254,5 +232,13 @@ export function EntityPicker<T>({
         </Button>
       )}
     </div>
+  );
+}
+
+function FooterCount({ loaded, total }: { loaded: number; total: number }) {
+  return (
+    <span className="text-muted-foreground tabular-nums">
+      {formatCount(loaded)} de {formatCount(total)}
+    </span>
   );
 }

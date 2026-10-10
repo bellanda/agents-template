@@ -101,3 +101,4 @@ if (!isFacebookOrigin(event.origin)) return;
 - **NUNCA** valide `event.origin` por sufixo cru nem por lista fixa de subdomínios — hostname parseado ancorado em `.facebook.com`.
 - **NUNCA** ponha token em payload de NATS/fila — mande `phone_number_id` e re-resolva no consumer.
 - **NUNCA** marque Pages/Ad accounts/Catalogs/Pixels/Instagram como `required` na Configuration — trava clientes que não têm aquele asset.
+- **NUNCA** envie mídia outbound por `link` público como caminho principal — suba os bytes em `POST /{phone_number_id}/media` e envie por `{"id": media_id}`; `link` só como fallback se o upload falhar. Os fetchers da Meta (Suécia/Dinamarca) são barrados por CDN atrás de geo-block/WAF da Cloudflare e a mídia fica presa em "sent" para sempre (Kailos prod, 2026-10-09).

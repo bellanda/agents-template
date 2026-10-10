@@ -95,6 +95,26 @@ export function buildChatGptBuilderUrl(storeName: string): string {
 
 Mantenha a URL codificada abaixo de ~4 mil caracteres (acento vira 6, espaço vira 3).
 
+### Método da plataforma × fatos da loja (kailos, 2026-10-09)
+
+O texto do tenant é **complementar**, nunca substituto. Separação canônica:
+
+- **Prompt-base da plataforma ("método")**: COMO a IA atende — qualificação, técnicas, objeções,
+  guardrails, uso das tools, QUANDO transferir. Igual para toda loja: **zero nome de loja/pessoa**
+  (teste de guarda). Kailos: `backend/agents/vehicle_sales_agent/prompt.py`.
+- **Markdown do tenant ("fatos")**: identidade da IA, história, endereço, pagamento/bancos, troca,
+  garantia, política de desconto/sinal, serviços, expressões da casa, FAQ, "nunca diga". A entrevista
+  do ChatGPT pergunta SÓ isso e proíbe regra de comportamento ("transfira sempre que…", "diga que é
+  humana"); preferência vira "A loja prefere…".
+- **Composição**: o Markdown entra embrulhado num cabeçalho fixo de precedência (`STORE_CONFIG_HEADER`:
+  "complementa o método; em conflito vale o método; preço/estoque/horário/equipes do texto valem menos
+  que tools e contexto ao vivo"), depois o runtime, e a regra de identidade por último.
+- **Equipes**: o gatilho da fila diz PARA QUEM; o método diz QUANDO. O bloco de equipes do runtime
+  diz isso explicitamente — gatilho largo da loja ("transfira sempre que houver intenção de compra")
+  causou handoff no primeiro "oi" em prod.
+- **Calibração**: cenários reais anonimizados + replay contra o modelo real com tools falsas que
+  espelham o schema das reais (`agents/vehicle_sales_agent/eval/`), fora do check.sh.
+
 ## Backend
 
 - `PUT …/agent-config` recebe `{ system_prompt_markdown, enabled, note }` com `max_length` (o texto

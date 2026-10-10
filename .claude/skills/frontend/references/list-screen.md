@@ -1,49 +1,113 @@
-# Tela de lista — DataList, modos de paginação, filtros e ordenação
+# Tela de lista — DataList, modo por tela, filtros e ordenação
+
+> **Celular — ações em UMA linha (2026-10-09):** abaixo de 768px a linha de ações da
+> `ListToolbar` é `flex-nowrap`: `[Filtros só-ícone + badge][CTA primário curto, flex-1][⋮]`.
+> Secundárias (importar, exportar, lote, sincronizar) entram no ⋮ via
+> `mobileActions={{ primary, secondary: [{ label, icon, onSelect, disabled? }] }}` — `actions`
+> (ReactNode) continua sendo o desktop. O toolbar publica `secondary` por
+> `ToolbarMenuActionsContext`; `ListOptionsMenu` lista acima de "Exibição" (`md:hidden`); tela sem
+> `menu` ganha `ToolbarOverflowMenu` mobile-only. Antes Veículos empilhava 4 linhas de botões
+> antes do conteúdo. Código canônico: `list-toolbar.tsx`, `list-options.tsx`.
+
 
 > Reference do gate `frontend` (item 8f). Anatomia canônica de qualquer tela que lista registros.
 > Componentes: `references/data-list.tsx`, `references/list-toolbar.tsx`,
-> `references/use-infinite-list.ts`, `references/bulk-actions-menu.tsx`,
-> `references/use-list-selection.ts` (vendorados em `ui/data-list.tsx`, `ui/list-toolbar.tsx`,
-> `hooks/useInfiniteList.ts`, `ui/bulk-actions-menu.tsx`, `hooks/useListSelection.ts`). Contrato de
-> backend: gate `database` → `references/list-pagination.md`.
+> `references/list-options.tsx`, `references/list-pagination.tsx`,
+> `references/use-collection-list.ts`, `references/use-infinite-list.ts`,
+> `references/use-paged-list.ts`, `references/use-recently-opened.ts`,
+> `references/bulk-actions-menu.tsx`, `references/use-list-selection.ts` (vendorados em
+> `ui/data-list.tsx`, `ui/list-toolbar.tsx`, `ui/list-options.tsx`, `ui/list-pagination.tsx`,
+> `hooks/useCollectionList.ts`, `hooks/useInfiniteList.ts`, `hooks/usePagedList.ts`,
+> `hooks/useRecentlyOpened.ts`, `ui/bulk-actions-menu.tsx`, `hooks/useListSelection.ts`).
+> Consumidor canônico: kailos `routes/_authenticated/organizations/$id/vehicles/index.tsx`.
+> Contrato de backend: gate `database` → `references/list-pagination.md`.
 
 ## Anatomia (não tem variação)
 
 ```
-<ListToolbar>        busca + filtros + ordenação + [Ações ▾] (seleção) + botão "Novo…"
-<DataList>           tabela (≥768px) / cards (<768px) + contagem + "Carregar mais" OU rodapé de páginas
+<ListToolbar>        busca + filtros + ordenação + [Ações ▾] (seleção) + botão "Novo…" + ⋮ (slot `menu`)
+<RecentlyOpenedStrip> (opcional) últimas 5 aberturas da tela
+<DataList>           totais no topo + tabela (≥768px) / cards (<768px) + "Carregar mais" OU números de página
 <ConfirmDialog>      exclusão
 <XFormDialog>        criar/editar
 ```
 
-**Nada fica abaixo do `DataList`** (no modo infinito o fim da página nunca chega) — botão de criar,
-totalizadores e ações de página vivem no `ListToolbar`. O rodapé de páginas do modo paginado é parte
-do próprio `DataList`, não "ação abaixo da lista".
+**Nada fica abaixo do `DataList`** — botão de criar, totalizadores e ações de página vivem no
+`ListToolbar`/topo. O rodapé (números de página OU loader infinito) é parte do próprio `DataList`,
+não "ação abaixo da lista". Sem pílula sticky nem contagem solta embaixo.
 
-## Dois modos de lista VÁLIDOS (decisão 2026-10-01) — cada app mantém o seu
+## Modo de lista — POR TELA, rolagem contínua é o default (decisão 2026-10-09)
 
-| | **Modo 1 — scroll infinito** (default de app novo) | **Modo 2 — paginação numerada** (kailos) |
+Substitui o antigo "um modo por app" (2026-10-01). Os dois modos leem o MESMO endpoint
+`PagedResponse` (total exato em toda página) e mostram "carregados de total"; muda só a navegação.
+
+| | **Rolagem contínua** (DEFAULT de toda tela) | **Páginas numeradas** (opção 2, escolhida no ⋮) |
 | --- | --- | --- |
-| Hook | `useInfiniteList` (10 em 10, query key `[endpoint,"list","infinite",params]`) | `usePagedList(endpoint, params, { page })` (20/página; grade de cards 24; key `[endpoint,"list","paged",{…params,page,limit}]`) |
-| Rodapé | sentinela + `<Button>Carregar mais</Button>` | `ListPagination` (`ui/list-pagination.tsx`): "21–40 de 1.355", números com reticências; celular "‹ Página 2 de 68 ›" com alvos de 44px |
-| `DataList` recebe | `{...list}` com `isFetchingNextPage/hasNextPage/fetchNextPage` | `{...paged}` com `page/pageSize/pageCount/onPageChange` |
-| Estado na URL | `q/sort/order` (+ filtros) | `q/sort/order` (+ filtros) **+ `page`** (`validateSearch`) |
-| Reset | filtro/sort/busca mudam a key → recomeça sozinho | busca/filtro/ordenação/aba **voltam à página 1 no próprio handler** (nunca `useEffect`) |
-| Backend `total` | exato em `skip == 0` (cabeçalho lê `pages[0].total`) | **exato em TODA página** — `COUNT(*)` separado a cada request (abrir a página 7 por link precisa do total; `sentinel(rows, params, total)` com `total` obrigatório); `COUNT(*) OVER()` continua proibido — ver `database` → `list-pagination.md` |
-| Canônico | promoservice/balizap/nexarena/akmeo/optimuslar `hooks/useInfiniteList.ts` | kailos `hooks/usePagedList.ts` + `ui/list-pagination.tsx` + `ui/data-list.tsx` |
+| Hook | `useInfiniteList` (10 em 10; key `[endpoint,"list","infinite",params]`) | `usePagedList` (20/página; grade 24; key `[endpoint,"list","paged",{…params,page,limit}]`) |
+| Total no topo | "48 de 1.355 veículos" | "21–40 de 1.355 veículos" |
+| Rodapé | loader: botão "Carregar mais" + carga ao rolar até o fim | `ListPagination hideRange`: números com reticências; celular "‹ Página 2 de 68 ›" |
+| URL | `q/sort/order` (+ filtros) | idem **+ `page`** (`validateSearch`) |
+| Reset | filtro/sort/busca mudam a key → recomeça sozinho | busca/filtro/ordenação/aba voltam a `page: undefined` **no próprio handler** (nunca `useEffect`) |
 
-- **Um modo por app.** Misturar os dois no mesmo app é regressão (exceção nomeada: vitrine pública
-  do kailos `/lojas/{slug}` segue infinita — é catálogo, não tela de trabalho). Mudar de modo é
-  decisão do dono do produto, não do agente.
-- **O resto é igual nos dois:** `ListToolbar` em UMA linha, `DataList` tabela↔card por role, busca +
-  ordenação + filtros na URL, `StaticDataList` para conjunto bounded, filtro de status com contagem,
-  seleção em lote. O `useCrud` (abaixo) é o mesmo.
-- `ui/data-list.tsx` do kailos é um **superset**: além do modo paginado traz o `ErrorState` (query
-  que falhou ≠ lista vazia — `isError/error/refetch/onRetry`, ver `feedback-states.md`) e o
-  `EmptyState` standalone. App em modo infinito que ainda não tem o `ErrorState` deve portá-lo.
-- Modo 2 no mobile: `scrollIntoView({ block: "nearest" })` no topo da lista ao trocar de página (só
-  rola se o topo já saiu da tela); `placeholderData: keepPreviousData` segura a página anterior
-  (escurecida) até a próxima chegar; `staleTime: 30_000`.
+- **A tela chama um hook só:** `useCollectionList<T>(endpoint, params, { mode, page, pageSize })` e
+  espalha em `<DataList {...list} onPageChange={setPage}>`. Os dois hooks internos rodam sempre
+  (regra dos hooks), só o do modo ativo fica `enabled`. A presença de `list.infinite` põe o `DataList`
+  no modo rolagem. `isFetching` já exclui o `isFetchingNextPage` (senão o DataList escureceria o que
+  já carregou a cada degrau).
+- **A escolha é do usuário, no ⋮** (ver seção "Preferências da tela" abaixo). O código define só o
+  default (`{ mode: "infinite", showRecents: true }`).
+- **Sub-lista em aba/painel** (movimentações, notificações, timeline de auditoria) usa
+  `useInfiniteList` direto: infinita, SEM ⋮ e SEM recentes. A vitrine pública é infinita pelo mesmo motivo.
+- `ui/data-list.tsx` canônico traz também o `ErrorState` (query que falhou ≠ lista vazia —
+  `isError/error/refetch/onRetry`, ver `feedback-states.md`) e o `EmptyState` standalone.
+- No modo páginas, no mobile: `scrollIntoView({ block: "nearest" })` no topo da lista ao trocar de
+  página; `placeholderData: keepPreviousData` segura a página anterior (escurecida); `staleTime: 30_000`.
+
+## Preferências da tela (⋮), totais no topo e Abertos recentemente
+
+O ⋮ é o ÚLTIMO item da linha da `ListToolbar` (slot `menu`). `ListOptionsMenu` = grupo radio
+"Rolagem contínua / Páginas numeradas" (bolinhas sempre visíveis + dica de uma linha em cada) e
+checkbox "Mostrar abertos recentemente". A preferência vive em localStorage por tela
+(`useListPreferences(screenKey, defaults)`, falha de storage = fica nos defaults).
+
+```tsx
+const VEHICLES_SCREEN_KEY = "vehicles";
+const DEFAULT_PREFERENCES: ListPreferences = { mode: "infinite", showRecents: true };
+
+const [preferences, updatePreferences] = useListPreferences(VEHICLES_SCREEN_KEY, DEFAULT_PREFERENCES);
+const list = useCollectionList<Vehicle>(
+  `/organizations/${orgId}/vehicles`,
+  { search: q, sort, order, filters: { stage, status } },
+  { mode: preferences.mode, page, pageSize: GRID_PAGE_SIZE }
+);
+const { recentEntries, markOpened, clearRecents } = useRecentlyOpened(`${VEHICLES_SCREEN_KEY}:${orgId}`);
+
+// `page` só existe no modo páginas — trocar de modo volta pro começo.
+const changeListMode = (next: ListMode) => {
+  updatePreferences({ mode: next });
+  navigate({ search: (prev) => ({ ...prev, page: undefined }) });
+};
+
+<ListToolbar … menu={
+  <ListOptionsMenu mode={preferences.mode} onModeChange={changeListMode}
+    showRecents={preferences.showRecents}
+    onShowRecentsChange={(showRecents) => updatePreferences({ showRecents })} />
+} />
+{preferences.showRecents && (
+  <RecentlyOpenedStrip entries={recentEntries} onOpen={(e) => goToVehicle(e.id)} onClear={clearRecents} />
+)}
+<DataList {...list} onPageChange={setPage} … />
+```
+
+- **Totais no TOPO** (`ListSummary`, desenhado pelo `DataList`): páginas "21–40 de 1.355 veículos",
+  rolagem "48 de 1.355 veículos" (`countLabel` dá o substantivo). Embaixo SÓ números de página
+  (`ListPagination hideRange`) ou o loader — nada de pílula sticky, nada mais.
+- **"Abertos recentemente"**: tira com as últimas 5 itens abertos DESTA tela
+  (`useRecentlyOpened(screenKey + orgId)`, localStorage). A entrada `{id, title, subtitle?, imageUrl?}`
+  é gravada via `markOpened` NO CLIQUE (sem fetch; o título é o que a lista já tem). Cards mínimos em
+  grid 2/3/5 por breakpoint (sem scroll horizontal), "Limpar" no cabeçalho da própria tira.
+  Só entra em tela onde abrir o item é a ação principal — rota de detalhe OU dialog de detalhe
+  (o `onOpen` da tira navega ou reabre o dialog). Tela sem esse fluxo: `showRecents: false` e sem tira.
 
 ## Geometria do `ListToolbar` — UMA linha, controles à esquerda, ações à direita
 
@@ -82,17 +146,18 @@ CSS, nunca `useIsMobile()`.
 - **Tabela no desktop vira card no mobile.** UMA definição de coluna produz as duas renderizações.
   Column-collapse (`hidden lg:table-cell`) continua existindo — mas para densidade **acima** de 768px,
   não como substituto do card.
-- **Um dos dois modos** (infinito de 10 em 10 **ou** paginação numerada com total) — o do app, nunca
-  `limit: 500` "porque a tabela é pequena".
+- **Rolagem contínua por default, páginas numeradas no ⋮** (`useCollectionList`) — nunca
+  `limit: 500` "porque a tabela é pequena". Tela de lista sem `menu={<ListOptionsMenu …/>}` é regressão
+  (exceto sub-lista em aba/painel).
 - **Toda lista tem busca.** Toda lista com coluna de status tem filtro de status.
 - **Toda lista tem ordenação** (`makeSortOptions`): mais recentes (default) · mais antigos · A→Z ·
   Z→A · atualizados por último.
 - **`q`/`status`/`sort`/`order` moram na URL** (`validateSearch`). A única exceção é o texto em
   digitação, que é buffer de debounce dentro do `SearchInput`.
 
-## `useInfiniteList` — três decisões que parecem erradas e não são
+## `useInfiniteList`/`useInfinitePages` — três decisões que parecem erradas e não são
 
-**1. A query key é `[endpoint, "list", "infinite", params]`.** O discriminador vai na posição 2,
+**1. A query key é `[endpoint, "list", "infinite", params]`** (e `[endpoint, "list", "paged", params]` no modo páginas)**.** O discriminador vai na posição 2,
 *depois* de `"list"`. É o que faz o `invalidateQueries({ queryKey: [endpoint, "list"] })` das mutations
 do `useCrud` casar por prefixo. Mover pro índice 1 (`[endpoint, "infinite", …]`) produz uma lista que
 **nunca atualiza** depois de criar/excluir — falha silenciosa.
@@ -104,6 +169,10 @@ carregadas, em sequência.
 
 **3. Sem `placeholderData: keepPreviousData`.** Em infinite query isso segura as N páginas do filtro
 anterior enquanto a nova página 1 carrega, e depois dá um snap. O `DataList` escurece as linhas atuais.
+
+`useInfinitePages({ queryKey, fetchPage: ({skip, limit}) => …, enabled })` é o mesmo motor para
+endpoint fora do CrudService (usado pelos adapters do `EntityPicker`); `useInfiniteList` é o atalho
+para endpoint de CrudService.
 
 Mudança de filtro/sort/search **não precisa de reset manual** — está na key, então é outra query, que
 começa no `initialPageParam`. Sem `useEffect`, sem ref.
@@ -148,7 +217,7 @@ coleção textual, sair do default é regressão: a tabela é mais densa e mais 
 
 - **O switch desktop/mobile é CSS**, não `useIsMobile()`. O hook resolve em `useEffect` e devolve
   `undefined` no primeiro render → tabela pisca no celular, e a subárvore inteira remonta a cada resize
-  cruzando 768px, derrubando o `IntersectionObserver` junto. Custo do CSS: as duas árvores no DOM e
+  cruzando 768px, derrubando o listener de scroll do sentinel junto. Custo do CSS: as duas árvores no DOM e
   `cell(item)` chamado duas vezes. Em 10–200 linhas carregadas, irrelevante.
 - **Permissão fica no caller** — `actions={[...(can(P.UPDATE) ? [edit] : [])]}`. Os 5 projetos têm
   hooks de permissão diferentes; o componente vendorado não pode acoplar na auth de nenhum.
@@ -251,24 +320,25 @@ onToggle }}`, no canto do card).
 - Ação nova = um `DropdownMenuItem` a mais como `children`. Sem permissão para nenhuma ação em lote →
   sem menu e sem checkbox.
 
-## Sentinela de scroll infinito
+## Gatilho de carga do modo rolagem — `useInfiniteScrollSentinel` (SEM IntersectionObserver)
 
-Deps **vazias** + ref-espelho do estado. `observe()` dispara o callback com o alvo ainda visível, então
-qualquer dep que muda por render recria o observer e re-dispara — passar o objeto `query` como dep é o
-erro clássico (referência nova a cada render). `rootMargin: "400px 0px"` ≈ 4 cards.
+Carrega a próxima página **só quando o usuário rola de verdade até o fim do que já está carregado**:
+listener de `scroll` no `document` em fase de captura (pega qualquer container rolável) com
+tolerância de 24px. **Sempre** acompanhado do botão "Carregar mais" — lista que não enche a tela
+nunca rola, então o botão é o caminho primário nela.
 
-**Um sentinel só, FORA das duas árvores responsivas** — nó dentro de `display:none` nunca intersecta,
-então um sentinel por árvore morreria silenciosamente num dos breakpoints.
-
-A chain-load (sentinel ainda visível depois de carregar) é **correta** — carrega até encher a viewport.
-Ela só vira loop infinito se o servidor mentir no `has_more`; é por isso que a sentinela `LIMIT+1` do
-backend precisa ser exata, e não uma estimativa.
+- **PROIBIDO** `IntersectionObserver`, `rootMargin` de prefetch e encadeamento automático
+  ("sentinela ainda visível → carrega mais"). Motivo (incidente 2026-10-09): ancestral não rolável com
+  `overflow-x-hidden` computa `overflow-y: auto`, o observer via o sentinel "dentro do root" e
+  encadeava páginas sem o usuário rolar nada, até esgotar a lista.
+- Um loader só, fora das duas árvores responsivas (tabela/cards), no rodapé do `DataList`
+  (`InfiniteListLoader`).
+- O backend precisa devolver `has_more` exato (sentinela `LIMIT+1`) — senão o botão aparece sobrando.
 
 ## Acessibilidade
 
-- O `<Button>Carregar mais</Button>` é o mecanismo **primário**, sempre renderizado quando há próxima
-  página. O `IntersectionObserver` é progressive enhancement que o aperta. É também o fallback quando
-  o container não rola (viewport curta, usuário com zoom).
+- O `<Button>Carregar mais</Button>` sempre renderizado quando há próxima página; o scroll até o fim
+  é só um atalho. É também o caminho quando o container não rola (viewport curta, zoom).
 - `aria-live="polite"` na contagem ("40 de 128"), `aria-busy` no container.
 - **Não** usar `role="feed"` — é especificado pra stream de artigos e conflita com semântica de
   `<table>`.
@@ -279,22 +349,22 @@ A URL carrega `q/sort/order` — **não** quantas páginas foram carregadas, de 
 
 - **Voltar (lista → detalhe → voltar):** o cache do TanStack ainda tem as N páginas → restaura
   completo, de graça. (É o `staleTime: 30_000` que evita o refetch de todas elas.)
-- **F5 no meio do scroll:** volta pra página 1. Aceito: scroll infinito é session-scoped, e quem dá F5
+- **F5 no meio do scroll:** volta pra página 1 (no modo páginas, `page` está na URL e reabre a mesma). Aceito: rolagem contínua é session-scoped, e quem dá F5
   na página 12 quer um registro específico — a busca serve isso melhor que replay de 12 fetches.
 
 Persistir `?pages=12` produziria uma URL que mente assim que o dado muda, 12 requests sequenciais no
 load, e um param que ninguém compartilharia.
 
-## Paginação numerada — quando e como (Modo 2)
+## Modo páginas numeradas — regras
 
-Escolhida pelo usuário final do kailos (loja de seminovos quer "página + total"). "Pular pra página
-N" só é endereço estável se o dado não muda — por isso a página mora na **URL** (F5 e link
-compartilhado abrem a mesma página) e o backend devolve o total exato em toda página. Regras:
+Pedida pela loja do kailos ("página + total"); hoje é a opção 2 de TODA tela. "Pular pra página N"
+só é endereço estável se a página mora na **URL** (F5 e link abrem a mesma) e o backend devolve o
+total exato em toda página. Regras:
 
-- `page` em `validateSearch` (inteiro ≥ 1, default omitido); `usePagedList` calcula `pageCount`
-  de `total`/`pageSize`.
-- Qualquer mudança de recorte (busca, filtro, ordenação, aba) faz `page: undefined` **no mesmo
-  `navigate`** do handler.
+- `page` em `validateSearch` (via `parsePageSearch`/`pageSearchValue`, inteiro ≥ 1, omitido na 1);
+  `usePagedList` calcula `pageCount` de `total`/`pageSize`.
+- Qualquer mudança de recorte (busca, filtro, ordenação, aba, **modo**) faz `page: undefined` **no
+  mesmo `navigate`** do handler.
 - Query key mantém o prefixo `[endpoint, "list"]` (as mutations do `useCrud` invalidam por prefixo).
 - Export/auditoria que enumera tudo é **endpoint de export** (CSV/PDF streamado), não tela de lista.
 
@@ -304,7 +374,7 @@ Fonte: kailos/promoservice `hooks/useCrud.ts` (idênticos; os demais apps sincro
 
 - `useList(params, queryOptions)`: **`placeholderData: keepPreviousData`**, `staleTime: 0` +
   `refetchOnMount: "always"` (frescor pós-mutation; a invalidação ignora `staleTime`), aceita
-  `enabled`. Sem `keepPreviousData` a tabela pisca e o `EntityPicker` volta o scroll ao topo.
+  `enabled`. Sem `keepPreviousData` a tabela pisca.
   (Regressão de 2026-10-01 corrigida no nexarena: o `useCrud` dele tinha perdido os dois.)
 - Mutations invalidam `[endpoint, "list"]` (prefixo); `useCreate` devolve a entidade criada (o
   quick-create do `EntityPicker` usa o objeto retornado).
@@ -318,11 +388,10 @@ Fonte: kailos/promoservice `hooks/useCrud.ts` (idênticos; os demais apps sincro
   (Ficha, Avaliação, Preços, Portais, Histórico…). Complexidade → **Página → Abas → Dialogs**.
 - Clique na linha/card navega ao detalhe (`primary` renderiza `<Link>`); excluir = `ConfirmDialog`.
 
-## `EntityPicker` não muda
+## `EntityPicker` usa o mesmo motor
 
-O picker tem mecânica própria — cresce o `limit` de 10 em 10 sempre com `skip=0`, e cada degrau é uma
-entrada de cache. O contrato "`total` exato quando `skip == 0`" existe justamente pra ele continuar
-funcionando sem alteração. Ver `entity-picker.md`.
+O picker consome `useInfiniteList`/`useInfinitePages` (páginas anexadas, `total` exato em toda
+página para o "X de Y"). Contrato e adapters em `entity-picker.md`.
 
 ## Receita (before/after em `entity`)
 
@@ -341,7 +410,10 @@ export const Route = createFileRoute("/…/clientes/")({
 function CustomersPage() {
   const { q, sort, order } = Route.useSearch();
   const navigate = useNavigate({ from: Route.fullPath });
-  const list = useInfiniteList<Customer>(endpoint, { search: q, sort, order });
+  const [preferences, updatePreferences] = useListPreferences("customers", DEFAULT_PREFERENCES);
+  const list = useCollectionList<Customer>(
+    endpoint, { search: q, sort, order }, { mode: preferences.mode, page, pageSize: LIST_PAGE_SIZE }
+  );
 
   const columns = useMemo<DataListColumn<Customer>[]>(() => [
     { id: "name", header: "Nome", role: "primary",
@@ -363,9 +435,11 @@ function CustomersPage() {
         sort={sort} order={order} sortOptions={SORT_OPTIONS}
         onSortChange={(s, o) => navigate({ search: (p) => ({ ...p, sort: s, order: o }) })}
         actions={can(P.CREATE) && <Button onClick={openCreate}>Novo cliente</Button>}
+        menu={<ListOptionsMenu mode={preferences.mode} onModeChange={changeListMode} … />}
       />
       <DataList
         {...list}
+        onPageChange={setPage}
         columns={columns} actions={actions} getRowId={(c) => c.id}
         onRowClick={(c) => navigate({ to: "…", params: { … } })}
         isFiltered={!!q}
@@ -385,9 +459,10 @@ Some da tela anterior: `PAGE_SIZE`, o param `page`, a aritmética de `lastPage`,
 ## Don'ts
 
 - **NUNCA** `useState` pra filtro, busca commitada, sort ou página — é URL (`validateSearch`).
-- **NUNCA** passar o objeto `query` nas deps do effect do `IntersectionObserver`.
+- **NUNCA** `IntersectionObserver`/`rootMargin`/auto-encadeamento no gatilho do modo rolagem.
+- **NUNCA** tela de lista sem o ⋮ (`ListOptionsMenu`) nem contagem só no rodapé.
 - **NUNCA** `<Table>` sem alternativa em card abaixo de 768px.
-- **NUNCA** misturar infinito e paginação numerada no mesmo app (a vitrine pública do kailos é a exceção nomeada).
+- **NUNCA** fixar um modo no código sem deixar o usuário trocar no ⋮ (o código só define o default).
 - **NUNCA** `useCrud` sem `keepPreviousData` no `useList`.
 - **NUNCA** `fetch-all` com `limit: 500` "porque a tabela é pequena" — ela não vai continuar pequena.
 - **NUNCA** colocar botão de criar (ou qualquer ação) abaixo da lista.

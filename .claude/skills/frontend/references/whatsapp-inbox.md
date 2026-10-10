@@ -107,6 +107,41 @@ Invariantes do stream (todas já no canônico — não remova ao adaptar):
 invalida mensagens + conversas. `useWhatsAppMessages` mescla servidor + tmp (mesma direção, mesmo
 texto, `createdAt` ≤ 60s) para a invalidação do SSE não apagar a bolha antes da resposta.
 
+## Ticks de status — nunca regridem (kailos, 2026-10-09)
+
+Os webhooks de status da Meta chegam **fora de ordem** e às vezes **antes** de a linha da mensagem
+existir (a resposta do envio ainda não voltou). Três regras, no backend:
+
+- **Monotônico:** `sent < delivered < read`; o UPDATE só avança (rank no SQL), nunca volta de lido
+  para entregue.
+- **Propagação:** lido/entregue numa mensagem vale para as **anteriores** enviadas ao mesmo contato
+  (o WhatsApp só manda o status da última que o cliente viu).
+- **Status sem linha:** vai para o Valkey (`cache:whatsapp:wa_status:{wamid}`, TTL 120s, guarda o
+  maior rank) e é aplicado logo depois do `create_outbound`, com a mesma propagação.
+
+Canônico: kailos `whatsapp_message_repository.apply_status` + `cache.stash_unmatched_status`/
+`pop_stashed_status` + teste `tests/whatsapp/test_message_status_ticks.py`.
+
+## Filtro da caixa lembrado por loja (kailos, 2026-10-09)
+
+O escopo/atendente escolhido (`scope`, `userId`) é salvo em localStorage **por org** e aplicado no
+`beforeLoad` da rota quando a URL chega sem filtro (a URL segue sendo a fonte de verdade; o lembrete
+só preenche o vazio). Canônico: `lib/whatsapp/chat-filter-preference.ts`. O helper de teste de
+route-guards precisa passar `search` ao `beforeLoad`.
+
+## EventCard e contador do rodízio (kailos, 2026-10-09)
+
+- Hora do `EventCard` **com segundos** (transições no mesmo minuto ficavam ambíguas).
+- Handoff da IA mostra **por que** aquele atendente: `routing` no metadata do evento
+  (`explicit_seller` "cliente pediu por ele" · `preferred` "atendente de sempre" · `rotation` "rodízio";
+  o kailos tem também `sold_by` "vendeu o carro").
+- **Contador no header da conversa** (só com equipes/SLA): o endpoint de mensagens devolve
+  `sla_deadline_at` (instante projetado do próximo rodízio, `add_business_seconds` espelhando as regras
+  do cron) e `sla_paused_until` (reabertura, quando a loja está fechada). Só para a conversa ABERTA —
+  nunca na lista. `SlaCountdownChip` = folha memoizada com intervalo de 1s ("Passa para o próximo em
+  03:12" / "Prazo pausado até 14:00" / "Transferindo…"; texto curto no celular). Lógica pura em
+  `lib/whatsapp/sla-countdown.ts` (+ teste).
+
 ## Tema — vars `--wa-*` (exceção deliberada a "sem cor crua")
 
 O inbox imita a identidade do canal. As cores vivem **escopadas** em `.whatsapp-theme` (+ variante

@@ -10,7 +10,7 @@
 **Princípio (decisão 2026-10-01): TODO campo que grava o id de outra entidade é `EntityPicker`** —
 wrapper fino por entidade + `usePickerLabel` + CTA **"Novo…"** que abre o `*FormDialog` da entidade
 por cima e **volta selecionado**. É um combobox **pesquisável no servidor** (clica → digita → a
-primeira página de 10 vem do backend, rola pra puxar mais de 10 em 10); o usuário nunca sai do form
+primeira página de 10 vem do backend; rola até o fim ou clica "Carregar mais" e as páginas são **anexadas**); o usuário nunca sai do form
 para cadastrar a dependência. FK nunca é `Select` estático nem `Input` de ID cru. E o campo é
 **único**: os dados do relacionado vivem NA entidade relacionada (ver **FK limpo**, abaixo).
 
@@ -30,21 +30,23 @@ mesmo que a lista hoje tenha 5 itens (ela cresce). `<Select>` cru de FK, `Input`
 
 ## Anatomia (4 peças)
 
-1. **`EntityPicker<T>` genérico** (`ui/entity-picker.tsx`, canônico) — Popover + Command com
+1. **`EntityPicker<T>` genérico** (`ui/entity-picker.tsx`, canônico) — `<Popover modal>` + Command com
    `shouldFilter={false}` (o servidor decide o recorte; o vazio é `items.length === 0`, nunca o
-   auto-hide do `CommandEmpty`, senão o CTA "Novo…" sumiria junto). Busca a cada keystroke via
-   `useList({ search, limit }, { enabled: open })` — a query só liga com o popover aberto;
-   TanStack Query deduplica/cancela (sem debounce manual). O `limit` começa em **10** (`PAGE_SIZE`)
-   e sobe de 10 em 10 quando a lista rola até o fim (`hasMore = items.length < total`): como o
-   `limit` entra na query key, cada degrau é uma entrada de cache e o TanStack serve a janela
-   anterior enquanto busca a maior. O trigger usa **`FIELD_TRIGGER_CLASS`** (de `ui/input.tsx`),
-   não a escala de botão do projeto — campo de FK herda a métrica de `Input`, não a de `Button`.
-   **Scroll dentro de Dialog:** um `useEffect([open])` anexa listeners **nativos não-passivos**
-   (`wheel`/`touchstart`/`touchmove`) no `[data-slot="command-list"]` via `ref` no
-   `PopoverContent`. Sem isso, o `react-remove-scroll` do Radix Dialog (que portala o popover pra
-   fora do lock) engole a roda do mouse e o toque — só a barra escapa. React trata `onWheel` como
-   passivo, então `preventDefault` via prop não funciona; o listener nativo reinjeta o scroll
-   (`scrollTop += delta`, ciente do `deltaMode`) e respeita o boundary (deixa o chaining seguir).
+   auto-hide do `CommandEmpty`, senão o estado vazio perderia o CTA). Busca a cada keystroke via
+   `useList({ search }, { enabled: open })` — a query só liga com o popover aberto; TanStack Query
+   deduplica/cancela (sem debounce manual). Páginas de 10 (`PAGE_SIZE`) **anexadas** pelo
+   `useInfiniteList`/`useInfinitePages`: `useInfiniteScrollSentinel` (scroll de verdade até o fim, sem
+   `IntersectionObserver`) + botão ghost "Carregar mais" no fim da lista (lista curta não rola). O
+   trigger usa **`FIELD_TRIGGER_CLASS`** (de `ui/input.tsx`), não a escala de botão do projeto.
+   - **`<Popover modal>`** resolve a roda do mouse dentro de um Dialog (o `react-remove-scroll` do
+     Dialog engolia wheel/touch do popover portalado). Substitui o antigo hack de listeners nativos
+     `wheel`/`touchmove` — não reintroduza.
+   - **Rodapé fixo FORA da área de scroll**, e a faixa INTEIRA é um único botão: "+ Novo…"
+     (`createLabel`) à esquerda, alinhado ao texto dos itens, e "X de Y" muted à direita (`total` do
+     source). Sem quick-create, só a contagem. **Nunca** o CTA "Novo" dentro do `CommandList`.
+   - **Conteúdo do item em `<span className="flex min-w-0 flex-1 items-center gap-2">`**: o
+     `CommandItem` termina num ícone de check com `ml-auto`; sem o `flex-1` um `ml-auto` do
+     `renderItem` (telefone, placa) dividia a sobra com ele e a 2ª coluna saía torta.
 2. **Wrapper fino por entidade** (~70 linhas, ex. `CustomerPicker`) — injeta o `useList` do hook
    da entidade, fixa `getId`/`getLabel`/`renderItem`, e mantém o state do quick-create. **Um wrapper
    por entidade, reutilizado em todo form** — nunca montar `EntityPicker` cru em tela.
@@ -63,36 +65,73 @@ mesmo que a lista hoje tenha 5 itens (ela cresce). `<Select>` cru de FK, `Input`
 ## Contrato do `useList` (o que o picker exige)
 
 ```ts
-useList: (params: ListRequest, options: { enabled: boolean }) => { data?: PagedResponse<T> }
-// ListRequest: { search?, limit?, skip?, filters?, ... }  ·  PagedResponse<T>: { items, total, skip, limit }
+useList: (params: { search?: string }, options: { enabled: boolean }) => EntityPickerSource<T>
+// EntityPickerSource<T> = { items: T[]; total: number; hasNextPage: boolean;
+//   isFetching: boolean; isFetchingNextPage: boolean; fetchNextPage: () => unknown }
 ```
 
-Vem do `useCrud(endpoint)` canônico — a versão com `useMemo` no service, `useList(params,
-queryOptions)` aceitando `enabled`, e `invalidateQueries([endpoint, "list"])` no `onSuccess` do
-`useCreate` (é isso que faz a entidade recém-criada aparecer quando o picker reabre). Um `useCrud`
-sem o segundo parâmetro `options`/`enabled` é **prereq bloqueante** — atualize-o antes.
+É exatamente o shape de retorno de `useInfiniteList`/`useInfinitePages`. Páginas são **APPENDED**:
+o desenho antigo (limit crescente de 10 em 10 na query key) fazia cada degrau virar uma key nova e
+VAZIA — a lista colapsava em "Carregando…", o scroll voltava ao topo (remendado com
+`keepPreviousData`) e o teto do backend (200) cortava a lista. Agora a key é estável por
+`search` e o `fetchNextPage` só acrescenta.
 
-O `useList` do `useCrud` **deve** setar `placeholderData: keepPreviousData` (de
-`@tanstack/react-query`). Sem isso, o degrau de `limit` troca a query key, o `data` fica
-`undefined` durante o fetch, a lista colapsa pro estado "Carregando…" e o `scrollTop` **volta ao
-topo** no meio da paginação. Com `keepPreviousData` a janela anterior fica na tela até a maior
-chegar — o scroll não pula. Bônus: tabelas paginadas param de piscar ao trocar página/filtro.
-É invariante do `useCrud` de cada projeto (não mora no `entity-picker.tsx`).
+### Os 3 adapters
+
+**1. Endpoint de CrudService** → `useInfiniteList(endpoint, params, options)`:
+
+```ts
+const useList = (params: { search?: string }, options: { enabled: boolean }) =>
+  useInfiniteList<Customer>(`/organizations/${orgId}/customers`, params, options);
+```
+
+**2. Endpoint fora do CrudService** (`org_id` em query param etc.) → `useInfinitePages` (canônico:
+kailos `hooks/useContacts.ts#useContactSearch`):
+
+```ts
+export function useContactSearch(orgId: string) {
+  const { client } = useDataProvider();
+  return (params: { search?: string }, options: { enabled: boolean }) =>
+    useInfinitePages<ContactResponse>({
+      queryKey: ["/contacts", "list", orgId, "picker", params.search ?? ""],   // SEM limit/skip na key
+      fetchPage: async ({ skip, limit }) =>
+        (await client.get<PagedResponse<ContactResponse>>("/contacts", {
+          params: { org_id: orgId, search: params.search ?? "", skip, limit },
+        })).data,
+      enabled: options.enabled,
+    });
+}
+```
+
+**3. Lista bounded em memória** (endpoint devolve o array inteiro, sem `search`/`skip`) → filtra
+local (NFD + lower) sobre UMA query cacheada e devolve tudo com `hasNextPage: false` (canônico:
+kailos `components/members/MemberPicker.tsx#useOrgMemberSearch`):
+
+```ts
+return { items, total: items.length, hasNextPage: false,
+         isFetching: query.isFetching, isFetchingNextPage: false, fetchNextPage: NOOP };
+```
+
+Stopgap consciente (comente a escala); se o tenant passar de centenas, pagine no backend.
+
+Vem do `useCrud(endpoint)` canônico, cujo `useCreate` invalida `[endpoint, "list"]` no `onSuccess`
+(é isso que faz a entidade recém-criada aparecer quando o picker reabre — o prefixo cobre as keys
+`infinite` e `paged`).
 
 ## Contrato de backend
 
 O mesmo list endpoint da tela de índice serve o picker — **não** crie endpoint de autocomplete:
 
 ```
-GET /<recurso>?skip=0&limit=10&search=<texto>   →   PagedResponse[T] { items, total, skip, limit }
+GET /<recurso>?skip=0&limit=10&search=<texto>   →   PagedResponse[T] { items, total, skip, limit, has_more }
 ```
 
 Repo: `ILIKE '%' || $n || '%'` nas colunas de exibição (nome, documento, telefone, placa…),
 `ORDER BY` estável com desempate por `id`, `LIMIT limit+1`/`OFFSET` (sentinela). Molde:
 `customer_repository.list_by_org` do promoservice. (Gate `database` → `list-pagination.md` para o
-SQL.) O `total` **não é decorativo** — é ele que alimenta o `hasMore` do scroll; o picker sempre
-manda `skip=0`, e `total` exato em `skip == 0` (via `COUNT(*)` separado, **nunca** `COUNT(*) OVER()`)
-é justamente o contrato do backend — por isso o picker não precisa de nada além do endpoint da lista.
+SQL.) O `total` **não é decorativo** — alimenta o "X de Y" do rodapé, e o `has_more` (sentinela) dirige o
+`hasNextPage`. `total` é exato em TODA página (`COUNT(*)` separado, **nunca** `COUNT(*) OVER()`),
+então o picker pede `skip=10, 20…` sem perder o total.
 
 ## Wrapper canônico (receita = `CustomerPicker`)
 
@@ -191,7 +230,9 @@ rg -n "(contact|customer|client|supplier)_(name|phone|email|document)" backend -
 rg -n "(contact|customer|client|supplier)(Name|Phone|Email)" frontend/src --glob '*.tsx'
 # 2) <Select> cru de FK (opções vindas de useList/query de entidade)
 rg -n "<Select" frontend/src --glob '*.tsx' -l      # abrir cada um: é id de registro do tenant?
-# 3) picker sem quick-create onde criar faz sentido
+# 3) adapter de picker com `limit` crescente na query key (desenho antigo; hoje páginas anexadas)
+rg -n "params\.limit|limit: params" frontend/src --glob '*.{ts,tsx}' | rg -i "picker|search"
+# 4) picker sem quick-create onde criar faz sentido
 rg -n "<EntityPicker|Picker\b" frontend/src --glob '*.tsx' | rg -v "onCreateNew|createLabel"
 ```
 
@@ -212,12 +253,9 @@ migration).
 
 ## Receitas de adaptação (quando o backend não bate no contrato)
 
-- **Endpoint fora do padrão** (ex.: `GET /contacts/search?q=` retornando array cru) → adapter no
-  hook da entidade que normaliza p/ `{ items, total, skip: 0, limit }` no shape do contrato. O
-  picker não muda.
-- **Lista bounded já cacheada** (ex.: orgs do admin sem `search` no backend) → wrap com filtro
-  **client-side** sobre a query existente. Stopgap consciente: comente a limitação de escala e
-  registre o backlog de backend (`q/skip/limit`).
+- **Endpoint fora do padrão** (ex.: `GET /contacts/search?q=` retornando array cru) → adapter 2 ou 3
+  acima, normalizando para `EntityPickerSource`. O picker não muda.
+- **Lista bounded já cacheada** (ex.: orgs do admin sem `search` no backend) → adapter 3.
 - **API externa só com filtros estruturados** (sem full-text) → picker **bespoke** Popover+Command
   com os filtros reais no header (Selects/faixas) no lugar do `CommandInput` único — NÃO force o
   genérico a fingir busca textual que não existe. Sem quick-create se o inventário é externo.
@@ -230,7 +268,7 @@ migration).
 - **Dialog-em-Dialog:** o quick-create abrindo `*FormDialog` por cima de um form que já é Dialog é
   **exceção deliberada e sancionada** (ver `overlays.md`). O FormDialog quase-fullscreen
   (`h-[90vh] w-[92vw] max-w-[min(1100px,92vw)]`) deixa óbvio que é overlay, não navegação.
-- **IDs numéricos:** `EntityPicker.value` é `string | null` — converta nas duas pontas
-  (`getId={(c) => String(c.id)}`; `onChange={(id) => setId(id ? Number(id) : null)}`).
+- **IDs numéricos:** `EntityPicker.value` é `string | null` e `getId` TEM de devolver string —
+  `String(id)` nas duas pontas (`getId={(c) => String(c.id)}`; `onChange={(id) => setId(id ? Number(id) : null)}`).
 - **`shouldFilter={false}` é inegociável** — reativar o filtro client-side do cmdk esconde
   resultados válidos do servidor e mata o CTA "Novo…" no estado vazio.

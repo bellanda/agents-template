@@ -60,28 +60,40 @@ function SidebarShell({
   return (
     <SidebarProvider>
       <AppSidebar />
-      <SidebarInset>
+      {/* min-w-0: <main> é flex-child; sem isso o min-width:auto estoura a página a 1024px com a sidebar aberta */}
+      <SidebarInset className="min-w-0">
         <header className="flex h-14 shrink-0 items-center gap-2 border-b transition-[width,height] ease-linear group-has-data-[collapsible=icon]/sidebar-wrapper:h-12">
           <div className={headerInner}>
-            <div className="flex flex-1 items-center gap-3">
+            <div className="flex min-w-0 flex-1 items-center gap-3">
               <SidebarTrigger className="-ml-1" />
               <Separator orientation="vertical" className="mr-2 h-4" />
-              <div className="flex flex-col gap-0.5">
+              {/* min-w-0 + truncate: sem eles o subtítulo quebra em 2 linhas no celular.
+                  Subtítulo some no celular (decisão 2026-10-09). */}
+              <div className="flex min-w-0 flex-col gap-0.5">
                 {title && (
-                  <h1 className="text-base leading-none font-bold tracking-tight">{title}</h1>
+                  <h1 className="truncate text-base leading-none font-bold tracking-tight">
+                    {title}
+                  </h1>
                 )}
                 {subtitle && (
-                  <p className="text-muted-foreground text-xs leading-none">{subtitle}</p>
+                  <p className="text-muted-foreground truncate text-xs leading-none max-sm:hidden">
+                    {subtitle}
+                  </p>
                 )}
               </div>
             </div>
-            <div className="flex items-center gap-4">
+            <div className="flex shrink-0 items-center gap-4">
               {actions && <div className="flex items-center gap-2">{actions}</div>}
               <ThemeToggle />
             </div>
           </div>
         </header>
-        <main className="flex min-h-0 flex-1 flex-col overflow-y-auto">{children}</main>
+        {/* Full-bleed: o próprio <main> é o @container/main. */}
+        <main
+          className={`flex min-h-0 flex-1 flex-col overflow-y-auto ${fullBleed ? "@container/main" : ""}`}
+        >
+          {children}
+        </main>
       </SidebarInset>
     </SidebarProvider>
   );
@@ -91,7 +103,9 @@ function SidebarShell({
 export function SidebarLayout({ children }: SidebarLayoutProps) {
   return (
     <SidebarShell>
-      <div className={`mx-auto w-full ${CONTENT_MAX_W} ${CONTENT_PX} py-4 md:py-6`}>
+      {/* @container/main: o layout DENTRO da página responde à largura ÚTIL (viewport − sidebar),
+          não à viewport. Mapa: sm→@xl/main · md→@2xl/main · lg→@4xl/main · xl→@6xl/main. */}
+      <div className={`@container/main mx-auto w-full ${CONTENT_MAX_W} ${CONTENT_PX} py-4 md:py-6`}>
         {children || <Outlet />}
       </div>
     </SidebarShell>

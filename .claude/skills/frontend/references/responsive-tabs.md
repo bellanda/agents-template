@@ -1,4 +1,26 @@
-# Abas responsivas — 3+ abas viram `Select` no mobile
+# Abas responsivas — cheio → compacto → `Select` (por largura útil)
+
+> **Atualização 2026-10-09 (vence o texto abaixo onde divergir):** o mapa é POR CONTAGEM exata
+> (3..16, 17+ usa 16) e há um 3º degrau antes do `Select`. Para `n` abas: cheio → compacto
+> (`px-1!`) abaixo de ~6.6rem×n → **só-ícone** (opt-in `TabsList iconTier`, só quando TODO trigger
+> tem ícone: inativas mostram o ícone, a ATIVA mantém o rótulo, `title` = texto do trigger) abaixo de
+> ~5.5rem×n → `Select` abaixo de ~2.75rem×(n−1)+7rem. Sem `iconTier`, `Select` abaixo de ~5.5rem×n.
+> Motivo: dashboard de 11 abas num notebook de 1280–1400 com sidebar aberta caía direto no
+> `Select` (usuário: "ao invés de reduzir ... vai direto pro seletor mobile"). Em ponteiro grosso,
+> trigger e lista têm `pointer-coarse:min-h-9`. Código canônico: `tabs.tsx`.
+
+
+> **Atualização 2026-10-09 (decisão do usuário):** a troca NÃO é mais por viewport `md`. No notebook
+> com a sidebar aberta a área útil cai para ~700–1100px, e uma tira de 11–12 abas quebrava em 2ª
+> linha que **sobrepunha o conteúdo** (causa raiz: `group-data-horizontal/tabs:h-8` fixo na lista
+> vencia o `h-auto` do call site; triggers `flex-1` esticavam). Agora: `Tabs` horizontal é
+> `@container/tabs`; `TabsList` é `min-h-8 flex-nowrap`, triggers `flex-none`; três faixas por
+> container query, com limiares de um mapa ESTÁTICO por nº de abas (≤3, 4–5, 6–7, 8–9, 10–12, 13+;
+> cheio ≈ 7.5rem/aba, compacto ≈ 6.5rem/aba): **cheio → compacto** (`px-1.5`, `gap-0.5`, `gap-1` interno; o ícone
+> FICA — esconder ícone foi testado e rejeitado pelo usuário em 2026-10-09) **→ `Select`**. Nunca 2ª linha; call site NÃO usa `h-auto flex-wrap`. Sintaxe Tailwind
+> 4.3: `@max-[38rem]/tabs:…` (largura < 38rem). `mobile="strip"` pula as faixas; abas verticais
+> seguem só `md`. As seções abaixo descrevem o mecanismo (espelho, `collectTabItems`, CSS-only) que
+> continua valendo — onde disserem `md:hidden`/`max-md:hidden` leia "classes de tier por container".
 
 > Reference do gate `frontend` (item 8g). Componente canônico: `references/tabs.tsx`.
 

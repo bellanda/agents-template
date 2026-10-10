@@ -118,7 +118,14 @@ lembrar de nada:
 "max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto overscroll-contain",
 // abaixo de 768px o call site NÃO manda na geometria
 "max-md:max-h-[calc(100svh-3rem)] max-md:max-w-[calc(100%-2rem)]",
+// a base também é container: filhos usam @xl:/@2xl: (sem nome) = largura do DIALOG
+"@container",
 ```
+
+**Dentro de dialog use `@xl:`/`@2xl:` sem nome**: `@…/main:` nunca casa (conteúdo portaled fora do
+`@container/main`) e `md:`/`lg:` olham a viewport (um dialog `max-w-lg` num monitor de 1920 continua
+estreito). `FormDialog` renderiza via `DialogContent`, então herda o container. A largura do dialog é
+explícita (`w-[...]`), por isso a contenção de inline-size não o colapsa.
 
 Por que na base e não no call site:
 
@@ -132,9 +139,9 @@ Por que na base e não no call site:
 - `w-[calc(100%-2rem)]` e **não** `w-full`: call site que troca o `max-w` (`max-w-4xl`) não pode
   levar junto a margem lateral do mobile.
 
-Confiar nisso é o padrão — `max-h-[85vh] overflow-y-auto` no call site virou redundante (não é erro,
-só ruído). Quem **quer** outra geometria continua mandando, via tailwind-merge: `overflow-hidden`
-num split com scroller próprio, `h-[92vh]` num viewer.
+Confiar nisso é o padrão — `vh`/`vw` no call site é PROIBIDO (`h-[85vh]`, `max-h-[92vh]`, `w-[95vw]`
+sobrescrevem a geometria segura da base e o dialog sai da tela; decisão 2026-10-09). Quem **quer**
+mais altura usa `h-[calc(100dvh-2rem)]`; `overflow-hidden` num split com scroller próprio segue ok.
 
 ### A segunda linha (`max-md:`) é a trava do celular
 
@@ -183,7 +190,7 @@ export function UserDetailDialog({ user }: { user: User }) {
       <DialogTrigger asChild>
         <Button variant="outline">Ver detalhes</Button>
       </DialogTrigger>
-      <DialogContent className="sm:max-w-lg lg:max-w-2xl max-h-[85vh] overflow-y-auto">
+      <DialogContent className="sm:max-w-lg lg:max-w-2xl">
         <DialogHeader>
           <DialogTitle>{user.name}</DialogTitle>
           <DialogDescription>Cadastro, permissões e histórico.</DialogDescription>
@@ -267,7 +274,7 @@ const [toDelete, setToDelete] = useState<Doc | null>(null);
 Para mostrar código copiável (snippet de cURL, payload JSON, instrução SQL):
 
 ```tsx
-<DialogContent className="lg:max-w-3xl xl:max-w-4xl max-h-[85vh] overflow-y-auto">
+<DialogContent className="lg:max-w-3xl xl:max-w-4xl">
   <DialogHeader>
     <DialogTitle>Webhook payload</DialogTitle>
   </DialogHeader>
@@ -282,12 +289,33 @@ Para mostrar código copiável (snippet de cURL, payload JSON, instrução SQL):
 
 Note `whitespace-pre-wrap break-all` no `<pre>` — sempre quebra, nunca scroll horizontal (regra firme em `frontend.md`).
 
+## Dialog aberto por item de menu — fora do `DropdownMenuContent`
+
+Item de `DropdownMenu` (⋮ do header, menu do usuário, ações da linha) que abre um Dialog **só seta
+state** no `onSelect`; o `<Dialog>` é **irmão** do `<DropdownMenu>`, nunca filho do
+`DropdownMenuContent`. Dentro do conteúdo ele desmonta junto quando o menu fecha — no celular o
+"Ajuda desta tela" do ⋮ nunca abria (kailos 3f13daf, 2026-10-09). Mesmo padrão do `ConfirmDialog` em
+lista e do "Instalar app".
+
+```tsx
+const [helpOpen, setHelpOpen] = useState(false);
+<>
+  <DropdownMenu>
+    <DropdownMenuTrigger asChild>…</DropdownMenuTrigger>
+    <DropdownMenuContent>
+      <DropdownMenuItem onSelect={() => setHelpOpen(true)}>Ajuda desta tela</DropdownMenuItem>
+    </DropdownMenuContent>
+  </DropdownMenu>
+  <HelpDialog open={helpOpen} onOpenChange={setHelpOpen} />
+</>
+```
+
 ## Don'ts
 
 - **NUNCA** use Sheet sem justificativa escrita ("user precisa ver lado-a-lado" ou "persistente durante navegação").
 - **NUNCA** use Drawer pra flow desktop ou mobile-flow-simples. (vaul não é dependência de nenhum projeto — e **não** é a resposta pro teclado mobile: é Radix Dialog por baixo, com o mesmo deslocamento de visual viewport no iOS, e drag-to-dismiss divide o gesto com o scroll do corpo. Ver `mobile-keyboard.md`.)
 - **NUNCA** full-screen dialog **no desktop** exceto wizard real. Abaixo de 768px, dialog de formulário é full-bleed por padrão — via `FormDialog`, nunca na mão.
-- **NUNCA** `DialogContent` cru pra dialog com campo de input — é `FormDialog`. `max-h-[85vh] overflow-y-auto` num form dialog é o padrão ANTIGO: no iOS o teclado não encolhe a layout viewport, então `vh`/`dvh` não ajudam e os campos de baixo somem atrás dele.
+- **NUNCA** `DialogContent` cru pra dialog com campo de input — é `FormDialog`. `vh` num form dialog é o padrão ANTIGO: no iOS o teclado não encolhe a layout viewport, então `vh`/`dvh` não ajudam e os campos de baixo somem atrás dele.
 - **NUNCA** remova `max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto` nem o par `max-md:max-h-[calc(100svh-3rem)] max-md:max-w-[calc(100%-2rem)]` da base do `DialogContent` — é o que segura o dialog dentro da tela nos dois eixos e impede o call site de vazar medida de desktop pro celular (seção "Geometria à prova de viewport"). Um `overflow-hidden` no call site é decisão consciente; apagar da base é regressão.
 - **NUNCA** deixe campo nativo (`<input>`/`<textarea>`/`<select>`) com fonte computada < 16px no celular — `text-sm` com root de 17px dá 14.875px, o iOS dá auto-zoom e o dialog `position: fixed` some pra cima/pra esquerda. É `text-base … md:text-sm` (ver `mobile-keyboard.md`).
 - **NUNCA** deixe `overflow-y-auto` residual no `className` de um `FormDialog` — cria segundo scroller e o footer rola pra fora.

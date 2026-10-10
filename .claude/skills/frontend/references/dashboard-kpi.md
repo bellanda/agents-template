@@ -47,8 +47,10 @@
 - `null`/ausente renderiza `—` (nunca `0` falso). Delta: verde ↑ / vermelho ↓ / neutro `—`, com
   "vs período anterior"; cores `emerald/rose` com variante `dark:` (exceção sancionada: semântica de
   tendência, não tema).
-- Grid de KPIs: `grid-cols-1 sm:grid-cols-2 lg:grid-cols-4` (peers → grid). Cada card é um
-  `<Card data-kpi-card>`. O `StatCard` do kailos usa `p-5` no `CardContent`; num app novo siga o
+- Grid de KPIs: `grid-cols-[repeat(auto-fill,minmax(12rem,1fr))]` (ou `grid-cols-1
+  @xl/main:grid-cols-2 @4xl/main:grid-cols-4`) — largura útil, não viewport. Cada card é um
+  `<Card data-kpi-card className="@container">` e o valor é `tabular-nums whitespace-nowrap` com
+  tamanho por container (`text-xl @[12rem]:text-2xl @[16rem]:text-3xl`), nunca cortado. O `StatCard` do kailos usa `p-5` no `CardContent`; num app novo siga o
   `Card` v4 (`shadcn-v4-primitives.md`: compacto = `gap-4 py-4` + slots `px-4`).
 
 ## Fora do padrão — por projeto

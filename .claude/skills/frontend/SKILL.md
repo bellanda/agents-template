@@ -1,6 +1,6 @@
 ---
 name: frontend
-description: PORTÃO obrigatório antes de QUALQUER construção/edição de UI (React 19 + TanStack + Tailwind 4 + shadcn) — layout, página, componente, overlay/dialog, form, tabela/lista/CRUD, abas, barra de filtros, upload de mídia, impressão/PDF, estados vazio/erro/offline, máscaras, casca de app, PWA, telas canônicas (Equipes, inbox WhatsApp, config de agente de IA). Checklist ordenado de invariantes — layout dita a largura (1440 centrado, página sem max-w), Dialog-first sem Sheet lateral, grid p/ peers e 1 coluna p/ sequencial, onde mora o state, React 19, performance, Tailwind/shadcn semânticos, EntityPicker p/ FK, FormDialog (teclado do celular cobrindo campo ou botão salvar, dialog que sai da tela no mobile), ListToolbar+DataList (tabela vira card, scroll infinito OU paginação numerada, busca/filtros/ordenação na URL em UMA linha), 3+ abas viram Select no celular, responsivo por CSS (nunca useIsMobile), mobile-first bloqueante — e roteia pros skills profundos. MODO AUDITORIA: varrer/consertar a consistência de UI de um projeto (larguras divergentes, chat bugado, Sheet lateral, logo gigante, quebra no mobile, filtro torto ou em 2ª linha, tabela ilegível no celular, lista sem filtro/ordenação).
+description: PORTÃO obrigatório antes de QUALQUER construção/edição de UI (React 19 + TanStack + Tailwind 4 + shadcn) — layout, página, componente, overlay/dialog, form, tabela/lista/CRUD, abas, barra de filtros, upload de mídia, impressão/PDF, estados vazio/erro/offline, máscaras, casca de app, PWA, telas canônicas (Equipes, inbox WhatsApp, config de agente de IA). Checklist ordenado de invariantes — layout dita a largura (1440 centrado, página sem max-w), Dialog-first sem Sheet lateral, grid p/ peers e 1 coluna p/ sequencial, onde mora o state, React 19, performance, Tailwind/shadcn semânticos, EntityPicker p/ FK, FormDialog (teclado do celular cobrindo campo ou botão salvar, dialog que sai da tela no mobile), ListToolbar+DataList (tabela vira card, modo por tela: rolagem contínua default + páginas numeradas no ⋮, totais no topo, busca/filtros/ordenação na URL em UMA linha), 3+ abas viram Select no celular, responsivo por CSS (nunca useIsMobile), mobile-first bloqueante — e roteia pros skills profundos. MODO AUDITORIA: varrer/consertar a consistência de UI de um projeto (larguras divergentes, chat bugado, Sheet lateral, logo gigante, quebra no mobile, filtro torto ou em 2ª linha, tabela ilegível no celular, lista sem filtro/ordenação).
 ---
 
 # Frontend — O Portão
@@ -26,21 +26,29 @@ standalone e são linkados no roteamento (fim do arquivo).
   gutter no header) · `SidebarChatLayout`
   (full-bleed, sidebar/header intactos, header também full-bleed). Complexidade → **Página → Abas →
   Dialogs**, nunca largura/layout novo por página. A escolha de qual rota usa qual layout fica em UM
-  lugar (constante no `_authenticated.tsx`). *deep: `references/layouts.tsx`.*
+  lugar (constante no `_authenticated.tsx`). **Largura útil, não viewport:** o wrapper de conteúdo do
+  shell é `@container/main`; layout dentro da página responde a ele (`sm:`→`@xl/main:`, `md:`→
+  `@2xl/main:`, `lg:`→`@4xl/main:`, `xl:`→`@6xl/main:`), porque com a sidebar aberta o notebook tem só
+  ~700–1100px úteis. Viewport só p/ shell/overlays/trocas mobile canônicas. **Header:** título
+  `min-w-0`, `h1 truncate`, subtítulo `truncate max-sm:hidden`. **Texto secundário** (descrição de
+  card/seção, ajuda) nunca vira altura no celular: `max-sm:hidden` ou 1 linha `truncate`.
+  *deep: `references/layouts.tsx`.*
 - [ ] **2. Overlays.** Dialog-first para tudo (form, detalhe, confirm, picker). **ZERO Sheet lateral
   no app.** Mobile nav/filtro → Dialog ou Drawer (vaul). Tamanho por necessidade; a **geometria** é
   da base do `DialogContent` (`max-h-[calc(100dvh-2rem)] w-[calc(100%-2rem)] overflow-y-auto` — capa
   a altura e contém os DOIS eixos; sem isso o dialog alto sai pela borda de cima, fora do alcance de
   qualquer scroll, e o conteúdo largo faz a página inteira panar) **+ a trava
   `max-md:max-h-[calc(100svh-3rem)] max-md:max-w-[calc(100%-2rem)]`**, que impede o call site de vazar
-  medida de desktop (`max-h-[85vh]`, `max-w-4xl`) pro celular — no iOS `vh` é a viewport GRANDE.
+  medida de desktop (`max-w-4xl`) pro celular — no iOS `vh` é a viewport GRANDE. **PROIBIDO
+  `vh`/`vw`/`h-[Nvh]`/`max-h-[Nvh]`/`w-[Nvw]` no call site** (altura grande = `h-[calc(100dvh-2rem)]`).
   Campo nativo dentro do overlay vai a **`text-base` no celular** (< 16px = auto-zoom do iOS, que pana
   a visual viewport e leva o dialog pra fora da tela). Overlay bookmarkável (hub de settings, inspector) →
   **deep-link via search param**; 2+ itens de config na sidebar → consolidar no hub (`?settings=<seção>`, padrão em todos os apps menos optimuslar). Confirmação
   destrutiva → **`ConfirmDialog`** central (NUNCA tira inline/accordion/button-swap/`window.confirm`).
   *deep: `references/overlays.md` + `references/settings-dialog.md` + `references/confirm-dialog.tsx`.*
-- [ ] **3. Grid vs Stack.** Itens paralelos/peers → **grid** (`grid-cols-1 sm:grid-cols-2
-  lg:grid-cols-3`). Conteúdo sequencial/dependente (datas início→fim, logo→banner, passos) → **1
+- [ ] **3. Grid vs Stack.** Itens paralelos/peers → **grid** responsivo à largura útil
+  (`grid-cols-1 @xl/main:grid-cols-2 @4xl/main:grid-cols-3`, ou `auto-fill minmax`; KPI/dinheiro
+  `tabular-nums whitespace-nowrap`, nunca cortado). Conteúdo sequencial/dependente (datas início→fim, logo→banner, passos) → **1
   coluna mesmo no desktop**, com a largura do GRUPO contida (`max-w-2xl` no fieldgroup, nunca na
   página). Logo+banner = empilhado full-width (nunca `sm:grid-cols-2`). *deep: `references/grid-vs-stack.md`.*
 - [ ] **4. State placement.** 5 níveis: local (`useState`) · URL (`useSearch` p/ filtros/pagination/
@@ -92,9 +100,10 @@ standalone e são linkados no roteamento (fim do arquivo).
   Backend → gate `uploads-storage`. *deep: `references/file-upload.md`.*
 - [ ] **8d. FK / seleção de entidade relacionada — `EntityPicker` em TODA FK.** Campo de FK em form
   (cliente, veículo, fornecedor, produto, membro…) → **`EntityPicker`** (`ui/entity-picker.tsx`:
-  Popover+Command `shouldFilter={false}`, busca **server-side** `?search=` com `limit` começando em
-  10 e crescendo de 10 em 10 ao rolar, `enabled` só com popover aberto, CTA "Novo…" que abre o
-  `*FormDialog` da entidade e auto-seleciona no `onSaved`). **Um wrapper por entidade**
+  Popover+Command `shouldFilter={false}`, busca **server-side** `?search=`, páginas de 10 **anexadas**
+  (`useInfiniteList`/`useInfinitePages`, shape `EntityPickerSource`; nunca `limit` crescente na
+  query key), `<Popover modal>`, `enabled` só com popover aberto, rodapé fixo fora do scroll com
+  "+ Novo…" à esquerda (abre o `*FormDialog` e auto-seleciona no `onSaved`) e "X de Y" à direita). **Um wrapper por entidade**
   (`CustomerPicker`, `VehiclePicker`…) que fixa `useList`/rótulo/`FormDialog`, e o form usa o wrapper
   + **`usePickerLabel`** (guarda o rótulo da seleção para o campo não mostrar UUID/"…" enquanto a
   lista carrega ou na edição). **PROIBIDO**: `Select` estático p/ FK (mesmo "lista pequena" — ela
@@ -116,11 +125,15 @@ standalone e são linkados no roteamento (fim do arquivo).
 - [ ] **8f. Tela de lista — tabela no PC vira card no mobile.** Lista de registros → **`ListToolbar`
   + `DataList`** (`ui/list-toolbar.tsx`, `ui/data-list.tsx`): UMA definição de coluna renderiza a
   tabela (≥768px) e a pilha de cards (<768px); busca com debounce + mínimo 3 chars; filtros e
-  ordenação. **Dois modos válidos — um por app** (decisão 2026-10-01): **scroll infinito de 10 em
-  10** (`hooks/useInfiniteList.ts`, default de app novo) **ou paginação numerada** com total exato
-  em toda página (kailos: `usePagedList` + `ui/list-pagination.tsx` + `page` na URL). `q`/`status`/
-  `sort`/`order` (e `page`) na URL (`validateSearch`) — nunca `useState`. No infinito, nada abaixo da
-  lista (o fim da página nunca chega). **Toolbar = UMA linha: busca/filtros/ordenação no canto
+  ordenação. **Modo POR TELA (decisão 2026-10-09): rolagem contínua é o DEFAULT, páginas numeradas é a
+  opção 2**, escolhida no ⋮ no fim da toolbar (`ListOptionsMenu` no slot `menu`; preferência por
+  tela em localStorage via `useListPreferences`). Tela = `useCollectionList(endpoint, params,
+  {mode, page, pageSize})` espalhado em `<DataList {...list}>`. **Totais no topo** (`ListSummary`),
+  embaixo só `ListPagination hideRange` ou o loader infinito; infinito carrega só ao rolar de verdade
+  até o fim (listener de scroll, SEM `IntersectionObserver`) + botão "Carregar mais". Tela cujo
+  clique principal abre o item ganha a tira **"Abertos recentemente"** (5 últimos, `useRecentlyOpened`).
+  `q`/`status`/`sort`/`order` (e `page`, só no modo páginas) na URL (`validateSearch`) — nunca
+  `useState`. **Toolbar = UMA linha: busca/filtros/ordenação no canto
   superior ESQUERDO, ações à direita** — nunca ordenação numa 2ª linha embaixo dos botões; filtro é
   controle de UMA altura (rótulo dentro via `InputGroupAddon`, nunca `<Label>` empilhado); barra de
   filtros de dashboard segue o mesmo desenho (topo à esquerda, acima das abas). Query que falhou ≠
@@ -128,11 +141,16 @@ standalone e são linkados no roteamento (fim do arquivo).
   com abas**. Ação em lote só quando existir: `useListSelection` + `BulkActionsMenu` no toolbar
   (nunca barra solta). Backend: gate `database` (→ `list-pagination.md`). *deep:
   `references/list-screen.md` + `references/data-list.tsx` + `references/list-toolbar.tsx` +
-  `references/use-infinite-list.ts` + `references/bulk-actions-menu.tsx` +
-  `references/use-list-selection.ts` (canônicos).*
-- [ ] **8g. Abas no mobile — 3+ abas viram `Select`.** `TabsList` com 3+ triggers renderiza um
-  `Select` abaixo de 768px, **automaticamente** (o componente conta os filhos; call site escreve
-  `<TabsList>` puro). A troca é CSS (`md:hidden` / `max-md:hidden`) com as duas formas montadas —
+  `references/list-options.tsx` + `references/list-pagination.tsx` +
+  `references/use-collection-list.ts` + `references/use-infinite-list.ts` +
+  `references/use-paged-list.ts` + `references/use-recently-opened.ts` + `references/list-page.ts` +
+  `references/bulk-actions-menu.tsx` + `references/use-list-selection.ts` (canônicos).*
+- [ ] **8g. Abas que não cabem — cheio → compacto → `Select`, nunca 2ª linha.** `Tabs` é
+  `@container/tabs`; `TabsList` (`min-h-8`, `flex-nowrap`, triggers `flex-none`) com 3+ triggers
+  escolhe a forma pela LARGURA da `Tabs` e pelo nº de abas (mapa estático por faixa): cheio →
+  compacto (padding/gap menores, ícone FICA — usuário 2026-10-09) → `Select`, **automaticamente** (call site escreve
+  `<TabsList>` puro; PROIBIDO `h-auto flex-wrap` — o `h-8` fixo antigo fazia a 2ª linha sobrepor o
+  conteúdo; decisão 2026-10-09). A troca é CSS (container query) com as duas formas montadas —
   **NUNCA `useIsMobile()`**, que resolve em `useEffect` e pisca + remonta o painel ativo. Escapes:
   `mobile="strip"` (aba ícone-only / rótulo de 1 palavra) e `selectClassName` (quando a lista divide
   linha flex com um vizinho). **PROIBIDO** `isMobile ? <Select…> : <TabsList…>` no call site — é
@@ -250,10 +268,12 @@ Confirme cada item do Modo 1 satisfeito + `tsgo --noEmit` e build do projeto ver
   visual viewport; por que `dvh` não resolve o teclado no iOS; meta viewport + safe-area; tabela de
   `size`; supressão dupla de autofocus; o que dá pra testar em jsdom/Playwright e o que exige device).
 - `references/list-screen.md` + `references/data-list.tsx` + `references/list-toolbar.tsx` +
-  `references/use-infinite-list.ts` — tela de lista (tabela↔card por role de coluna, dois modos
-  válidos — scroll infinito de 10 em 10 ou paginação numerada —, busca/filtro/ordenação na URL,
-  prefixo de query key que mantém a invalidação, sentinela sem double-fire; `useCrud` com
-  `keepPreviousData`; mata `<Table>` sem card no mobile e `limit: 500`). Filtro de
+  `references/list-options.tsx` + `references/list-pagination.tsx` +
+  `references/use-collection-list.ts` + `references/use-infinite-list.ts` +
+  `references/use-paged-list.ts` + `references/use-recently-opened.ts` — tela de lista
+  (tabela↔card por role de coluna, modo por tela — rolagem contínua default, páginas no ⋮ —, totais
+  no topo, "Abertos recentemente", busca/filtro/ordenação na URL, prefixo de query key que mantém a
+  invalidação, scroll sem `IntersectionObserver`; mata `<Table>` sem card no mobile e `limit: 500`). Filtro de
   status com contagem por opção (`…/status-counts`) e ações em lote no menu `Ações` do toolbar
   (`references/bulk-actions-menu.tsx` + `references/use-list-selection.ts`).
 - `references/agent-instructions.md` — config do agente de IA do tenant (Markdown único montado no
@@ -272,7 +292,7 @@ Confirme cada item do Modo 1 satisfeito + `tsgo --noEmit` e build do projeto ver
   ignora; afordância de recarga obrigatória via `invalidateQueries`; `useIsStandalone`/pull-to-refresh
   com as constantes reais; safe-area + `viewport-fit=cover`; metas apple-\*; checklist de manifest).
 - `references/settings-dialog.md` — hub de Settings deep-linkado (kailos canônico: `sections-config`
-  com `gate`+`render`, `?settings=`, anatomia `h-[85vh] lg:max-w-6xl`, header com HelpButton nos dois
+  com `gate`+`render`, `?settings=`, anatomia `h-[calc(100dvh-2rem)] lg:max-w-[83rem]`, header com HelpButton nos dois
   tamanhos, nav com grupos+busca, mobile nav sobreposta, membros/convites, permission gating).
 - `references/toggle-card.md` + `references/toggle-card.tsx` — ToggleCard (toggle boolean como card
   clicável; chip + liquid wash + beam sincronizado; tabela de decisão vs CardCheckbox/Switch residual; keyframes).
@@ -285,7 +305,7 @@ Confirme cada item do Modo 1 satisfeito + `tsgo --noEmit` e build do projeto ver
 - `references/entity-picker.md` + `references/entity-picker.tsx` — EntityPicker (TODA FK em form
   como combobox pesquisável no servidor + quick-create "Novo…" que auto-seleciona; wrapper por
   entidade + `usePickerLabel`; regra "FK limpa" + `rg` de auditoria; contrato
-  `useList`/`PagedResponse`+`search`; receitas de adaptação; mata Select estático e Input de ID cru).
+  `useList`/`PagedResponse`+`search`; 3 adapters (CrudService / `useInfinitePages` / bounded), `Popover modal`, rodapé; mata Select estático e Input de ID cru).
 - `references/permissions-display.md` — display de permissões agrupado por domínio + tabela canônica
   de verbos (ordem/cor/ícone); metadata no catálogo Pydantic; `PermissionGroupList`.
 - `references/state-management.md` — os 5 níveis de state + anti-padrões.

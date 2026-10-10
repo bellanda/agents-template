@@ -26,7 +26,7 @@
 
 ```tsx
 <Dialog open={!!section} onOpenChange={(o) => !o && close()}>
-  <DialogContent className="flex h-[85vh] w-full max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-3xl lg:max-w-6xl">
+  <DialogContent className="flex h-[calc(100dvh-2rem)] w-full max-w-[calc(100%-2rem)] flex-col gap-0 overflow-hidden p-0 sm:max-w-[55rem] lg:max-w-[83rem]">
     <DialogTitle className="sr-only">Configurações</DialogTitle>
     <div className="flex h-full min-h-0">
       {/* nav esquerda (desktop) */}
@@ -51,8 +51,8 @@
 </Dialog>
 ```
 
-- Altura **FIXA** `h-[85vh]` (não `max-h`): nav estável entre seções; scroll SÓ no painel direito.
-- `lg:max-w-6xl` (1152px) = "boa parte da tela sem ser fullscreen". Não negociar por seção —
+- Altura **FIXA** `h-[calc(100dvh-2rem)]` (viewport inteira com 1rem de margem em cima e embaixo; não `max-h`): nav estável entre seções; scroll SÓ no painel direito.
+- `lg:max-w-[83rem]` (1328px; `sm:max-w-[55rem]`) = tamanho canônico. Decisão do usuário 2026-10-09: largura +15% (era `3xl`/`6xl` = 48/72rem) e altura quase a viewport toda (era `85vh`) — mais espaço p/ as seções de config. Não negociar por seção —
   tamanho ÚNICO do hub.
 - Nav = grupos (label de grupo + itens) com `<button data-active>` + ícone `react-icons`.
   **NÃO** `Tabs/TabsTrigger` do shadcn (grupos + filtro não cabem no modelo do Tabs).

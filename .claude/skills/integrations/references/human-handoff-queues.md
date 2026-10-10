@@ -83,7 +83,19 @@ de prompt aproveita.
   zera o ponteiro, grava `sla_escalated` **uma vez por inbound** e avisa a gestão.
 - O cron publica no JetStream (`CRON_JOBS`, declarado igual nos dois lados); o consumer da API cria as
   notificações `sla_reassigned`/`sla_escalated` (CHECK de `notifications.type` no mesmo PR) e o
-  realtime — sem isso a conversa repassada só aparece no F5.
+  realtime — sem isso a conversa repassada só aparece no F5. **Toda** mudança de dono feita pelo
+  cron (rodízio, volta ao primeiro) publica o SSE `conversation.assigned` para o dono antigo, o novo e
+  quem vê a caixa inteira (kailos `cron_events_consumer.py`, 2026-10-09).
+- O inbox mostra o contador até o próximo rodízio (`sla_deadline_at`/`sla_paused_until`, ver
+  `frontend` → `whatsapp-inbox.md`); o cálculo espelha o cron — mudou a regra num, muda no outro.
+
+## Para quem vai o handoff (kailos, 2026-10-09)
+
+Ordem: vendedor que o cliente citou (`seller_id`, achado por `find_seller` com fuzzy) → quem vendeu
+(só `kind="post_sale"`, específico do kailos) → atendente de sempre (`contacts.preferred_user_id`) →
+rodízio. Inativo/fora da equipe cai para o próximo degrau. O motivo vai em `routing` no metadata do
+evento e aparece no `EventCard`. As equipes dizem PARA QUEM; QUANDO transferir é do método da
+plataforma (prompt-base), não do gatilho da equipe.
 
 ## API e permissões
 

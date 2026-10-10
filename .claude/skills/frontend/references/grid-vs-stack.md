@@ -6,17 +6,19 @@ são _paralelos_ (peers, independentes) ou _sequenciais_ (dependentes, lidos em 
 ## Peers (independentes) → GRID
 
 Cards de eventos, KPIs, métricas, campos sem relação de ordem entre si. Escalam em colunas
-conforme a largura. Mobile 1, sobe com breakpoints.
+conforme a **largura útil** (não a viewport: com a sidebar aberta o notebook tem ~700–1100px). O
+wrapper do shell é `@container/main`; mapa `sm:`→`@xl/main:` · `md:`→`@2xl/main:` · `lg:`→
+`@4xl/main:` · `xl:`→`@6xl/main:`. Componente reusável usa `@container` próprio sem nome.
 
 ```tsx
 // cards / itens de lista
-<div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">{items}</div>
+<div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-3">{items}</div>
 
-// KPIs compactos podem adensar mais
-<div className="grid grid-cols-2 gap-3 md:grid-cols-3 xl:grid-cols-6">{kpis}</div>
+// KPIs / escada de preço: auto-fill, nunca corta valor (tabular-nums whitespace-nowrap no número)
+<div className="grid grid-cols-[repeat(auto-fill,minmax(10rem,1fr))] gap-3">{kpis}</div>
 
 // par de campos independentes (cidade / estado)
-<div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+<div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2">
   <Field label="Cidade" />
   <Field label="Estado" />
 </div>

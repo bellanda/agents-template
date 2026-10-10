@@ -1,6 +1,6 @@
 ---
 name: database
-description: PORTÃO obrigatório de banco de dados (Postgres + asyncpg + dbmate). INVOCAR ANTES de QUALQUER trabalho de DB — escrever/editar `*_repository.py` (fetch/fetchrow/fetchval/execute, INSERT/UPDATE/SELECT/DELETE, COALESCE partial update, WHERE dinâmico, bulk com ANY($1::type[]), JSONB via orjson codec, retorno dict/list[dict]/scalar), escrever migration `.sql` em `db/migrations/` (CREATE TABLE/INDEX, FK, CHECK em VARCHAR enum-like, GIN em JSONB, partial UNIQUE com soft-delete, naming ix_/ux_/uq_/ck_), operar dbmate (new/up/down/rollback, schema dump, squash, Docker/CI), ou escrever/alterar endpoint de LISTAGEM paginada (PagedResponse, sentinela LIMIT+1, has_more, total, ORDER BY com whitelist e desempate, scroll infinito, índice composto por chave de ordenação). Checklist ordenado de invariantes + roteia pras references profundas. NUNCA f-string em SQL (injection, com carve-out único para constante Final + whitelist de ORDER BY); NUNCA COUNT(*) OVER() em lista; NUNCA ORDER BY sem desempate por coluna única; NUNCA dynamic SET clause em UPDATE; NUNCA orjson.loads/dumps manual sobre JSONB; NUNCA repository retornando Pydantic; NUNCA índice em coluna PK; NUNCA UNIQUE sem `WHERE deleted_at IS NULL` em tabela com soft delete; NUNCA FK sem índice cobrindo a leftmost.
+description: PORTÃO obrigatório de banco de dados (Postgres + asyncpg + dbmate). INVOCAR ANTES de QUALQUER trabalho de DB — escrever/editar `*_repository.py` (fetch/fetchrow/fetchval/execute, INSERT/UPDATE/SELECT/DELETE, COALESCE partial update, WHERE dinâmico, bulk com ANY($1::type[]), JSONB via orjson codec, retorno dict/list[dict]/scalar), escrever migration `.sql` em `db/migrations/` (CREATE TABLE/INDEX, FK, CHECK em VARCHAR enum-like, GIN em JSONB, partial UNIQUE com soft-delete, naming ix_/ux_/uq_/ck_), operar dbmate (new/up/down/rollback, schema dump, squash, Docker/CI), ou escrever/alterar endpoint de LISTAGEM paginada (PagedResponse, sentinela LIMIT+1, has_more, total, ORDER BY com whitelist e desempate, scroll infinito/páginas numeradas, índice composto por chave de ordenação). Checklist ordenado de invariantes + roteia pras references profundas. NUNCA f-string em SQL (injection, com carve-out único para constante Final + whitelist de ORDER BY); NUNCA COUNT(*) OVER() em lista; NUNCA ORDER BY sem desempate por coluna única; NUNCA dynamic SET clause em UPDATE; NUNCA orjson.loads/dumps manual sobre JSONB; NUNCA repository retornando Pydantic; NUNCA índice em coluna PK; NUNCA UNIQUE sem `WHERE deleted_at IS NULL` em tabela com soft delete; NUNCA FK sem índice cobrindo a leftmost.
 ---
 
 # Database — O Portão (Postgres + asyncpg + dbmate)
@@ -22,7 +22,7 @@ migrations) vivem na rule `backend.md`; aqui está a profundidade.
   dump, squash/baseline, setup Docker/compose/CI, adoção em schema existente) → **`references/dbmate.md`**
   (que roteia pras sub-references em `references/dbmate/`).
 - [ ] **4. Listagem paginada** — o endpoint devolve uma coleção? (`PagedResponse`, sentinela
-  `LIMIT limit+1`, `total` só em `skip == 0`, whitelist de `ORDER BY`, desempate obrigatório por `id`,
+  `LIMIT limit+1`, `total` exato em TODA página, whitelist de `ORDER BY`, desempate obrigatório por `id`,
   índice composto por chave de sort) → **`references/list-pagination.md`**.
 
 ## Invariantes não negociáveis (sempre)
@@ -46,4 +46,4 @@ migrations) vivem na rule `backend.md`; aqui está a profundidade.
 - `references/asyncpg.md` — repository pattern completo (method selection, SQL, JSONB, bulk, types).
 - `references/dbmate.md` — dbmate (mental model, comandos, workflows) → `references/dbmate/{workflows,docker,postgres-patterns,squash}.md`.
 - `references/list-pagination.md` — contrato de endpoint de lista (sentinela `LIMIT+1`, `total` em
-  `skip == 0`, `SortMap` whitelist + desempate por `id`, índices compostos, carve-out da f-string).
+  toda página, `SortMap` whitelist + desempate por `id`, índices compostos, carve-out da f-string).

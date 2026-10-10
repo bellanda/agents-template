@@ -8,21 +8,14 @@
 1. **NUNCA `COUNT(*) OVER()` em query de lista.** O `WindowAgg` tem `PARTITION BY` vazio, então a
    partição é o result set inteiro e ele precisa consumir **todas** as linhas filtradas antes de emitir
    a primeira — o `Limit` não desce abaixo dele. Custo O(linhas do filtro) **por página**, com heap
-   fetch por linha se for `SELECT *`. Com scroll infinito de 10 em 10 isso é patológico.
+   fetch por linha se for `SELECT *`. Com páginas de 10 isso é patológico.
 2. **Sentinela `LIMIT limit + 1`.** Veio `limit+1` linha? `has_more = true`, descarta a extra. Exato,
    custa uma linha.
-3. **`total` só quando `skip == 0`**, via `COUNT(*)` separado. Fora daí devolve o lower bound
-   `skip + len(items) + has_more`. O `EntityPicker` sempre manda `skip=0`, então o `hasMore =
-   items.length < total` dele continua exato; o `useInfiniteList` sempre busca a página 0 primeiro,
-   então `pages[0].total` é o número que vai pro cabeçalho.
+3. **`total` exato em TODA página**, via `COUNT(*)` separado a cada request (decisão 2026-10-09).
+   A tela mostra o total no topo nos dois modos ("21–40 de 1.355", "48 de 1.355") e a página 7 aberta
+   por link precisa dele tão exato quanto a 1. Sem `wants_total`, sem lower bound: `sentinel(rows,
+   params, total)` com `total` obrigatório. O `EntityPicker` usa o mesmo `total` pro "X de Y" do rodapé.
 4. **Todo `ORDER BY` termina com desempate por `id`.** Ver abaixo — não é preciosismo.
-
-> **Variante paginação numerada (decisão 2026-10-01 — kailos; ver `frontend` → `list-screen.md`).**
-> App que mostra "21–40 de 1.355" e deixa abrir a página N por link precisa do `total` **exato em
-> TODA página**: a regra 3 muda para "`COUNT(*)` separado a cada request, não só em `skip == 0`" (kailos
-> `api/repositories/shared/listing.py`: `sentinel(rows, params, total)` com `total` obrigatório). As
-> regras 1, 2 e 4 não mudam — `COUNT(*) OVER()` continua proibido e o desempate por `id` também. É
-> escolha **por app**, declarada no `.claude/rules/project.md` dele; os demais seguem a regra 3 como está.
 
 ## Por que o desempate é obrigatório
 
@@ -37,7 +30,7 @@ Com OFFSET isso não é teórico:
   B agora; a 11 é A.
 - Página 2 devolve `A, C, …`. **A aparece duas vezes; B nunca aparece.**
 
-Paginação por número de página escondia isso (a duplicata caía noutra tela). Scroll infinito põe as
+Paginação numerada escondia isso (a duplicata caía noutra tela). Rolagem contínua (páginas anexadas) põe as
 duas cópias no mesmo array achatado → `Warning: Encountered two children with the same key` e linha
 repetida visível.
 
@@ -183,13 +176,12 @@ class CustomerRepository:
             params.fetch_limit,  # sentinela: a 11ª linha só existe pra responder has_more
             params.skip,
         )
-        total = None
-        if params.wants_total:  # só a primeira página paga o COUNT
-            total = await conn.fetchval(
-                f"SELECT COUNT(*) {_LIST_FILTER}",
-                org_id,
-                params.search,
-            )
+        # COUNT(*) em TODA página, query separada, mesmo predicado — nunca COUNT(*) OVER().
+        total = await conn.fetchval(
+            f"SELECT COUNT(*) {_LIST_FILTER}",
+            org_id,
+            params.search,
+        )
         return sentinel(rows, params, total)
 ```
 
@@ -255,11 +247,6 @@ class ListParams:
         """O que entra em ``LIMIT $n`` — um a mais que o pedido, a linha sentinela."""
         return self.limit + 1
 
-    @property
-    def wants_total(self) -> bool:
-        """Só a primeira página paga o ``COUNT(*)``."""
-        return self.skip == 0
-
 
 @dataclass(frozen=True, slots=True)
 class ListPage:
@@ -268,14 +255,16 @@ class ListPage:
     has_more: bool
 
 
-def sentinel(rows: Sequence[Any], params: ListParams, total: int | None = None) -> ListPage:
-    """Fatia um resultado over-fetched (``LIMIT limit + 1``) no envelope."""
+def sentinel(rows: Sequence[Any], params: ListParams, total: int) -> ListPage:
+    """Fatia a linha sentinela de ``rows`` e deriva ``has_more`` da presença dela."""
     has_more = len(rows) > params.limit
     items = [dict(row) for row in rows[: params.limit]]
-    if total is None:
-        total = params.skip + len(items) + int(has_more)
     return ListPage(items=items, total=total, has_more=has_more)
 ```
+
+Fonte canônica: kailos `api/repositories/shared/listing.py` (+ `search_patterns` para busca por
+tokens `ILIKE ALL`). Exemplo de uso completo: `contacts/contact_repository.py#list_by_org` (página
+com `params.fetch_limit` + `fetchval` do `COUNT(*)` + `sentinel(rows, params, total)`).
 
 `ListParams` mora em `listing.py` (camada de repository) e não em `list_params.py` — o repository
 não pode importar de `routes/`. O módulo de rotas só constrói o objeto.
@@ -325,7 +314,7 @@ src/api/routes` deve casar um arquivo só.
 ```python
 class PagedResponse(BaseModel, Generic[T]):
     items: list[T]
-    total: int    # exato quando skip == 0; lower bound depois
+    total: int    # exato em TODA página (COUNT(*) separado)
     skip: int
     limit: int    # o PEDIDO, nunca o +1 da sentinela
     has_more: bool = False   # default=False permite migrar rota a rota
@@ -347,7 +336,7 @@ escrita em combinação rara. Medido no checkpoint (200k linhas, 67k na org alvo
 | --- | --- | --- |
 | página `skip=0` | 22,9 ms · 8114 buffers · Parallel Seq Scan + top-N heapsort | **0,07 ms · 5 buffers** · Index Scan |
 | página `skip=100` | 18,2 ms · 8114 buffers | **0,06 ms · 10 buffers** |
-| `COUNT(*)` (só em `skip=0`) | 19,9 ms · Bitmap Heap Scan | **7,7 ms** · Index Only Scan, `Heap Fetches: 0` |
+| `COUNT(*)` (toda página) | 19,9 ms · Bitmap Heap Scan | **7,7 ms** · Index Only Scan, `Heap Fetches: 0` |
 | `COUNT(*) OVER()` (o padrão antigo) | 76,6 ms + **9,4 MB de spill em disco por página** | eliminado |
 
 ### `CONCURRENTLY` só cabe UMA por arquivo — regra do dbmate, verificada
@@ -420,7 +409,7 @@ chave default das tabelas de maior tráfego.
 | --- | --- |
 | `COUNT(*) OVER()` a 20/página, 3 fetches | 3 × 5.000 = **15.000 linhas de heap** |
 | Porte ingênuo pra 10/página, 5 fetches | 5 × 5.000 = **25.000** |
-| Este contrato | 5.000 (count, uma vez) + walk de `0+10+20+30+40` + **55 linhas de heap** |
+| Este contrato | 5.000 (count por página) + walk de `0+10+20+30+40` + **55 linhas de heap** |
 
 OFFSET começa a doer por volta de **50.000** — que a 10/página exigiria 5.000 fetches sequenciais numa
 sessão. Não acontece.
@@ -453,7 +442,7 @@ EXPLAIN (ANALYZE, BUFFERS) SELECT COUNT(*) FROM customers WHERE …;
 - **NUNCA** 422 em sort key desconhecida — cai no default.
 - **NUNCA** ecoar `limit + 1` no envelope.
 - **NUNCA** `response_model=list[...]` num endpoint de coleção — é `PagedResponse[T]`.
-- **NUNCA** `total=len(items)` — ou é o COUNT real (skip 0) ou é o lower bound do `sentinel()`.
+- **NUNCA** `total=len(items)` — é sempre o `COUNT(*)` real.
 - **NUNCA** endpoint de coleção sem `LIMIT`.
 - **NUNCA** duas `CREATE INDEX CONCURRENTLY` no mesmo arquivo dbmate — falha com `25001` mesmo com
   `transaction:false` (um índice por arquivo, ou `CREATE INDEX` normal numa migration transacional).

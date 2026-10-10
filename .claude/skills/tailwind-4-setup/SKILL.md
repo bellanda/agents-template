@@ -1,6 +1,6 @@
 ---
 name: tailwind-4-setup
-description: Setup e operação de Tailwind CSS 4 — config CSS-first sem `tailwind.config.ts` em projeto greenfield, `@import "tailwindcss"` substituindo `@tailwind base/components/utilities` do v3, `@theme inline` para tokens OKLCH semantic compatíveis com shadcn (`--color-background`, `--color-foreground`, `--color-primary`, etc.), container queries (`@container/name` + `@sm:`/`@md:`) preferidas para componentes que adaptam ao container, viewport breakpoints (`sm:`, `md:`, `lg:`) reservados para layout de página, mobile-first sempre. INVOCAR ANTES de — setup tailwind em projeto novo, criar/editar `index.css`/`globals.css`, configurar tema (cores, fontes, spacing), definir cor semantic shadcn, adicionar container query, migrar projeto Tailwind 3 → 4, decidir entre `@container` e viewport breakpoint, ou tocar `tailwind.config.ts` legado em projeto v3. NUNCA crie `tailwind.config.ts` em projeto novo greenfield; NUNCA `@tailwind base` (v3 syntax); NUNCA cor raw (`bg-blue-500`) — sempre semantic shadcn; NUNCA viewport breakpoint em componente que adapta ao container.
+description: Setup e operação de Tailwind CSS 4 — config CSS-first sem `tailwind.config.ts` em projeto greenfield, `@import "tailwindcss"` substituindo `@tailwind base/components/utilities` do v3, `@theme inline` para tokens OKLCH semantic compatíveis com shadcn (`--color-background`, `--color-foreground`, `--color-primary`, etc.), container queries (`@container/name` + `@sm:`/`@md:`) para tudo que adapta à LARGURA ÚTIL (wrapper do shell = `@container/main`), viewport breakpoints (`sm:`, `md:`, `lg:`) reservados para shell/sidebar/header, overlays e trocas mobile canônicas, mobile-first sempre. INVOCAR ANTES de — setup tailwind em projeto novo, criar/editar `index.css`/`globals.css`, configurar tema (cores, fontes, spacing), definir cor semantic shadcn, adicionar container query, migrar projeto Tailwind 3 → 4, decidir entre `@container` e viewport breakpoint, ou tocar `tailwind.config.ts` legado em projeto v3. NUNCA crie `tailwind.config.ts` em projeto novo greenfield; NUNCA `@tailwind base` (v3 syntax); NUNCA cor raw (`bg-blue-500`) — sempre semantic shadcn; NUNCA viewport breakpoint em componente que adapta ao container.
 ---
 
 # Tailwind CSS 4 — CSS-First Setup
@@ -101,30 +101,25 @@ Vantagens vs HSL:
 - Dark mode trivial: inverte L (`0.205` → `0.985`), mantém C e H.
 - Suporte nativo em browsers modernos (2023+).
 
-## 4. Container queries — DEFAULT para componentes
+## 4. Container queries — DEFAULT para layout de página E componentes
 
-Container queries são preferidas em componentes que adaptam ao container (não ao viewport). Viewport breakpoints (`sm:`, `md:`, `lg:`) ficam reservados para **layout de página**.
+Largura útil ≠ viewport: com a sidebar aberta (~256px) um notebook de 1024–1440 tem ~700–1100px úteis, e `lg:`/`xl:` disparam cedo demais (valores cortados, abas sobrepostas). Decisão 2026-10-09: o wrapper de conteúdo do shell declara `@container/main` e o layout DENTRO da página responde a ele. Viewport (`sm:`, `md:`, `lg:`) fica só para shell/sidebar/header, overlays (são `fixed`) e as trocas mobile canônicas (DataList tabela↔card, filtros↔dialog).
 
 ```tsx
-{/* Component que adapta ao container */}
-<div className="@container/card grid grid-cols-1 gap-4 @md:grid-cols-2 @lg:grid-cols-3">
-  <Card />
-  <Card />
-  <Card />
-</div>
+{/* Shell: wrapper de conteúdo */}
+<div className="@container/main mx-auto w-full max-w-[1440px]">…</div>
 
-{/* Layout de página adapta ao viewport */}
-<div className="grid grid-cols-1 lg:grid-cols-[240px_1fr]">
-  <Sidebar />
-  <Main />
-</div>
+{/* Página: responde à largura útil. Mapa: sm→@xl/main · md→@2xl/main · lg→@4xl/main · xl→@6xl/main */}
+<div className="grid grid-cols-1 gap-4 @xl/main:grid-cols-2 @4xl/main:grid-cols-3">…</div>
+
+{/* Componente reusável (aparece em dialog, coluna, página): @container próprio, sem nome */}
+<Card className="@container"><p className="text-xl @[12rem]:text-2xl">…</p></Card>
+
+{/* Shell: sidebar adapta à viewport (ok) */}
+<div className="grid grid-cols-1 lg:grid-cols-[240px_1fr]">…</div>
 ```
 
-Sintaxe:
-- `@container/<nome>` (parent) — opcional dar nome
-- `@sm:`, `@md:`, `@lg:`, `@xl:` (child) — relativo ao container nomeado mais próximo
-
-Por que importa: o mesmo Card pode aparecer em sidebar estreita, main wide, modal — e responde ao próprio espaço, não ao viewport.
+Sintaxe (Tailwind 4.3): `@container/<nome>` (pai), `@xl/main:` (min-width do container nomeado), `@max-[38rem]/tabs:` (largura < 38rem), `@[12rem]:` (valor arbitrário). Sem nome = container mais próximo. Container com `inline-size` não deixa o filho definir a largura: o pai precisa de `w-full`/`min-w-0`/`flex-1`.
 
 ## 5. Mobile-first é obrigatório
 
@@ -256,6 +251,6 @@ Se o projeto é v3 e você quer migrar para v4:
 - **NUNCA** `@tailwind base; @tailwind components; @tailwind utilities;` (v3 syntax).
 - **NUNCA** raw colors em componente (`bg-blue-500`, `text-zinc-900`) — sempre semantic shadcn.
 - **NUNCA** desktop-first (`max-md:` para esconder no mobile) — sempre mobile-first com scale up.
-- **NUNCA** viewport breakpoint (`md:`) em componente que adapta ao container — use `@container` + `@md:`.
+- **NUNCA** viewport breakpoint (`md:`/`lg:`) em grid/flex de página ou componente reusável — use `@container` (`@…/main:` na página). Viewport só p/ shell, overlays e trocas mobile canônicas.
 - **NUNCA** HSL/HEX para tokens novos — use OKLCH (browser support ok desde 2023).
 - **NUNCA** plugin via `tailwind.config.ts > plugins:` em v4 — use `@plugin "..."` em CSS.

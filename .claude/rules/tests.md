@@ -146,5 +146,11 @@ Todo teste que envolve tempo tem dois lados: o **dado** (a data semeada) e o **r
 - O que diverge por projeto mora SÓ no `fixtures/session.ts` (rota home, payload do `/accounts/me`,
   quantas chamadas o bootstrap gasta); os specs são idênticos nos 5. Rota home = tela de lista que
   aguenta `PagedResponse` vazio — dashboard que depende de payload de KPI quebra no mock.
+- **Spec que mede a tela espera a tela, nunca um tempo fixo.** Depois do `goto`: casca visível
+  (`APP.appShellControl`, timeout ~30s — Vite frio + vários workers demoram), `networkidle` com teto
+  (`.catch` — tela com polling/fotos nunca fica ociosa) e um marcador do conteúdo (h1 do header não
+  vazio). `waitForTimeout` sozinho fotografa o spinner/página em branco e a asserção de layout passa
+  sem medir nada (varredura de layout, 2026-10-09: dezenas de rotas "verdes" em branco). Screenshot
+  de poucos KB = sinal de teste vazio.
 - Script `"test:e2e": "playwright test"` — **fora do `check.sh` padrão** (sobe dev server + 2
   browsers); entra em alvo próprio (`bash check.sh --e2e`) para não tornar o check local lento.

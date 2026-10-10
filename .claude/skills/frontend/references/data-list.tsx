@@ -6,6 +6,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { EmptyState } from "@/components/ui/empty-state";
 import { Skeleton } from "@/components/ui/skeleton";
 import {
   Table,
@@ -15,11 +16,14 @@ import {
   TableHeader,
   TableRow,
 } from "@/components/ui/table";
+import { InfiniteListLoader, ListSummary } from "@/components/ui/list-options";
+import { ListPagination } from "@/components/ui/list-pagination";
+import type { InfiniteListControls } from "@/hooks/useCollectionList";
 import { cn } from "@/lib/utils";
-import { useInfiniteScrollSentinel } from "@/hooks/useInfiniteList";
-import type { MouseEvent, ReactNode } from "react";
+import { useCallback, useRef, type MouseEvent, type ReactNode } from "react";
 import type { IconType } from "react-icons";
-import { LuEllipsisVertical, LuLoader } from "react-icons/lu";
+import { LuEllipsisVertical, LuTriangleAlert } from "react-icons/lu";
+import { errorMessage } from "@/lib/api/error-message";
 
 /**
  * Papel da coluna no card mobile — é isto que dispensa um segundo renderer.
@@ -52,11 +56,14 @@ export interface DataListAction<T> {
   destructive?: boolean;
   /** Esconde a ação por linha (ex.: não pode excluir OS já entregue). */
   hidden?: (item: T) => boolean;
+  /** Motivo (pt-BR) pelo qual a ação não pode ser usada nesta linha; a ação fica visível mas
+   *  desabilitada e o motivo aparece como `title` (dica ao passar o mouse / segurar). */
+  disabledReason?: (item: T) => string | undefined;
 }
 
 export interface DataListSelection {
   selectedIds: ReadonlySet<string>;
-  /** Recebe o `getRowId` da linha — a tela é dona do Set (ver `use-list-selection.ts`). */
+  /** Recebe o `getRowId` da linha — a tela é dona do Set (ver `useListSelection`). */
   onToggle: (id: string) => void;
 }
 
@@ -72,14 +79,21 @@ export interface DataListProps<T> {
   actions?: DataListAction<T>[];
   onRowClick?: (item: T) => void;
 
-  /** Spread direto do `useInfiniteList`. */
+  /** Spread direto do `usePagedList` / `useCollectionList`. */
   isLoading: boolean;
   isFetching: boolean;
-  isFetchingNextPage: boolean;
-  hasNextPage: boolean;
-  fetchNextPage: () => void;
   total: number;
-
+  page: number;
+  pageSize: number;
+  pageCount: number;
+  /** A página mora na URL e a tela é dona dela — o DataList só pede a troca. */
+  onPageChange: (page: number) => void;
+  /**
+   * Presente = modo rolagem contínua (vem no spread do `useCollectionList`): o fim da lista
+   * vira sentinela + "Carregar mais" e `page`/`onPageChange` ficam ociosos. Ausente =
+   * paginação numerada. Nos dois o resumo "X de Y" fica no TOPO da lista.
+   */
+  infinite?: InfiniteListControls;
   /** Distingue "nada cadastrado" de "nada encontrado". */
   isFiltered?: boolean;
   emptyTitle: string;
@@ -103,16 +117,22 @@ export interface DataListProps<T> {
    */
   variant?: "table" | "grid" | "stack";
   /**
-   * Seleção múltipla — opcional; tela que não passa `selection` renderiza igual.
-   * O estado e as ações em lote moram na tela (`useListSelection` + `BulkActionsMenu`
-   * no slot `actions` do `ListToolbar`); a lista só desenha o checkbox.
+   * Seleção múltipla — opcional, e todo o comportamento novo fica atrás dela: as
+   * telas que não passam `selection` renderizam exatamente como antes.
    *
    * O checkbox é absoluto sobre o CARD, o que cobre `grid`, `stack` e o mobile de
    * `table` de uma vez, sem tocar em nenhum `renderCard` de tela. A tabela do
-   * desktop fica sem checkbox: seleção em lote é de coleção visual (estoque em
-   * `variant="grid"`), e uma coluna a mais mexeria no header de toda tela default.
+   * desktop fica de fora desta rodada: uma coluna a mais mexeria no header das
+   * ~15 telas que usam o default, e o consumidor real (estoque de veículos) é
+   * `variant="grid"`, que não tem tabela.
    */
   selection?: DataListSelection;
+  /** Query falhou: mostra o bloco de erro NO LUGAR do estado vazio.
+   *  Com `{...usePagedList(...)}` os três chegam de graça pelo spread. */
+  isError?: boolean;
+  error?: unknown;
+  refetch?: () => unknown;
+  onRetry?: () => void;
   className?: string;
 }
 
@@ -148,6 +168,8 @@ function ActionButtons<T>({ actions, item }: { actions: DataListAction<T>[]; ite
             <DropdownMenuItem
               key={action.id}
               variant={action.destructive ? "destructive" : undefined}
+              disabled={!!action.disabledReason?.(item)}
+              title={action.disabledReason?.(item)}
               onSelect={() => action.onSelect(item)}
             >
               <action.icon className="size-4" />
@@ -161,44 +183,64 @@ function ActionButtons<T>({ actions, item }: { actions: DataListAction<T>[]; ite
 
   return (
     <>
-      {available.map((action) => (
-        <Button
-          key={action.id}
-          variant="ghost"
-          size="icon"
-          aria-label={action.label}
-          onClick={() => action.onSelect(item)}
-        >
-          <action.icon className={cn("size-4", action.destructive && "text-destructive")} />
-        </Button>
-      ))}
+      {available.map((action) => {
+        const disabledReason = action.disabledReason?.(item);
+        return (
+          // O `span` leva o `title`: botão desabilitado não dispara hover/foco no navegador.
+          <span key={action.id} title={disabledReason} className="inline-flex">
+            <Button
+              variant="ghost"
+              size="icon"
+              aria-label={action.label}
+              disabled={!!disabledReason}
+              onClick={() => action.onSelect(item)}
+            >
+              <action.icon className={cn("size-4", action.destructive && "text-destructive")} />
+            </Button>
+          </span>
+        );
+      })}
     </>
   );
 }
 
-function EmptyState({
-  title,
-  description,
-  action,
-  onClearFilters,
+/** "Limpar filtros" substitui a ação do vazio quando o vazio é efeito de filtro ativo. */
+function emptyStateAction({
   isFiltered,
+  onClearFilters,
+  action,
 }: {
-  title: string;
-  description?: string;
-  action?: ReactNode;
-  onClearFilters?: () => void;
   isFiltered?: boolean;
-}) {
+  onClearFilters?: () => void;
+  action?: ReactNode;
+}): ReactNode {
+  if (!isFiltered || !onClearFilters) return action;
   return (
-    <div className="flex flex-col items-center gap-3 px-6 py-16 text-center">
-      <p className="text-muted-foreground text-sm">{title}</p>
-      {description && <p className="text-muted-foreground text-xs">{description}</p>}
-      {isFiltered && onClearFilters ? (
-        <Button variant="outline" size="sm" onClick={onClearFilters}>
-          Limpar filtros
+    <Button variant="outline" size="sm" onClick={onClearFilters}>
+      Limpar filtros
+    </Button>
+  );
+}
+
+/**
+ * Estado de ERRO da lista — nunca o estado vazio.
+ *
+ * Sem ele, query que falha (rede fora, 500, 403 numa tela que o gate do front
+ * deixou passar) caía em `items = []` e a tela dizia "Nenhum veículo encontrado".
+ * O usuário concluía que o estoque estava vazio e seguia em frente; o erro
+ * existia só no console. Coleção vazia e coleção que não carregou são fatos
+ * diferentes e precisam de telas diferentes.
+ */
+function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-3 px-6 py-16 text-center" role="alert">
+      <LuTriangleAlert className="text-destructive h-6 w-6" aria-hidden />
+      <p className="text-sm font-medium">Não foi possível carregar esta lista</p>
+      <p className="text-muted-foreground max-w-prose text-xs">{errorMessage(error)}</p>
+      {onRetry && (
+        <Button variant="outline" size="sm" onClick={onRetry}>
+          Tentar novamente
         </Button>
-      ) : (
-        action
       )}
     </div>
   );
@@ -246,7 +288,7 @@ function ResponsiveRows<T>({
   const secondary = columns.filter((column) => column.role === "secondary");
   const badges = columns.filter((column) => column.role === "badge");
   const meta = columns.filter(
-    (column) => column !== primary && (column.role === "meta" || column.role === undefined),
+    (column) => column !== primary && (column.role === "meta" || column.role === undefined)
   );
 
   const cardContent = (column: DataListColumn<T>, item: T) =>
@@ -354,7 +396,7 @@ function ResponsiveRows<T>({
                 "bg-card rounded-lg border p-4",
                 onRowClick && "active:bg-muted/50 cursor-pointer",
                 // O checkbox flutua sobre o canto; sem a calha o título passaria por baixo.
-                selection && "relative pl-14",
+                selection && "relative pl-14"
               )}
             >
               {selectionBox(getRowId(item))}
@@ -472,6 +514,12 @@ export interface StaticDataListProps<T> {
    * o total do mobile é responsabilidade do caller, acima ou abaixo da lista.
    */
   tableFooter?: ReactNode;
+  /** Query falhou: mostra o bloco de erro NO LUGAR do estado vazio.
+   *  Com `{...usePagedList(...)}` os três chegam de graça pelo spread. */
+  isError?: boolean;
+  error?: unknown;
+  refetch?: () => unknown;
+  onRetry?: () => void;
   className?: string;
 }
 
@@ -481,7 +529,7 @@ export interface StaticDataListProps<T> {
  *
  * É para o conjunto que já veio inteiro e cujo tamanho o domínio limita — itens
  * de um orçamento, parcelas de um título, ranking de mecânicos do mês, versões
- * de um agente. Coleção que CRESCE com o uso é `DataList` + `useInfiniteList`;
+ * de um agente. Coleção que CRESCE com o uso é `DataList` + `usePagedList`;
  * usar este aqui nela é fetch-all disfarçado.
  */
 export function StaticDataList<T>({
@@ -497,6 +545,10 @@ export function StaticDataList<T>({
   emptyAction,
   isLoading,
   tableFooter,
+  isError,
+  error,
+  refetch,
+  onRetry,
   className,
 }: StaticDataListProps<T>) {
   if (isLoading) {
@@ -508,6 +560,14 @@ export function StaticDataList<T>({
         cardsClassName={cardsClassNameFor(variant)}
         className={className}
       />
+    );
+  }
+
+  if (isError) {
+    return (
+      <div className={cn("rounded-md border", className)}>
+        <ErrorState error={error} onRetry={onRetry ?? (refetch ? () => refetch() : undefined)} />
+      </div>
     );
   }
 
@@ -537,7 +597,9 @@ export function StaticDataList<T>({
 
 /**
  * Lista canônica de COLEÇÃO: uma definição de coluna renderiza a tabela (desktop,
- * ≥768px) e a pilha de cards (mobile). Scroll infinito de 10 em 10.
+ * ≥768px) e a pilha de cards (mobile). Dois modos de navegação sobre o mesmo endpoint,
+ * escolhidos por tela (`useCollectionList` + `useListMode`): paginação numerada (default)
+ * ou rolagem contínua (`infinite`). Os dois mostram "carregados de total".
  */
 export function DataList<T>({
   items,
@@ -547,10 +609,12 @@ export function DataList<T>({
   onRowClick,
   isLoading,
   isFetching,
-  isFetchingNextPage,
-  hasNextPage,
-  fetchNextPage,
   total,
+  page,
+  pageSize,
+  pageCount,
+  onPageChange,
+  infinite,
   isFiltered,
   emptyTitle,
   emptyDescription,
@@ -560,13 +624,22 @@ export function DataList<T>({
   renderCard,
   variant = "table",
   selection,
+  isError,
+  error,
+  refetch,
+  onRetry,
   className,
 }: DataListProps<T>) {
-  const sentinelRef = useInfiniteScrollSentinel({
-    hasNextPage,
-    isFetchingNextPage,
-    fetchNextPage,
-  });
+  const topRef = useRef<HTMLDivElement>(null);
+  // `nearest` só rola quando o topo da lista já saiu da tela (clicou "próxima" lá
+  // embaixo); com a lista inteira à vista, trocar de página não mexe no scroll.
+  const changePage = useCallback(
+    (next: number) => {
+      onPageChange(next);
+      topRef.current?.scrollIntoView({ block: "nearest" });
+    },
+    [onPageChange]
+  );
   // Fora do default o card é a ÚNICA árvore: some o `md:hidden` que o esconderia no
   // desktop e a tabela sai do DOM. Esconder a tabela por CSS não bastaria — o React
   // renderiza a subárvore inteira do mesmo jeito (cada `cell` de cada linha roda duas
@@ -585,28 +658,60 @@ export function DataList<T>({
     );
   }
 
+  if (isError) {
+    return (
+      <div className={cn("rounded-md border", className)}>
+        <ErrorState error={error} onRetry={onRetry ?? (refetch ? () => refetch() : undefined)} />
+      </div>
+    );
+  }
+
+  // Página que sumiu embaixo do usuário (exclusão, filtro de outra aba, link velho):
+  // não é coleção vazia — há itens, só não nesta página.
+  if (items.length === 0 && page > 1 && total > 0) {
+    return (
+      <div className={cn("rounded-md border", className)}>
+        <EmptyState
+          title={`Esta página não existe mais — a lista tem ${pageCount} página${pageCount === 1 ? "" : "s"}.`}
+          action={
+            <Button variant="outline" size="sm" onClick={() => changePage(pageCount)}>
+              Ir para a página {pageCount}
+            </Button>
+          }
+        />
+      </div>
+    );
+  }
+
   if (items.length === 0) {
     return (
       <div className={cn("rounded-md border", className)}>
         <EmptyState
           title={emptyTitle}
           description={emptyDescription}
-          action={emptyAction}
-          onClearFilters={onClearFilters}
-          isFiltered={isFiltered}
+          action={emptyStateAction({ isFiltered, onClearFilters, action: emptyAction })}
         />
       </div>
     );
   }
 
-  // Refetch de filtro/sort escurece as linhas atuais em vez de trocar por
-  // skeleton (não há `keepPreviousData` em infinite query — ver useInfiniteList).
-  const dimming = isFetching && !isFetchingNextPage;
+  // Troca de página/filtro escurece a página atual (mantida pelo `keepPreviousData`
+  // do `usePagedList`) até a próxima chegar, em vez de piscar um skeleton.
+  const dimming = isFetching && !isLoading;
 
   return (
-    <div className={cn("space-y-3", className)}>
+    <div ref={topRef} className={cn("scroll-mt-20 space-y-3", className)}>
+      <ListSummary
+        mode={infinite ? "infinite" : "pages"}
+        loaded={items.length}
+        total={total}
+        page={page}
+        pageSize={pageSize}
+        countLabel={countLabel}
+      />
+
       <div
-        aria-busy={isFetchingNextPage}
+        aria-busy={dimming}
         className={cn("transition-opacity", dimming && "pointer-events-none opacity-60")}
       >
         <ResponsiveRows
@@ -621,35 +726,20 @@ export function DataList<T>({
         />
       </div>
 
-      {/* ── Rodapé: contagem + carregar mais ────────────────────────────────
-          O <Button> é o mecanismo PRIMÁRIO — leitor de tela e teclado não
-          disparam interseção visual, e um container que não rola (viewport curta,
-          usuário com zoom) nunca chega no sentinel. O observer só o aperta.
-          Um sentinel só, FORA das duas árvores responsivas: nó dentro de
-          `display:none` nunca intersecta e morreria num dos breakpoints. */}
-      <div className="flex flex-col items-center gap-2">
-        <p aria-live="polite" className="text-muted-foreground text-xs">
-          {isFetchingNextPage
-            ? "Carregando mais…"
-            : countLabel
-              ? `${items.length} de ${countLabel(total)}`
-              : `${items.length} de ${total}`}
-        </p>
-        {hasNextPage && (
-          <>
-            <div ref={sentinelRef} aria-hidden className="h-10 w-full" />
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={fetchNextPage}
-              disabled={isFetchingNextPage}
-            >
-              {isFetchingNextPage && <LuLoader className="mr-2 size-4 animate-spin" />}
-              Carregar mais
-            </Button>
-          </>
-        )}
-      </div>
+      {infinite ? (
+        <InfiniteListLoader controls={infinite} />
+      ) : (
+        <ListPagination
+          page={page}
+          pageCount={pageCount}
+          pageSize={pageSize}
+          total={total}
+          countLabel={countLabel}
+          onPageChange={changePage}
+          hideRange
+          className="sm:justify-end"
+        />
+      )}
     </div>
   );
 }

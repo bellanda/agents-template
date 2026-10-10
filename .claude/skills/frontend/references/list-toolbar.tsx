@@ -9,6 +9,11 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
+import {
+  ToolbarMenuActionsContext,
+  ToolbarOverflowMenu,
+  type ToolbarMenuAction,
+} from "@/components/ui/list-options";
 import { cn } from "@/lib/utils";
 import { useCallback, useEffect, useRef, useState, type ReactNode } from "react";
 import { LuListFilter, LuSearch, LuX } from "react-icons/lu";
@@ -200,8 +205,25 @@ export interface ListToolbarProps {
   activeFilterCount?: number;
   onClearFilters?: () => void;
 
-  /** Botão de criar e afins. SEMPRE aqui, nunca abaixo da lista (scroll infinito). */
+  /**
+   * Botão de criar e afins (desktop, e celular quando `mobileActions` é omitido). SEMPRE aqui,
+   * nunca abaixo da lista (scroll infinito).
+   */
   actions?: ReactNode;
+  /**
+   * Versão do celular (< 768px) de `actions`: a 2ª linha vira UMA linha sem quebra —
+   * `[Filtros (ícone)] [primary] [⋮]`. `primary` = o CTA com rótulo curto ("Novo"), que ocupa o
+   * espaço que sobra; `secondary` = o resto (importar, exportar, lote…), que vai pro ⋮ acima das
+   * opções de exibição. Passar isto esconde `actions` abaixo de 768px (CSS, sem `useIsMobile`).
+   * Decisão 2026-10-09: no 360px, 4 linhas de botões largos antes do 1º registro.
+   */
+  mobileActions?: { primary?: ReactNode; secondary?: ToolbarMenuAction[] };
+  /**
+   * ⋮ de preferências da tela (`ListOptionsMenu`: páginas ↔ rolagem, recentes). Sempre o
+   * ÚLTIMO controle da linha, também no celular — configuração da tela mora no topo, nunca
+   * no rodapé da lista (decisão do usuário, 2026-10-09).
+   */
+  menu?: ReactNode;
   className?: string;
 }
 
@@ -227,6 +249,8 @@ export function ListToolbar({
   activeFilterCount = 0,
   onClearFilters,
   actions,
+  mobileActions,
+  menu,
   className,
 }: ListToolbarProps) {
   const [filtersOpen, setFiltersOpen] = useState(false);
@@ -235,6 +259,8 @@ export function ListToolbar({
   const hasCollapsible = Boolean(filters) || hasSort;
 
   const closeFilters = useCallback(() => setFiltersOpen(false), []);
+  const secondaryActions = mobileActions?.secondary ?? [];
+  const mobilePrimary = mobileActions?.primary;
 
   return (
     // UMA linha: busca + filtros + ordenação ancorados à ESQUERDA, ações à DIREITA. A versão
@@ -281,33 +307,53 @@ export function ListToolbar({
         </div>
       )}
 
-      {(hasCollapsible || actions) && (
-        // `flex-wrap`: o `Button` é `shrink-0`, então "Filtros" + 2 ações da tela não cabem em
-        // 375px e a última era CLIPADA pelo shell. `sm:ml-auto` mantém as ações à direita
-        // quando o grupo da esquerda não existe ou está escondido.
+      {(hasCollapsible || actions || menu || mobileActions) && (
+        // Celular: UMA linha `nowrap` (Filtros ícone + CTA que estica + ⋮); o `Button` é
+        // `shrink-0`, então qualquer botão largo a mais voltaria a empilhar linhas. Desktop:
+        // `flex-wrap` como antes. `sm:ml-auto` mantém as ações à direita quando o grupo da
+        // esquerda não existe ou está escondido.
         <div
           className={cn(
-            "flex flex-wrap items-center gap-2 sm:ml-auto sm:justify-end",
-            !actions && "md:hidden"
+            "flex items-center gap-2 max-md:flex-nowrap sm:ml-auto sm:justify-end md:flex-wrap",
+            !actions && !menu && !mobileActions && "md:hidden"
           )}
         >
           {hasCollapsible && (
             <Button
               variant="outline"
-              className="md:hidden"
+              size="icon"
+              className="relative md:hidden"
               onClick={() => setFiltersOpen(true)}
-              aria-label="Filtros e ordenação"
+              aria-label={
+                activeFilterCount > 0
+                  ? `Filtros e ordenação (${activeFilterCount} ativos)`
+                  : "Filtros e ordenação"
+              }
             >
-              <LuListFilter className="mr-2 size-4" />
-              Filtros
+              <LuListFilter className="size-4" />
               {activeFilterCount > 0 && (
-                <Badge variant="secondary" className="ml-2">
+                <Badge
+                  variant="secondary"
+                  className="absolute -top-1.5 -right-1.5 h-4 min-w-4 justify-center px-1 text-[0.625rem] tabular-nums"
+                >
                   {activeFilterCount}
                 </Badge>
               )}
             </Button>
           )}
-          {actions}
+          {mobileActions ? (
+            <>
+              <div className="hidden md:contents">{actions}</div>
+              {mobilePrimary && (
+                <div className="min-w-0 flex-1 md:hidden [&>button]:w-full">{mobilePrimary}</div>
+              )}
+            </>
+          ) : (
+            actions
+          )}
+          <ToolbarMenuActionsContext value={secondaryActions}>
+            {menu ?? (secondaryActions.length > 0 ? <ToolbarOverflowMenu /> : null)}
+          </ToolbarMenuActionsContext>
         </div>
       )}
 
