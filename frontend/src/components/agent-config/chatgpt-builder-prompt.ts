@@ -37,6 +37,8 @@ const CHATGPT_URL = "https://chatgpt.com/";
 
 const DEFAULT_CHANNEL = "WhatsApp";
 const DEFAULT_DELIVERY_TITLE = "CONFIGURAÇÃO DO ATENDIMENTO";
+const DEFAULT_WRITING_RULE =
+  'Escreva falando com o assistente, em segunda pessoa ("Você atende pelo..."), em frases curtas e só com o que eu confirmei.';
 
 /** Generic domain topics/sections, used when an app has nothing more specific to ask. */
 const DEFAULT_DOMAIN_TOPICS = [
@@ -89,6 +91,16 @@ export interface ChatGptBuilderContext {
    * section (kailos: "CONFIGURAÇÃO DA LOJA"). Default "CONFIGURAÇÃO DO ATENDIMENTO".
    */
   deliveryTitle?: string;
+  /**
+   * Full replacement of the interview list (tone/greeting/domain/FAQ defaults are dropped). Use when
+   * the app's own prompt owns behavior and the tenant text must carry store FACTS only (kailos,
+   * 2026-10-09). Plain sentences; numbering is added.
+   */
+  interviewTopics?: string[];
+  /** Full replacement of the delivered `###` sections (same use as `interviewTopics`). */
+  deliverySections?: string[];
+  /** Replaces the closing "write in second person" instruction with app-specific writing rules. */
+  writingRules?: string[];
 }
 
 function bulletList(items: readonly string[]): string {
@@ -128,6 +140,7 @@ function toolsBlock(tools: readonly ChatGptToolInfo[] | undefined): string {
 }
 
 function interviewTopics(context: ChatGptBuilderContext): string[] {
+  if (context.interviewTopics) return context.interviewTopics;
   return [
     "Tom de voz: nome do assistente (se tiver), mais formal ou mais próximo, se pode usar emoji, como se dirigir ao cliente.",
     "Saudação: a primeira mensagem para quem chega.",
@@ -138,6 +151,7 @@ function interviewTopics(context: ChatGptBuilderContext): string[] {
 }
 
 function deliverySections(context: ChatGptBuilderContext): string[] {
+  if (context.deliverySections) return context.deliverySections;
   return [
     "Identidade",
     "Saudação",
@@ -153,6 +167,9 @@ function buildChatGptBuilderPrompt(context: ChatGptBuilderContext = {}): string 
   const topics = interviewTopics(context).map((topic, index) => `${index + 1}. ${topic}`);
   const sections = deliverySections(context).map((section) => `### ${section}`);
   const deliveryTitle = context.deliveryTitle?.trim() || DEFAULT_DELIVERY_TITLE;
+  const closing = context.writingRules
+    ? `Regras de escrita:\n${bulletList(context.writingRules)}`
+    : DEFAULT_WRITING_RULE;
 
   return `${openingLine(context)}${knownFactsBlock(context)}
 
@@ -169,7 +186,7 @@ No fim, entregue UM único bloco de código Markdown, pronto para copiar, com es
 ## ${deliveryTitle}
 ${sections.join("\n")}
 
-Escreva falando com o assistente, em segunda pessoa ("Você atende pelo..."), em frases curtas e só com o que eu confirmei.`;
+${closing}`;
 }
 
 /** chatgpt.com link with the prompt already typed for this business (empty context is fine). */
