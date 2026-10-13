@@ -159,6 +159,19 @@ route-guards precisa passar `search` ao `beforeLoad`.
   álbum; uma a uma (upload + envio por foto) chegava pingando. **Sem legenda nas fotos**: a ficha curta
   (título, km, preço) vai como texto ANTES do álbum; o comentário da IA vem depois.
 
+## Texto com a formatação do WhatsApp (kailos, 2026-10-13)
+
+- Corpo de mensagem e legenda de álbum renderizam por **`WhatsAppText`** (`components/whatsapp/`),
+  que usa o parser puro `lib/whatsapp/whatsapp-format.ts` — o mesmo que o cliente vê no celular:
+  `*negrito*`, `_itálico_`, `~tachado~`, ``` ```mono``` ```, `` `código` ``, `- `/`* ` lista,
+  `1. ` numerada, `> ` citação, bloco ``` de várias linhas, links. Marcador só vale colado no texto
+  e em fronteira de palavra (`2*3*4` e `a_b_c` ficam texto); URL é extraída antes (`_` de URL não
+  vira itálico). Cor herda da bolha (`currentColor`). **NUNCA** `renderTextWithLinks`/texto cru.
+- **IA → WhatsApp** (backend): a resposta do agente passa por `markdown_to_whatsapp`
+  (`services/…/whatsapp/whatsapp_markup.py`) antes do envio — `**x**`/`__x__` → `*x*`, `~~x~~` →
+  `~x~`, `# Título` → `*Título*`, `[t](url)` → `t: url`. O prompt pede a sintaxe do WhatsApp; isto é
+  a rede de segurança (o WhatsApp não entende Markdown e o cliente veria os símbolos).
+
 ## Tema — vars `--wa-*` (exceção deliberada a "sem cor crua")
 
 O inbox imita a identidade do canal. As cores vivem **escopadas** em `.whatsapp-theme` (+ variante

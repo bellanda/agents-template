@@ -40,6 +40,16 @@ Todo teste que envolve tempo tem dois lados: o **dado** (a data semeada) e o **r
 - **Acoplamento indireto**: dado relativo muda o **ano**. Constante derivada de ano (faixa etária, competência, exercício fiscal, safra) tem que derivar do MESMO lugar, senão o teste continua passando medindo outra coisa — falha silenciosa, pior que vermelho.
 - Data absoluta em par casado (`DEFAULT_EVAL_AT` + `DEFAULT_EVENT_START_AT`, ambos injetados) é **correta e deve continuar absoluta**: comente o porquê, ou alguém "conserta" e cria a falha que não existia.
 
+## Velocidade da suíte — paralela por padrão (decisão 2026-10-13)
+
+- **pytest roda em paralelo** (`pytest-xdist`, `-n min(nproc, 8)` no `check.sh`; `--serial`/`PYTEST_WORKERS=0` = escape). Kailos: 4.682 testes de ~15 min para ~2 min.
+- **Banco por worker**: o controller do xdist roda `dbmate up` UMA vez em `test_<app>_template`; cada worker clona `CREATE DATABASE test_<app>_<gwN> TEMPLATE …` (Valkey socket e app yaml também por worker, sufixo idempotente). Teste que commita de verdade em conexão própria é seguro porque o banco é do worker. NUNCA hardcode nome/DSN do banco de teste — importe `TEST_DATABASE_DSN` do `tests.conftest`.
+- **Uma conexão por processo**: `db_conn` reusa a conexão da sessão (`_shared_test_connection()`), cada teste numa transação com rollback + `conn.reset()`; reconecta se o teste a fechou. Abrir conexão por teste (~18ms de SCRAM+fork) era mais da metade do tempo da suíte.
+- **Postgres de teste** (`tests/compose.yml`): `autovacuum=off` (com ele, estatísticas do template/clones viravam o plano e um cenário longo travava — 3/5 runs paralelos estouravam), `fsync=off`, `synchronous_commit=off`, `full_page_writes=off`, `max_connections=300`. Só no DB efêmero de teste.
+- `nats-server` do teste roda pelo binário do venv (não `uv run`, o SIGTERM não chega e pendura 5s). Sem `dbmate drop` no teardown (a sessão seguinte já dropa).
+- Teste de lógica pura no front: `// @vitest-environment node` (jsdom custa ~40% do vitest). Espera de evento assíncrono = sinal (sentinela/NOTIFY), nunca `sleep` fixo.
+- Canônico: kailos `backend/tests/conftest.py` + `backend/tests/compose.yml` + `check.sh`.
+
 ## Scope
 
 - **Integration-first via HTTP.** Testa comportamento observável pelo public interface.

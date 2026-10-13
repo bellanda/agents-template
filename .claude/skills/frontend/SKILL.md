@@ -238,6 +238,7 @@ Padronizadas em 2026-10-01 (código canônico = kailos, salvo onde indicado). N�
 | Tela / peça                                                         | Reference                                         |
 | ------------------------------------------------------------------- | ------------------------------------------------- |
 | Hub de configurações `?settings=` (empresa, membros, equipes, IA…)  | `references/settings-dialog.md`                   |
+| Módulo com muitas áreas → 1 item na sidebar + hub de cards          | `references/module-hub.md`                        |
 | Equipes (filas humanas do atendente de IA): grid de cards + editor  | `references/queues-editor.md`                     |
 | Inbox WhatsApp `/chat` (conversas, janela, envio otimista, SSE)     | `references/whatsapp-inbox.md`                    |
 | Config do agente de IA do tenant (Markdown + ChatGPT + versões; tools como permissões) | `references/agent-instructions.md` (template `agent-config/`) |
