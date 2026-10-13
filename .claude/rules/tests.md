@@ -48,6 +48,7 @@ Todo teste que envolve tempo tem dois lados: o **dado** (a data semeada) e o **r
 - **Postgres de teste** (`tests/compose.yml`): `autovacuum=off` (com ele, estatísticas do template/clones viravam o plano e um cenário longo travava — 3/5 runs paralelos estouravam), `fsync=off`, `synchronous_commit=off`, `full_page_writes=off`, `max_connections=300`. Só no DB efêmero de teste.
 - `nats-server` do teste roda pelo binário do venv (não `uv run`, o SIGTERM não chega e pendura 5s). Sem `dbmate drop` no teardown (a sessão seguinte já dropa).
 - Teste de lógica pura no front: `// @vitest-environment node` (jsdom custa ~40% do vitest). Espera de evento assíncrono = sinal (sentinela/NOTIFY), nunca `sleep` fixo.
+- **Coleta determinística** (xdist exige a MESMA lista de testes em todo worker): `parametrize` com valor não determinístico (bytes de PDF/imagem gerados, datas, uuid) precisa de id estável — o hook `pytest_make_parametrize_id` do conftest canônico já dá id fixo a qualquer `bytes`; para outros tipos use `pytest.param(..., id="…")`. Senão o id muda por worker e a suíte aborta com "Different tests were collected" (optimuslar, 2026-10-13).
 - Canônico: kailos `backend/tests/conftest.py` + `backend/tests/compose.yml` + `check.sh`.
 
 ## Scope
@@ -65,14 +66,15 @@ Todo teste que envolve tempo tem dois lados: o **dado** (a data semeada) e o **r
 
 ## Coverage por rota (mínimo)
 
-| Caso                                       | Status             |
-| ------------------------------------------ | ------------------ |
-| Success path                               | 200/201            |
-| Auth ausente/inválido                      | 401 (se aplicável) |
-| Permissão insuficiente                     | 403 (se aplicável) |
-| Resource não encontrado                    | 404 (se aplicável) |
-| Payload inválido / business rule violation | 400 / 409 / 422    |
-| Empty result em list/search                | 200 + empty list   |
+| Caso                                       | Status                                                           |
+| ------------------------------------------ | ---------------------------------------------------------------- |
+| Success path                               | 200/201                                                          |
+| Auth ausente/inválido                      | 401 (se aplicável)                                               |
+| Permissão insuficiente                     | 403 (se aplicável)                                               |
+| Resource não encontrado                    | 404 (se aplicável)                                               |
+| Recurso de OUTRA org (GET/PATCH/DELETE)    | 404 — tenancy em toda rota por id, não só na transição de status |
+| Payload inválido / business rule violation | 400 / 409 / 422                                                  |
+| Empty result em list/search                | 200 + empty list                                                 |
 
 ## Assertions — business outcomes
 
