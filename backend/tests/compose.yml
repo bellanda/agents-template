@@ -1,8 +1,8 @@
 # Ephemeral Postgres for pytest (agents-template), started by check.sh.
 # Values must match the test DATABASE_URL set in backend/tests/conftest.py:
-#   postgres://postgres:postgres@localhost:5433/test_agents_template?sslmode=disable
+#   postgres://postgres:postgres@localhost:${TEST_DB_PORT:-5441}/test_agents_template?sslmode=disable
 # Run: docker compose -p agents-template-tests -f compose.yml up -d --wait
-# Host port 5433 is shared by every project's test DB: only one suite may run at a time.
+# Host port 5441 (default) does not collide with the fleet apps (5433/5434/5436); override with TEST_DB_PORT.
 services:
   postgres-test:
     image: postgres:18-trixie
@@ -12,8 +12,27 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: test_agents_template
       TZ: UTC
+    # Throwaway DB, tuned for test speed AND plan determinism (xdist, 2026-10-13):
+    # - autovacuum=off: a vacuumed/analyzed EMPTY table gets reltuples=0 (planner assumes 1 row ->
+    #   nested loops + seq scans) while a never-analyzed one gets reltuples=-1 (assumes ~10 pages ->
+    #   hash joins). Whether autovacuum touched the template/clone before a test flipped plans
+    #   (kailos: a correlated-COUNT query ran minutes vs seconds -> flaky hang). Off = stable plans.
+    # - fsync/synchronous_commit/full_page_writes off: no durability needed; faster commits and
+    #   CREATE DATABASE ... TEMPLATE clones.
+    command:
+      - postgres
+      - -c
+      - autovacuum=off
+      - -c
+      - fsync=off
+      - -c
+      - synchronous_commit=off
+      - -c
+      - full_page_writes=off
+      - -c
+      - max_connections=300
     ports:
-      - "5433:5432"
+      - "${TEST_DB_PORT:-5441}:5432"
     volumes:
       - postgres-test-data:/var/lib/postgresql
     healthcheck:

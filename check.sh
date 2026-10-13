@@ -2,7 +2,10 @@
 # Local check — herda o TTY (cores + interatividade preservadas), só filtra
 # o output extenso do prettier e do vite.
 #
-# Uso: bash check.sh
+# Uso: bash check.sh [--serial]
+#   --serial (ou PYTEST_WORKERS=0): pytest sem xdist. Default = pytest-xdist com
+#   PYTEST_WORKERS workers (default min(nproc, 8)); cada worker clona o template do banco
+#   de teste (ver backend/tests/conftest.py). TEST_DB_PORT exportado vai ao compose + conftest.
 #
 # Script CANÔNICO — padronizado entre os projetos.
 # - PROJECT vem do nome da pasta → isola o compose de teste por projeto.
@@ -19,6 +22,20 @@ REPO="$(cd "$(dirname "$0")" && pwd)"
 PROJECT="$(basename "${REPO}")"
 
 FAILED=()
+
+if [ "${1:-}" = "--serial" ]; then
+    PYTEST_WORKERS=0
+    shift
+fi
+# xdist: 8 foi o ponto doce medido no kailos (14 vCPU: `-n auto` perdeu para 8 por contenção
+# de Postgres/IO). O Postgres é um só; cada worker tem o seu banco clonado.
+DEFAULT_WORKERS="$(nproc 2>/dev/null || echo 4)"
+[ "${DEFAULT_WORKERS}" -gt 8 ] && DEFAULT_WORKERS=8
+PYTEST_WORKERS="${PYTEST_WORKERS:-${DEFAULT_WORKERS}}"
+PYTEST_ARGS=(--tb=short)
+if [ "${PYTEST_WORKERS}" != "0" ]; then
+    PYTEST_ARGS+=(-n "${PYTEST_WORKERS}")
+fi
 
 # Vite build: keep everything except `dist/...` chunk lines under 500 kB.
 build_filter() {
@@ -69,10 +86,10 @@ if [ -n "$(find "${REPO}/backend/tests" -name 'test_*.py' -print -quit)" ]; then
     docker compose -p "${PROJECT}-tests" -f compose.yml down -v --remove-orphans
     if docker compose -p "${PROJECT}-tests" -f compose.yml up -d --wait; then
         cd "${REPO}/backend"
-        run "pytest" uv run pytest --tb=short
+        run "pytest" uv run pytest "${PYTEST_ARGS[@]}"
         cd "${REPO}/backend/tests"
     else
-        # Porta 5433 ocupada por outro projeto (os 5 composes bindam a mesma) ou
+        # Porta de teste ocupada por outro projeto (TEST_DB_PORT) ou
         # healthcheck estourado. Rodar pytest agora o apontaria para o banco de
         # OUTRO projeto e a suíte passaria medindo a coisa errada.
         FAILED+=("docker compose up (DB de teste)")

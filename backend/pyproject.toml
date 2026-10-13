@@ -32,7 +32,11 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["pytest>=9.0.3"]
+dev = [
+    "pytest>=9.0.3",
+    "pytest-asyncio>=1.4.0",
+    "pytest-xdist>=3.8.0",
+]
 
 [build-system]
 requires = ["hatchling"]
@@ -48,3 +52,7 @@ packages = ["config", "src/api"]
 [tool.pytest.ini_options]
 # Only the tracked suite: backend/temp/ is git-ignored scratch whose debug scripts hit the network.
 testpaths = ["tests"]
+asyncio_mode = "auto"
+# One loop per session: the shared per-process DB connection (tests/conftest.py) is bound to it.
+asyncio_default_fixture_loop_scope = "session"
+asyncio_default_test_loop_scope = "session"
