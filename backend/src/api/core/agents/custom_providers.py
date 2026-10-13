@@ -98,16 +98,20 @@ def init_openrouter_model(
     reasoning_effort: str | None = None,
     provider_order: tuple[str, ...] = (),
     allow_provider_fallbacks: bool = True,
+    prompt_cache_control: bool = False,
     **kwargs: Any,
 ) -> ChatOpenRouter:
     """Initialize an OpenRouter model (OpenAI-compatible endpoint).
 
-    `reasoning_effort` (low | medium | high) and upstream routing travel in `extra_body` —
+    `reasoning_effort` (low | medium | high | xhigh | max) and upstream routing travel in `extra_body` —
     they are OpenRouter extensions over the OpenAI schema. `usage.include` asks for the real
     upstream cost back in the response. Keys come from `settings` via `config/integrations.py`
     (SecretStr unwrapped there), never from `os.getenv` here.
     """
     extra_body: dict[str, Any] = {**kwargs.pop("extra_body", {}), "usage": {"include": True}}
+    if prompt_cache_control:
+        # Anthropic-family models only cache when the body carries this top-level field.
+        extra_body.setdefault("cache_control", {"type": "ephemeral"})
     if reasoning_effort is not None:
         extra_body["reasoning"] = {"effort": reasoning_effort}
     elif reasoning:
@@ -143,15 +147,15 @@ def init_openrouter_model(
 def init_model(config: ModelConfig, **overrides: Any) -> BaseChatModel:
     """Instantiate a LangChain model from a ModelConfig with optional parameter overrides.
 
-    Config defaults (reasoning, reasoning_effort, upstream routing) apply unless overridden.
+    Config defaults (reasoning, reasoning_effort, upstream routing, prompt_cache_control) apply unless overridden.
 
     The whole stack talks to OpenRouter — the single chat gateway. `Models.Groq` exists in
     the registry only as the price row for audio transcription, which is a multipart POST in
     `core/agents/media.py` and never goes through here.
 
     Example:
-        init_model(Models.OpenRouter.GLM_5_3_FLASH)
-        init_model(Models.OpenRouter.GLM_5_3_FLASH, streaming=False)
+        init_model(Models.OpenRouter.CLAUDE_HAIKU_5_5)
+        init_model(Models.OpenRouter.CLAUDE_HAIKU_5_5, streaming=False)
     """
     if config.provider != "openrouter":
         raise ValueError(
@@ -168,6 +172,7 @@ def init_model(config: ModelConfig, **overrides: Any) -> BaseChatModel:
         allow_provider_fallbacks=overrides.pop(
             "allow_provider_fallbacks", config.allow_provider_fallbacks
         ),
+        prompt_cache_control=overrides.pop("prompt_cache_control", config.prompt_cache_control),
         **overrides,
     )
 

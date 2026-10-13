@@ -12,7 +12,7 @@ A modular agents layer that you can run standalone or drop into an existing Fast
 **This template is the CANONICAL AI layer for every app** (kailos, balizap, nexarena, optimuslar,
 akmeo — user decision 2026-09-30). Improvements are made here first and propagated with
 `backend/scripts/sync_agents_to_another_fastapi_project.py`. Fixed stack (rule
-`.claude/rules/ai-agents.md`): OpenRouter **GLM 5.3 Flash** for text/image/video, Groq **Whisper**
+`.claude/rules/ai-agents.md`): OpenRouter **Claude Haiku 5.5** (effort low) for text/image (video read as frames), Groq **Whisper**
 for audio — nothing else. Full spec for agents: [`AGENTS_SUBSYSTEM.md`](AGENTS_SUBSYSTEM.md).
 
 **Backend:** FastAPI + LangGraph + LangChain + asyncpg (PostgreSQL) + Granian
@@ -28,7 +28,7 @@ Covers:
 - React chat UI with model selector, reasoning display, attachments, and thread management
 - One-shot helpers: `complete()` / `complete_structured()` with limiter, retry and real cost (`core/agents/llm.py`)
 - Subagent delegation (`core/agents/subagents.py`, example `agents/research_supervisor_agent`)
-- Media → text: Whisper audio, GLM image/video, multi-image calls (`media.py`), scanned-PDF OCR (`ocr.py`)
+- Media → text: Whisper audio, Haiku image + video-as-frames, multi-image calls (`media.py`), scanned-PDF OCR (`ocr.py`)
 - Cost per call in `agent_message_usage` (real upstream cost when OpenRouter reports it), per-tenant monthly totals
 - Tenant agent instructions: versioned Markdown per tenant+agent, built in ChatGPT, appended at runtime (`/agent-config` screen)
 - Tool results rendered as cards via a `{type, data}` envelope (`tool_envelope.py`)
@@ -287,7 +287,7 @@ config = AgentConfig(
     name="My Agent",
     description="What it does and which provider it uses",
     system_prompt="You are...",
-    model=init_model(Models.OpenRouter.GLM_5_3_FLASH),
+    model=init_model(Models.OpenRouter.CLAUDE_HAIKU_5_5),
     tools=[my_tool],
     suggestions=["Try asking me about...", "What is..."],
     save_to_db=True,   # False = stateless, no history
@@ -311,11 +311,11 @@ Restart the server — the agent is auto-discovered and registered.
 ## Available Models
 
 Registry: `from api.core.agents.models import Models`. Instantiate with
-`init_model(Models.OpenRouter.GLM_5_3_FLASH)` (`core/agents/custom_providers.py`).
+`init_model(Models.OpenRouter.CLAUDE_HAIKU_5_5)` (`core/agents/custom_providers.py`).
 
 | Access                                 | Provider   | Notes                                                                 |
 | -------------------------------------- | ---------- | --------------------------------------------------------------------- |
-| `Models.OpenRouter.GLM_5_3_FLASH`      | openrouter | reasoning; text + image + video; no inline PDF/audio; US upstreams pinned |
+| `Models.OpenRouter.CLAUDE_HAIKU_5_5`    | openrouter | reasoning low; text + image (video via frames); explicit prompt cache; no inline PDF/audio; US upstreams pinned |
 | `Models.Groq.WHISPER_LARGE_V3_TURBO`   | groq       | transcription; **not a chat model**                                   |
 
 `WHISPER_LARGE_V3_TURBO` does not go through `init_model` (raises `ValueError`): it is a multipart POST in

@@ -1,7 +1,7 @@
 """The models a tenant (or the chat picker) may choose — label + price for the UI.
 
 Today it is ONE model, and that is the decision, not an incomplete state: the whole stack
-runs on OpenRouter GLM 5.3 Flash, which keeps inference jurisdiction auditable in one place
+runs on OpenRouter Claude Haiku 5.5, which keeps inference jurisdiction auditable in one place
 (`provider_order` in models.py). The catalog still exists because it carries the LABEL and
 PRICE shown on screen — the account owner's decision is cost per run — and because a second
 option enters here without touching routes or schema. Served at `GET /agents/model-catalog`.
@@ -47,9 +47,9 @@ class ModelOption:
 
 AGENT_MODELS: Final[tuple[ModelOption, ...]] = (
     ModelOption(
-        Models.OpenRouter.GLM_5_3_FLASH,
-        "GLM 5.3 Flash",
-        "Modelo padrão: texto, imagem e vídeo. Processamento nos EUA e custo real por chamada.",
+        Models.OpenRouter.CLAUDE_HAIKU_5_5,
+        "Claude Haiku 5.5",
+        "Modelo padrão: texto e imagem (vídeo lido por quadros). Processamento nos EUA e custo real por chamada.",
     ),
 )
 

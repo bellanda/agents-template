@@ -22,7 +22,7 @@ markdown, com os links das fontes. Não converse com o usuário: seu leitor é o
 
 # Built once at import (stateless: `checkpointer=False`, see core/agents/subagents.py).
 researcher = create_agent(
-    model=init_model(Models.OpenRouter.GLM_5_3_FLASH, max_tokens=RESEARCHER_MAX_TOKENS),
+    model=init_model(Models.OpenRouter.CLAUDE_HAIKU_5_5, max_tokens=RESEARCHER_MAX_TOKENS),
     tools=[web_search],
     system_prompt=RESEARCHER_PROMPT,
     checkpointer=False,

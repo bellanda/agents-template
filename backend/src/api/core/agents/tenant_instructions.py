@@ -7,14 +7,14 @@ text comes after it, for two reasons:
 
 * **Platform rules win.** The base prompt states what the platform guarantees (tools, safety,
   disclosure); the tenant text adds business facts and tone and cannot silently replace it.
-* **Provider prefix cache.** OpenRouter/GLM caching is implicit on the prompt PREFIX; a static
+* **Provider prefix cache.** Anthropic caching (`prompt_cache_control`) works on the prompt PREFIX; a static
   base prompt first keeps it cacheable across tenants (see `prompt_cache.py`).
 
 Scope comes from the run config: `configurable.tenant_id` + `metadata.agent_id` (set by
 `services/agents/streaming.py` / `executors.py` from the auth seam). No tenant, no config, or a
 DB error → the base prompt alone: instructions are an enhancement, never a reason to fail a turn.
 
-`agent_configs.model_id` is NOT applied here: the catalog has one model (GLM 5.3 Flash), so the
+`agent_configs.model_id` is NOT applied here: the catalog has one model (Claude Haiku 5.5), so the
 column only feeds the config screen. When a second catalog model exists, swap it in this
 middleware with `request.override(model=init_model_by_id(model_id))`.
 """

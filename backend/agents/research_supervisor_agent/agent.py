@@ -15,7 +15,7 @@ from api.core.agents.models import Models, model_capabilities_dict
 from api.core.agents.schemas import AgentConfig, AgentSuggestionInstant
 from api.core.agents.tenant_instructions import tenant_instructions_middleware
 
-PRIMARY_MODEL = Models.OpenRouter.GLM_5_3_FLASH
+PRIMARY_MODEL = Models.OpenRouter.CLAUDE_HAIKU_5_5
 
 config = AgentConfig(
     name="Supervisor de Pesquisa",

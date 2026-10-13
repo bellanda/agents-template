@@ -38,15 +38,15 @@ resumidos (só config + tools):
 | Arquivo | Responsabilidade |
 | --- | --- |
 | `models.py` | `ModelConfig` (provider, pricing, capabilities, `provider_order` = jurisdição) + registro `Models` + `compute_cost_usd`/`round_cost_up` (`COST_DECIMAL_PLACES`) + `iter_model_configs` / `find_model_config` / `find_model_config_by_id` + `model_capabilities_dict` + `PROVIDER_ALIASES`/`canonical_provider`. |
-| `model_catalog.py` | Modelos que o tenant pode escolher, com **label + preço** para a tela (`GET /agents/model-catalog`). Hoje só GLM 5.3 Flash; valida no import que todo slug existe no registro. (origem: akmeo) |
+| `model_catalog.py` | Modelos que o tenant pode escolher, com **label + preço** para a tela (`GET /agents/model-catalog`). Hoje só Claude Haiku 5.5; valida no import que todo slug existe no registro. (origem: akmeo) |
 | `llm.py` | **Chamada one-shot** fora de agente: `complete()` (texto) e `complete_structured()` (Pydantic via function calling) + `UsageContext` (quem paga) + `LlmResult` (custo real/estimado) + `with_llm_retry` (CapacityLimiter do processo + retry só de erro transitório). (origem: akmeo `llm.py`) |
 | `subagents.py` | `run_subagent()` + `SUBAGENT_RUN_TAG` — supervisor chama especialista como tool; especialista stateless (`checkpointer=False`), fora do stream do chat, custo sob `agent_id:<nome>`. |
 | `tenant_instructions.py` | `tenant_instructions_middleware` — anexa o Markdown do tenant (`agent_configs`) ao system prompt base, em runtime, com memo TTL. |
 | `tool_envelope.py` | Envelope `{"type", "data"}` para tool result virar card no front (`action_confirmation`/`action_error`). (origem: optimuslar) |
-| `ocr.py` | `ocr_document()` — PDF escaneado / foto de documento → Markdown, 1 chamada GLM por página em paralelo, detecção de loop degenerado, página digital pula a rede. (origem: optimuslar `ocr_service`) |
+| `ocr.py` | `ocr_document()` — PDF escaneado / foto de documento → Markdown, 1 chamada Haiku por página em paralelo, detecção de loop degenerado, página digital pula a rede. (origem: optimuslar `ocr_service`) |
 | `custom_providers.py` | `init_model(cfg)` / `init_model_by_id(id)` + `init_<provider>_model`. `ChatOpenRouter` (reasoning + `model_provider` + custo real do upstream). |
 | `callbacks.py` | `UsageRecorderCallback` — persiste 1 linha em `agent_message_usage` por chamada de LLM (metadata `thread_id`, `agent_id`, `user_id`, `client_id`, `tenant_id`). |
-| `media.py` | Mídia em texto: `media_to_text(bytes, mime_type=..., usage=UsageContext, message_id=...)` com a cadeia Whisper (áudio) / GLM 5.3 Flash (imagem, **vídeo**) → `None`; `describe_images()` (N imagens numa chamada, devolve `VisionResult` com custo); retry por status; custo do Whisper lançado à mão. Sem acoplamento a canal — ver §8-B. |
+| `media.py` | Mídia em texto: `media_to_text(bytes, mime_type=..., usage=UsageContext, message_id=...)` com a cadeia Whisper (áudio) / Claude Haiku 5.5 (imagem; **vídeo** vira 6 quadros enviados como imagens) → `None`; `describe_images()` (N imagens numa chamada, devolve `VisionResult` com custo); retry por status; custo do Whisper lançado à mão. Sem acoplamento a canal — ver §8-B. |
 | `checkpointer.py` | `AsyncPostgresSaver` singleton (`init_checkpointer`/`get_checkpointer`/`close_checkpointer`). |
 | `history_window.py` | `sliding_window_middleware` — corta o histórico enviado ao LLM por orçamento de tokens/mensagens. |
 | `prompt_cache.py` | Memo TTL in-process de fragmentos de prompt vindos do DB (instruções do tenant). NÃO é o cache do provedor — esse é implícito por prefixo (ver §10). |
@@ -106,7 +106,7 @@ ver §14), rota `routes/agent-config.tsx`, `lib/api.ts` (fetchers + `MAX_PROMPT_
 
 ---
 
-## 2. Registro de modelos & stack única (OpenRouter GLM 5.3 Flash / Groq Whisper)
+## 2. Registro de modelos & stack única (OpenRouter Claude Haiku 5.5 / Groq Whisper)
 
 `ModelConfig` (frozen dataclass) em `core/agents/models.py`:
 
@@ -116,10 +116,12 @@ class ModelConfig:
     model_id: str
     provider: str                      # openrouter | groq
     reasoning: bool = False            # emite reasoning_content no stream
-    reasoning_effort: str | None = None  # low | medium | high  (OpenRouter)
+    reasoning_effort: str | None = None  # low | medium | high | xhigh | max  (OpenRouter)
     input_price_per_1m: float = 0.0
     cached_input_price_per_1m: float = 0.0
+    cache_write_price_per_1m: float = 0.0  # Anthropic cobra escrita de cache a 1.25x
     output_price_per_1m: float = 0.0
+    prompt_cache_control: bool = False  # manda cache_control:ephemeral no body (Anthropic só faz cache assim)
     supports_image_input: bool = False
     supports_pdf_input: bool = False
     supports_audio_input: bool = False
@@ -129,9 +131,9 @@ class ModelConfig:
 ```
 
 **OpenRouter (gateway único de chat).** `model_id` é o slug do OpenRouter
-(`z-ai/glm-5.3-flash`) e o mesmo modelo é servido por vários upstreams com preço, quantização e
-jurisdição diferentes — `provider_order` declara os upstreams aceitos (`coreweave`, `fireworks`,
-`deepinfra`, todos dos EUA) e `allow_provider_fallbacks=False` fixa nessa lista: um 429 reroteia
+(`anthropic/claude-haiku-5.5`) e o mesmo modelo é servido por vários upstreams com preço, quantização e
+jurisdição diferentes — `provider_order` declara os upstreams aceitos (`anthropic`, `amazon-bedrock/us-east-1`,
+`google-vertex/us`, todos dos EUA) e `allow_provider_fallbacks=False` fixa nessa lista: um 429 reroteia
 dentro dela em vez de cair em qualquer provedor do slug. Com `True` (default do dataclass) o gateway
 reencaminha livremente. O pricing no `ModelConfig` é o do primeiro upstream e serve de fallback:
 `usage.cost` reportado pelo OpenRouter (custo real do upstream roteado) vence (ver §7).
@@ -140,10 +142,10 @@ reencaminha livremente. O pricing no `ModelConfig` é o do primeiro upstream e s
 
 | Uso | Modelo | input / cached / output | Notas |
 | --- | --- | --- | --- |
-| Texto, imagem e vídeo | OpenRouter `z-ai/glm-5.3-flash` (`Models.OpenRouter.GLM_5_3_FLASH`) | 0.15 / 0 / 0.50 | `reasoning_effort="high"`. Multimodal nativo: o mesmo modelo conversa e lê imagem/vídeo. Não aceita PDF nem áudio inline. |
+| Texto e imagem (vídeo por quadros) | OpenRouter `anthropic/claude-haiku-5.5` (`Models.OpenRouter.CLAUDE_HAIKU_5_5`) | 0.10 / 0.01 (read) / 0.50; write 0.125 | `reasoning_effort="low"` (medium+ estoura a latência no WhatsApp). Cache só funciona com `cache_control` no body (`prompt_cache_control=True`). Aceita PDF inline mas fica desligado (`supports_pdf_input=False`, vai por MarkItDown/OCR). Sem vídeo nem áudio nativos. Tokenizer ~1.6x mais tokens que o GLM em pt-BR. |
 | Áudio → texto | Groq `whisper-large-v3-turbo` (`Models.Groq.WHISPER_LARGE_V3_TURBO`) | 0.04 **por hora de áudio** | Não é chat model; POST multipart em `media.py` (ver §8-B). |
 
-**Regra:** atendente padrão = GLM 5.3 Flash via OpenRouter; áudio passa antes pelo Whisper (Groq) em
+**Regra:** atendente padrão = Claude Haiku 5.5 (effort low) via OpenRouter (decisão 2026-10-10, bake-off: metade do custo do GLM high, mesma latência, 6-9x menos fatos inventados); áudio passa antes pelo Whisper (Groq) em
 `media.py`. Trocar de modelo = trocar 1 `ModelConfig` (as flags `supports_*` religam/desligam cada
 ramo de mídia); o resto (custo, streaming, capabilities) acompanha automático.
 
@@ -174,10 +176,10 @@ Cada `agents/<name>/agent.py` expõe:
 config = AgentConfig(
     name="...", description="...",
     system_prompt=SYSTEM_PROMPT,
-    model=init_model(Models.OpenRouter.GLM_5_3_FLASH),
+    model=init_model(Models.OpenRouter.CLAUDE_HAIKU_5_5),
     tools=[tool_a, tool_b],
     save_to_db=True,
-    capabilities=model_capabilities_dict(Models.OpenRouter.GLM_5_3_FLASH),
+    capabilities=model_capabilities_dict(Models.OpenRouter.CLAUDE_HAIKU_5_5),
     suggestions=[...],
 )
 
@@ -323,9 +325,9 @@ anexo sem descrição).
 
 ```
 áudio  → Whisper (Groq)        --falhou-->  None
-imagem → GLM 5.3 Flash (OpenRouter)  --falhou-->  None
-vídeo  → GLM 5.3 Flash (OpenRouter, parte `video_url`, até 20 MB inline)  --falhou-->  None
-PDF    → não enriquecido inline (GLM não aceita PDF) → use `ocr.ocr_document` (página→imagem)
+imagem → Claude Haiku 5.5 (OpenRouter)  --falhou-->  None
+vídeo  → 6 quadros (cv2, lado ≤1024px) como imagens, até 20 MB (modelo com vídeo nativo usa `video_url`); áudio do vídeo se perde  --falhou-->  None
+PDF    → não enriquecido inline (flag `supports_pdf_input=False`) → use `ocr.ocr_document` (página→imagem)
 ```
 
 ```python
@@ -346,9 +348,9 @@ objeto em `llm.complete`, `media`, `ocr`, e é o que carrega `tenant_id` para o 
 Quatro decisões que o módulo encoda, e as três primeiras são exatamente onde os projetos que
 copiaram esse padrão à mão erraram:
 
-1. **Áudio é Whisper ou nada.** GLM 5.3 Flash não aceita áudio inline, então não há degrau
+1. **Áudio é Whisper ou nada.** Haiku 5.5 não aceita áudio inline, então não há degrau
    multimodal de queda para áudio; transcrição é barata e dispensa raciocínio.
-2. **A visão passa pelo LangChain** (`init_model(Models.OpenRouter.GLM_5_3_FLASH)` com
+2. **A visão passa pelo LangChain** (`init_model(Models.OpenRouter.CLAUDE_HAIKU_5_5)` com
    `callbacks=[usage_recorder]`), e não pelo SDK cru. É o que faz a linha cair em
    `agent_message_usage` **de graça** — pelo atalho do SDK o custo da mídia simplesmente não existe
    para nenhum teto de gasto.
@@ -408,8 +410,9 @@ storage (B2/S3/Azure/GCS) atrás de um `StorageBackend` Protocol — assinatura 
   recente ao mais antigo, substitui `ToolMessage` pesados por placeholder até o orçamento
   (`MAX_MESSAGES_TO_LLM=80`, `MAX_TOKENS_HEURISTIC=256k`, divisor 4). Remove `ToolMessage` órfão no
   início (quebra o provedor). O histórico completo continua no checkpoint para replay na UI.
-- **Cache do provedor** (OpenRouter/GLM): implícito por **prefixo**, reportado em `cache_read` e
-  cobrado a `cached_input_price_per_1m`. A única exigência é manter o prefixo estável: system prompt
+- **Cache do provedor** (Haiku 5.5): **explícito** — `prompt_cache_control=True` faz o `init_model` mandar
+  `cache_control: {"type":"ephemeral"}` no body (sem isso não há cache). Leitura em `cache_read`
+  (`cached_input_price_per_1m`), escrita em `cache_creation` (`cache_write_price_per_1m`). Por **prefixo**; a exigência é manter o prefixo estável: system prompt
   base estático primeiro, texto do tenant/dinâmico depois (é a ordem do
   `tenant_instructions_middleware`), nada de timestamp/request id no topo.
 - **`prompt_cache.py`**: memo TTL in-process (`settings.agents.tenant_config_ttl_seconds`) das

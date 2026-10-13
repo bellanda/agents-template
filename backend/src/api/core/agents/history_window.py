@@ -38,8 +38,8 @@ from langchain_core.messages import (
 # enough to stop runaway growth after long sessions.
 # ──────────────────────────────────────────────────────────────────────────────
 MAX_MESSAGES_TO_LLM: int = 80
-# 256k is the reference context ceiling for GLM 5.3 Flash via OpenRouter — a balance between
-# rich context and cache cost. `_content_length / 4` is a heuristic (it underestimates JSON), so
+# 256k is a deliberate budget well below Haiku 5.5's 1M context — a balance between
+# rich context, latency and cache cost. `_content_length / 4` is a heuristic (it underestimates JSON), so
 # the real ceiling lands at ~150-200k tokens, leaving room for tool outputs.
 MAX_TOKENS_HEURISTIC: int = 256_000
 TOKEN_HEURISTIC_DIVISOR: int = 4

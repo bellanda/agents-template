@@ -1,10 +1,10 @@
-"""Document OCR via GLM 5.3 Flash — scanned PDFs and photos of documents into Markdown.
+"""Document OCR via Claude Haiku 5.5 — scanned PDFs and photos of documents into Markdown.
 
 Why it exists: MarkItDown reads a PDF's TEXT LAYER. A scanned PDF (or a photo of a paper)
-has none, so MarkItDown returns "" and the agent answers "I can't read the file". GLM 5.3 Flash
-does not take PDFs inline (`supports_pdf_input=False`), but it reads images — so each page is
+has none, so MarkItDown returns "" and the agent answers "I can't read the file". Haiku 5.5
+does accept PDFs inline, but we keep it off (`supports_pdf_input=False`), but it reads images — so each page is
 rendered to a JPEG and transcribed, one parallel request per page. No dedicated OCR provider
-(decision 2026-09-30: the stack is OpenRouter GLM only). Generalized from optimuslar's
+(decision 2026-09-30: single OpenRouter model; Haiku 5.5 since 2026-10-10). Generalized from optimuslar's
 `services/documents/{ocr_service,page_render_service}.py`.
 
 Decisions carried over:
@@ -45,7 +45,7 @@ from api.core.logging import get_logger
 
 log = get_logger(__name__)
 
-OCR_MODEL: Final = Models.OpenRouter.GLM_5_3_FLASH
+OCR_MODEL: Final = Models.OpenRouter.CLAUDE_HAIKU_5_5
 OCR_PROMPT: Final = (
     "Transcribe this document page to markdown, verbatim, in reading order. "
     "Keep tables as markdown tables and preserve every number, symbol and accent exactly "

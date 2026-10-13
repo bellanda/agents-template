@@ -45,7 +45,7 @@ from config.settings import settings
 
 log = get_logger(__name__)
 
-DEFAULT_MODEL: ModelConfig = Models.OpenRouter.GLM_5_3_FLASH
+DEFAULT_MODEL: ModelConfig = Models.OpenRouter.CLAUDE_HAIKU_5_5
 
 _limiter = anyio.CapacityLimiter(settings.agents.max_concurrent_llm)
 

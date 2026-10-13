@@ -6,14 +6,15 @@ chain of steps and a floor:
 
     audio  → Whisper (Groq) → multimodal model, IF it takes audio → None
     image  → multimodal model                                       → None
-    video  → multimodal model, IF it takes video                    → None
+    video  → multimodal model IF it takes video, else sampled frames
+             sent as images IF it takes images                      → None
     PDF    → multimodal model, IF it takes PDF (else see `ocr.py`)  → None
 
 The "multimodal model" is the SAME one that chats (`VISION_MODEL`), not a separate vision
-model: the stack is natively multimodal. Which steps exist comes from the `ModelConfig`
-capability flags, not from an `if` written here — with GLM 5.3 Flash (text/image/video) the
-PDF branch and the audio fallback are off, and a model with `file`/`audio` turns them on
-without touching this file. Scanned PDFs are read page by page in `ocr.py`.
+model. Which steps exist comes from the `ModelConfig` capability flags, not from an `if`
+written here — with Claude Haiku 5.5 (text/image) the native-video branch, the PDF branch and
+the audio fallback are off (video becomes frames), and a model with `video`/`file`/`audio`
+turns them on without touching this file. Scanned PDFs are read page by page in `ocr.py`.
 
 Nothing here raises and nothing here knows the channel: input is `bytes` + `mime_type`,
 output is `str | None`. The caller decides what `None` means — on WhatsApp a placeholder
@@ -36,11 +37,13 @@ this by hand went wrong):
 """
 
 import base64
+import tempfile
 from collections.abc import Sequence
 from dataclasses import dataclass
 from typing import Any, Final
 
 import anyio
+import cv2
 from curl_cffi import AsyncSession
 from langchain_core.messages import HumanMessage
 
@@ -60,7 +63,7 @@ log = get_logger(__name__)
 ENRICHMENT_AGENT_ID: Final = "media-enrichment"
 
 # The chat model, not a separate vision model — it is natively multimodal.
-VISION_MODEL: Final = Models.OpenRouter.GLM_5_3_FLASH
+VISION_MODEL: Final = Models.OpenRouter.CLAUDE_HAIKU_5_5
 VISION_MAX_TOKENS: Final = 512
 
 GROQ_TRANSCRIPTION_URL: Final = "https://api.groq.com/openai/v1/audio/transcriptions"
@@ -89,6 +92,13 @@ VIDEO_INLINE_MAX_BYTES: Final = 20 * 1024 * 1024
 
 PDF_MIME: Final = "application/pdf"
 
+# Video without native video input: N evenly spaced frames sent as images, in order.
+# 6 frames x <=1024px keeps the request small and the cost at a few image tokens each.
+VIDEO_FRAME_COUNT: Final = 6
+VIDEO_FRAME_MAX_SIDE: Final = 1024
+VIDEO_FRAME_JPEG_QUALITY: Final = 80
+VIDEO_FRAMES_MIME: Final = "image/jpeg"
+
 # Prompts are pt-BR on purpose: the text they produce is shown to Brazilian end users and
 # injected into pt-BR conversations.
 IMAGE_PROMPT: Final = (
@@ -99,6 +109,11 @@ IMAGE_PROMPT: Final = (
 VIDEO_PROMPT: Final = (
     "Descreva em português, de forma objetiva, o que acontece neste vídeo, incluindo texto "
     "legível e falas relevantes. Responda apenas com a descrição, sem introduções."
+)
+VIDEO_FRAMES_PROMPT: Final = (
+    "Estas imagens são {count} quadros de UM mesmo vídeo, em ordem cronológica. Descreva em "
+    "português, de forma objetiva, o que acontece no vídeo, incluindo texto legível. O áudio "
+    "do vídeo não está disponível. Responda apenas com a descrição, sem introduções."
 )
 DOCUMENT_PROMPT: Final = (
     "Resuma em português o conteúdo deste documento, preservando números, valores e datas. "
@@ -265,6 +280,74 @@ def _content_parts(
     return None
 
 
+def _sample_video_frames(content: bytes) -> list[bytes]:
+    """Evenly spaced JPEG frames from a video (sync, CPU/IO-bound: call via a worker thread).
+
+    cv2 needs a real file path, hence the temp file. Returns [] when the video is unreadable.
+    The audio track is NOT available here, so what the customer SAYS in a video is lost —
+    accepted for now (Whisper only runs on audio messages).
+    """
+    with tempfile.NamedTemporaryFile(suffix=".mp4") as tmp:
+        tmp.write(content)
+        tmp.flush()
+        capture = cv2.VideoCapture(tmp.name)
+        try:
+            total = int(capture.get(cv2.CAP_PROP_FRAME_COUNT))
+            if total <= 0:
+                return []
+            step = total / VIDEO_FRAME_COUNT
+            wanted = sorted(
+                {min(int(step * i + step / 2), total - 1) for i in range(VIDEO_FRAME_COUNT)}
+            )
+            frames: list[bytes] = []
+            for index in wanted:
+                capture.set(cv2.CAP_PROP_POS_FRAMES, index)
+                ok, image = capture.read()
+                if not ok:
+                    continue
+                height, width = image.shape[:2]
+                ratio = VIDEO_FRAME_MAX_SIDE / max(height, width)
+                if ratio < 1:
+                    image = cv2.resize(
+                        image,
+                        (int(width * ratio), int(height * ratio)),
+                        interpolation=cv2.INTER_AREA,
+                    )
+                ok, buffer = cv2.imencode(
+                    ".jpg", image, [cv2.IMWRITE_JPEG_QUALITY, VIDEO_FRAME_JPEG_QUALITY]
+                )
+                if ok:
+                    frames.append(buffer.tobytes())
+            return frames
+        finally:
+            capture.release()
+
+
+async def _video_frame_parts(
+    content: bytes, extra_instructions: str | None
+) -> list[dict[str, Any]] | None:
+    """Message parts for a video read as sampled frames; `None` if unreadable/too large."""
+    if len(content) > VIDEO_INLINE_MAX_BYTES:
+        log.info("media_inline_too_large", byte_size=len(content), mime_type="video")
+        return None
+    try:
+        frames = await anyio.to_thread.run_sync(_sample_video_frames, content)
+    except Exception:
+        log.exception("video_frame_sampling_failed")
+        return None
+    if not frames:
+        log.info("video_unreadable")
+        return None
+    prompt = _with_extra(VIDEO_FRAMES_PROMPT.format(count=len(frames)), extra_instructions)
+    return [
+        {"type": "text", "text": prompt},
+        *(
+            {"type": "image_url", "image_url": {"url": _data_url(f, VIDEO_FRAMES_MIME)}}
+            for f in frames
+        ),
+    ]
+
+
 async def _invoke_vision(
     parts: list[dict[str, Any]], *, usage: UsageContext | None, max_tokens: int, label: str
 ) -> VisionResult | None:
@@ -312,7 +395,14 @@ async def describe_media(
     `usage` is not decoration: its thread_id/agent_id are how the `usage_recorder` writes the
     cost row. Without them the callback drops the measurement silently.
     """
-    parts = _content_parts(content, mime_type, filename, extra_instructions=extra_instructions)
+    if (
+        _family(mime_type) == "video"
+        and not VISION_MODEL.supports_video_input
+        and VISION_MODEL.supports_image_input
+    ):
+        parts = await _video_frame_parts(content, extra_instructions)
+    else:
+        parts = _content_parts(content, mime_type, filename, extra_instructions=extra_instructions)
     if parts is None:
         log.info("vision_unsupported_mime", mime_type=mime_type)
         return None
@@ -415,7 +505,7 @@ async def media_to_text(
             await record_transcription_cost(result, usage=usage, message_id=message_id)
             return result.text
         # The fallback step only exists if the model really takes audio. With a text/image
-        # model (GLM 5.3 Flash) `describe_media` would return None anyway — but the log would
+        # model (Haiku 5.5) `describe_media` would return None anyway — but the log would
         # claim a fallback happened, and it did not.
         if not VISION_MODEL.supports_audio_input:
             return None

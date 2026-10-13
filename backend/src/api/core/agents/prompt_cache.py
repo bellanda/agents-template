@@ -1,8 +1,9 @@
 """In-process TTL memo for prompt fragments that live in the DB (tenant instructions).
 
-NOT provider prompt caching. That one is automatic on OpenRouter/GLM (implicit prefix cache,
-reported as `cache_read` and billed at `cached_input_price_per_1m`) and only asks one thing of
-us: keep the PREFIX stable — static base system prompt first, per-tenant/dynamic text after,
+NOT provider prompt caching. That one is explicit for Haiku 5.5: `ModelConfig.prompt_cache_control`
+makes `init_model` send top-level `cache_control: ephemeral` (without it Anthropic caches
+nothing); reads show as `cache_read` (billed at `cached_input_price_per_1m`), writes as
+`cache_creation` (`cache_write_price_per_1m`). It still asks one thing of us: keep the PREFIX stable — static base system prompt first, per-tenant/dynamic text after,
 and never inject timestamps or request ids at the top of the prompt. `history_window.py` keeps
 older turns stable for the same reason (it masks, it does not rewrite, recent context).
 
