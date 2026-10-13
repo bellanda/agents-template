@@ -250,7 +250,7 @@ Se o projeto é v3 e você quer migrar para v4:
 - **NUNCA** crie `tailwind.config.ts` em projeto greenfield.
 - **NUNCA** `@tailwind base; @tailwind components; @tailwind utilities;` (v3 syntax).
 - **NUNCA** raw colors em componente (`bg-blue-500`, `text-zinc-900`) — sempre semantic shadcn.
-- **NUNCA** desktop-first (`max-md:` para esconder no mobile) — sempre mobile-first com scale up.
+- **NUNCA** estilo base desktop-first que o mobile precisa desfazer — base = mobile, scale up com prefixos. `max-md:`/`max-sm:` só para esconder a cópia desktop numa troca canônica (`md:hidden` + `max-md:hidden`, `max-sm:hidden` em texto secundário).
 - **NUNCA** viewport breakpoint (`md:`/`lg:`) em grid/flex de página ou componente reusável — use `@container` (`@…/main:` na página). Viewport só p/ shell, overlays e trocas mobile canônicas.
 - **NUNCA** HSL/HEX para tokens novos — use OKLCH (browser support ok desde 2023).
 - **NUNCA** plugin via `tailwind.config.ts > plugins:` em v4 — use `@plugin "..."` em CSS.

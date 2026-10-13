@@ -175,7 +175,7 @@ shape do payload) e `permissionVerbs.ts` (verbos extras). Qualquer outro arquivo
 ## Dialog de tabs com larguras estáveis
 
 Dialog multi-abas (Perfil/Funções/Permissões/Efetivas) usa **UM tamanho fixo** para todas as abas
-(`flex h-[85vh] max-h-[92vh] flex-col sm:max-w-5xl`) — NUNCA `max-w` por aba com transition (o
+(`flex h-[calc(100dvh-2rem)] flex-col sm:max-w-5xl` — nunca `vh` no call site) — NUNCA `max-w` por aba com transition (o
 dialog "pula" e a aba curta colapsa). Aba de conteúdo curto (Perfil) preenche com grid 2-col de
 blocos rotulados, não com coluna magra solta. Linha de totais (aba Efetivas) é UMA frase corrida
 alinhada à esquerda com separador ` · ` — NUNCA `justify-between` empurrando o sufixo pra borda.

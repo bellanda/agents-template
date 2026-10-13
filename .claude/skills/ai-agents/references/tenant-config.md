@@ -41,10 +41,10 @@ on/off do atendente (nasce DESLIGADO; ligar exige canal conectado), preview/test
 
 ## Catálogo de modelos
 
-`model_catalog.py`: `ModelOption(config, label, description)`; `AGENT_MODELS` hoje = GLM 5.3 Flash (1 modelo
+`model_catalog.py`: `ModelOption(config, label, description)`; `AGENT_MODELS` hoje = Claude Haiku 5.5 (label "Claude Haiku 5.5"; 1 modelo
 é a DECISÃO). `_validate()` quebra no import se um slug não existe no registry. Só modelos com credencial
-configurada. Linha legada com outro slug → migration dbmate reescrevendo para `z-ai/glm-5.3-flash`
-(precedente: balizap `20260909160000_default_model_glm_5_3_flash.sql`); `label_for()` mantém config antiga legível.
+configurada. Linha legada com outro slug → migration dbmate reescrevendo para `anthropic/claude-haiku-5.5`
+(precedente: agents-template `20261010200000_default_model_claude_haiku_5_5.sql`; linhas GLM legadas incluídas); `label_for()` mantém config antiga legível.
 
 ## Handoff humano
 

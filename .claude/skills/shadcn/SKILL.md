@@ -8,7 +8,7 @@ allowed-tools: Bash(bunx shadcn@latest *), Bash(bunx --bun shadcn@latest *)
 
 A framework for building ui, components and design systems. Components are added as source code to the user's project via the CLI.
 
-> **IMPORTANT:** Run all CLI commands using the project's package runner: `bunx shadcn@latest`, `pnpm dlx shadcn@latest`, or `bunx --bun shadcn@latest` — based on the project's `packageManager`. Examples below use `bunx shadcn@latest` but substitute the correct runner for the project.
+> **IMPORTANT:** Run all CLI commands using the project's package runner: `bunx shadcn@latest` (or `bunx --bun shadcn@latest`) — the fleet is bun-only.
 
 ## Current Project Context
 
@@ -52,7 +52,7 @@ These rules are **always enforced**. Each links to a file with Incorrect/Correct
 
 - **Items always inside their Group.** `SelectItem` → `SelectGroup`. `DropdownMenuItem` → `DropdownMenuGroup`. `CommandItem` → `CommandGroup`.
 - **Use `asChild` (radix) or `render` (base) for custom triggers.** Check `base` field from `bunx shadcn@latest info`. → [base-vs-radix.md](./rules/base-vs-radix.md)
-- **`Dialog` is the default overlay.** Reach for `Sheet`/`Drawer` only with an explicit justification (persistent side panel during navigation, or mobile-only gesture flow). → [composition.md → Choosing between overlay components](./rules/composition.md)
+- **`Dialog` is the default overlay.** Side `Sheet` is FORBIDDEN in app code (fleet rule; only the shadcn `Sidebar` primitive uses it internally for mobile); `Drawer` (vaul) only for mobile-only gesture flows. → [composition.md → Choosing between overlay components](./rules/composition.md)
 - **Dialog, Sheet, and Drawer always need a Title.** `DialogTitle`, `SheetTitle`, `DrawerTitle` required for accessibility. Use `className="sr-only"` if visually hidden.
 - **Use full Card composition.** `CardHeader`/`CardTitle`/`CardDescription`/`CardContent`/`CardFooter`. Don't dump everything in `CardContent`.
 - **Button has no `isPending`/`isLoading`.** Compose with `Spinner` + `data-icon` + `disabled`.
@@ -127,7 +127,7 @@ These are the most common patterns that differentiate correct shadcn/ui code. Fo
 | Toggle between 2–5 options | `ToggleGroup` + `ToggleGroupItem`                                                                   |
 | Data display               | `Table`, `Card`, `Badge`, `Avatar`                                                                  |
 | Navigation                 | `Sidebar`, `NavigationMenu`, `Breadcrumb`, `Tabs`, `Pagination`                                     |
-| Overlays                   | **`Dialog` is the default.** `AlertDialog` for destructive confirms only. `Sheet`/`Drawer` only with explicit justification (persistent side panel / mobile gesture flow) — see [composition.md → Choosing between overlay components](./rules/composition.md). |
+| Overlays                   | **`Dialog` is the default.** `AlertDialog` for destructive confirms only. Side `Sheet` forbidden in app code; `Drawer` only for mobile-only gesture flows — see [composition.md → Choosing between overlay components](./rules/composition.md). |
 | Feedback                   | `sonner` (toast), `Alert`, `Progress`, `Skeleton`, `Spinner`                                        |
 | Command palette            | `Command` inside `Dialog`                                                                           |
 | Charts                     | `Chart` (wraps Recharts) — ver [rules/charts.md](./rules/charts.md) para `ChartContainer`, `ChartConfig`, semantic colors, perf checklist (ResizeObserver leak) |

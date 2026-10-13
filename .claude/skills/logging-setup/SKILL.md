@@ -226,7 +226,7 @@ Quando o user pede "verifica se o logging do projeto X está OK", checar nesta o
 5. **`shutdown_logging()`** no fim do lifespan.
 6. **`SERVICE_NAME` e `APP_ENV`** no compose, no service `backend`.
 7. **`logging:` block** no compose ao menos em `backend` (e nginx se existir).
-8. **`T20` no ruff.toml** com glob negativo `"!src/**/*.py" = ["T201"]`.
+8. **`T20` no ruff.toml** com glob negativo `"!src/**/*.py" = ["T20"]`.
 9. **Zero `print()` em `src/`**: `cd backend && uv run ruff check --select T201 src/`.
 10. **Smoke test passa** (passo 8 acima).
 

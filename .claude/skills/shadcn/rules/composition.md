@@ -104,19 +104,19 @@ toast("File deleted.", {
 
 **Default to `Dialog` for any "abre, faz uma coisa, fecha" surface.** Centralized, dismiss on click-outside/ESC returns the user to the exact previous state, strong visual focus. UX is superior in almost every case.
 
-`Sheet` and `Drawer` require an explicit reason to pick over `Dialog` — write it as a code comment when you do.
+Side `Sheet` is FORBIDDEN in app code (fleet rule `frontend.md`: Dialog-first, zero Sheet lateral); `Drawer` (vaul) only for mobile-only gesture flows, with a code comment justifying it.
 
 | Use case                                                   | Component     | Notes                                                                            |
 | ---------------------------------------------------------- | ------------- | -------------------------------------------------------------------------------- |
-| Focused task, form, snippet, detail view, picker, edit     | `Dialog`      | **Default.** `lg:max-w-2xl`; for code/table-heavy use `lg:max-w-3xl xl:max-w-4xl`. Tall content → `max-h-[85vh] overflow-y-auto`. |
+| Focused task, form, snippet, detail view, picker, edit     | `Dialog`      | **Default.** `lg:max-w-2xl`; for code/table-heavy use `lg:max-w-3xl xl:max-w-4xl`. Tall content → `h-[calc(100dvh-2rem)]`; geometry lives in the `DialogContent` base (no `vh`/`vw` at the call site). |
 | Destructive action confirmation (delete, reset, sign out)  | `AlertDialog` | Only for confirms — forms still use `Dialog`.                                    |
-| Persistent inspector/settings panel side-by-side with main | `Sheet`       | Justify in code: "stays open during navigation/inspection of X".                 |
+| Persistent inspector/settings panel                        | `Dialog`      | Deep-link via search param (`?settings=`); never a side `Sheet`.                 |
 | Mobile-only flow with swipe gestures (multi-step wizard)   | `Drawer`      | Justify: "mobile-only, gesture-driven".                                          |
 | Quick info on hover (non-clickable)                        | `HoverCard`   |                                                                                  |
 | Small contextual content on click (filter, picker compact) | `Popover`     | Prefer over `Dialog` only when tightly anchored to a trigger and < 3 fields.     |
 | Contextual menu of actions                                 | `DropdownMenu` / `ContextMenu` | Not an overlay for content — for action lists.                      |
 
-> Rule of thumb: if you typed `<Sheet`, ask "why not Dialog?". If the answer isn't "must stay visible while the user keeps working in the page behind it", switch to Dialog.
+> Rule of thumb: if you typed `<Sheet`, switch to Dialog.
 
 ---
 

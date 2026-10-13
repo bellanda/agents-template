@@ -14,7 +14,7 @@ passos fixos → pipeline de `complete*` (`one-shot-structured.md`).
 
 ```python
 researcher = create_agent(                       # construído 1× no import
-    model=init_model(Models.OpenRouter.GLM_5_3_FLASH, max_tokens=3000),
+    model=init_model(Models.OpenRouter.CLAUDE_HAIKU_5_5, max_tokens=3000),
     tools=[web_search], system_prompt=RESEARCHER_PROMPT,
     checkpointer=False, name="researcher",       # stateless — OBRIGATÓRIO
 )

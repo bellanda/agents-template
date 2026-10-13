@@ -9,12 +9,12 @@
 | Entrada | Como | Modelo | Falhou |
 | --- | --- | --- | --- |
 | Áudio | `transcribe_audio` (POST multipart Groq) | Whisper `whisper-large-v3-turbo`, pt | `None` |
-| Imagem | `describe_media`/`describe_images` via LangChain | GLM 5.3 Flash | `None` |
-| Vídeo | parte `video_url` inline (até 20 MB) | GLM 5.3 Flash | `None` |
+| Imagem | `describe_media`/`describe_images` via LangChain | Claude Haiku 5.5 | `None` |
+| Vídeo | 6 quadros amostrados com OpenCV, enviados como imagens (Haiku não aceita vídeo; o áudio do vídeo se perde) | Claude Haiku 5.5 | `None` |
 | PDF com texto digital | MarkItDown (chat) ou `ocr` (texto nativo curto-circuita a rede) | — | — |
-| PDF escaneado / foto de documento | `ocr.ocr_document` | GLM 5.3 Flash (1 chamada/página) | `warnings` |
+| PDF escaneado / foto de documento | `ocr.ocr_document` | Claude Haiku 5.5 (1 chamada/página) | `warnings` |
 
-GLM não aceita PDF nem áudio inline (`supports_pdf_input/audio_input=False`). Trocar de modelo = flipar as
+Haiku não aceita áudio nem vídeo inline e o PDF segue por MarkItDown/`ocr.py` (`supports_pdf_input/audio_input/video_input=False`; PDF inline do Haiku só após decisão testada). Trocar de modelo = flipar as
 flags no `ModelConfig`; os ramos de `media.py` religam sozinhos.
 
 ## `media.py` — bytes → frase, sem conhecer canal
@@ -30,7 +30,7 @@ result = await describe_images([(jpeg1, "image/jpeg"), (jpeg2, "image/jpeg")],
 ```
 
 Quatro decisões (onde apps que copiaram à mão erraram):
-1. **Whisper ou nada** para áudio (sem degrau multimodal de queda com GLM).
+1. **Whisper ou nada** para áudio (sem degrau multimodal de queda com Haiku).
 2. **Visão via LangChain** (`init_model` + `usage.runnable_config()`), nunca SDK cru → custo cai em
    `agent_message_usage` de graça; pelo SDK a mídia é invisível a qualquer teto.
 3. **Custo do Whisper lançado à mão** (`record_transcription_cost`): multipart não passa pelo callback e é

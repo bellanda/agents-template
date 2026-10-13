@@ -37,8 +37,8 @@ lead = (await complete_structured(message_text, Lead, usage=ctx)).value
 - **Parse falhou → `ValueError`.** Decida no caller (retry/fallback/marcar "revisão manual"); nunca
   engula nem devolva objeto parcial.
 - `tools=[…]` em `complete` só FAZ O BIND: você executa os `tool_calls`. Se precisa de loop → agente.
-- Overrides (`max_tokens`, `temperature`, `system=`) vão pro `init_model`. Modelo = `DEFAULT_MODEL` (GLM
-  5.3 Flash); não passe outro.
+- Overrides (`max_tokens`, `temperature`, `system=`) vão pro `init_model`. Modelo = `DEFAULT_MODEL` (Claude
+  Haiku 5.5, effort low); não passe outro.
 - Retry/concorrência já embutidos (`with_llm_retry`: `CapacityLimiter(settings.agents.max_concurrent_llm)`,
   backoff com jitter, só 408/409/425/429/5xx/timeout). Fan-out de N chamadas: `anyio` task group (skill
   `anyio-concurrency`) — o limiter do processo protege o provedor.

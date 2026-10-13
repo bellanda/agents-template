@@ -141,6 +141,23 @@ route-guards precisa passar `search` ao `beforeLoad`.
   nunca na lista. `SlaCountdownChip` = folha memoizada com intervalo de 1s ("Passa para o próximo em
   03:12" / "Prazo pausado até 14:00" / "Transferindo…"; texto curto no celular). Lógica pura em
   `lib/whatsapp/sla-countdown.ts` (+ teste).
+- **Chip do `EventCard` quebra linha** (`min-w-0 max-w-[calc(100%-1rem)] whitespace-normal
+  break-words text-center`, divisores `min-w-4 flex-1`): `whitespace-nowrap` com "Transferido → nome
+  (rodízio) (equipe) · data" saía da tela no celular (kailos, 2026-10-10).
+
+## Fotos — álbum e visualizador (kailos, 2026-10-10)
+
+- Imagens consecutivas viram **álbum** (`lib/whatsapp/album-grouping.ts` → `AlbumBubble`, grade 2×2
+  com "+N"). A **bolha** tem a largura fixa (`w-[248px] md:w-[308px]`) e a grade é `w-full`: com a
+  largura só na grade, uma legenda longa esticava a bolha até `max-w-[85%]` e sobrava espaço à direita.
+  Foto única (`MessageBubble`) idem.
+- `ImageViewer` (Radix Dialog cru, sem `DialogContent`) recebe `items`/`index`/`onIndexChange`: setas,
+  teclado, swipe e **tira de miniaturas** embaixo como no WhatsApp (rolagem só dentro da tira, atual
+  com anel e centralizada). Item único = sem tira nem setas.
+- **IA mandando fotos** (backend): preparar TODAS em paralelo (converter + `save_upload` + upload na
+  Meta → `media_id`), depois enviar em rajada na ordem — só assim o WhatsApp do cliente agrupa em
+  álbum; uma a uma (upload + envio por foto) chegava pingando. **Sem legenda nas fotos**: a ficha curta
+  (título, km, preço) vai como texto ANTES do álbum; o comentário da IA vem depois.
 
 ## Tema — vars `--wa-*` (exceção deliberada a "sem cor crua")
 

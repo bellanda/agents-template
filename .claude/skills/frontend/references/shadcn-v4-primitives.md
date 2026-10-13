@@ -25,6 +25,13 @@ que o usuário lê como tela quebrada.
 - O `select-none` legítimo é o de superfície inteira clicável (`ToggleCard`, `CardCheckbox`), onde não há
   texto para copiar.
 
+## Tooltip/Popover nunca encostam na borda (2026-10-10)
+
+`ui/tooltip.tsx` e `ui/popover.tsx` têm `collisionPadding = 8` por padrão (o default do Radix é 0 — o
+flutuante encosta/sai da tela no celular). `TooltipContent` também leva
+`max-w-[min(20rem,calc(100vw-1rem))] text-wrap break-words` (`max-w-xs` sozinho passa de uma tela de
+360px). O call site só sobrescreve com motivo.
+
 ## Campo nativo ≥16px no celular
 
 Todo `<input>`/`<textarea>`/`<select>` de `components/ui/` é `text-base … md:text-sm`. O gatilho do

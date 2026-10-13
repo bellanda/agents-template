@@ -8,9 +8,9 @@
 ```python
 config = AgentConfig(
     name="…", description="…", system_prompt=SYSTEM_PROMPT,
-    model=init_model(Models.OpenRouter.GLM_5_3_FLASH),
+    model=init_model(Models.OpenRouter.CLAUDE_HAIKU_5_5),
     tools=[tool_a, tool_b], save_to_db=True,
-    capabilities=model_capabilities_dict(Models.OpenRouter.GLM_5_3_FLASH),
+    capabilities=model_capabilities_dict(Models.OpenRouter.CLAUDE_HAIKU_5_5),
     suggestions=[AgentSuggestionInstant(label="…", prompt="…")],
 )
 

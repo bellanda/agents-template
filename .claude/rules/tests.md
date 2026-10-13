@@ -12,7 +12,7 @@ paths:
 
 # Backend Testing
 
-> Aplica-se **quando o user pede** para escrever/rodar testes ou para criar regression test do bug que está sendo corrigido. Não escreva testes especulativos (ver `agent-behavior.md > Restrictions`).
+> Aplica-se **quando o user pede** para escrever/rodar testes ou para criar regression test do bug que está sendo corrigido. Não escreva testes especulativos (ver `agent-behavior.md > Autonomia & Guardrails`).
 
 ## Agent-runnable first
 
@@ -144,7 +144,7 @@ Todo teste que envolve tempo tem dois lados: o **dado** (a data semeada) e o **r
 - `page.clock.install()` + `fastForward` para cruzar o limiar de resume (~60s) — esperar em tempo
   real inviabiliza a suíte. O TTL do access vem do `exp` do JWT mockado.
 - O que diverge por projeto mora SÓ no `fixtures/session.ts` (rota home, payload do `/accounts/me`,
-  quantas chamadas o bootstrap gasta); os specs são idênticos nos 5. Rota home = tela de lista que
+  quantas chamadas o bootstrap gasta); os specs são idênticos em todos os apps da frota. Rota home = tela de lista que
   aguenta `PagedResponse` vazio — dashboard que depende de payload de KPI quebra no mock.
 - **Spec que mede a tela espera a tela, nunca um tempo fixo.** Depois do `goto`: casca visível
   (`APP.appShellControl`, timeout ~30s — Vite frio + vários workers demoram), `networkidle` com teto

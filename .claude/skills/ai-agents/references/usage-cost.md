@@ -11,9 +11,11 @@
 `init_model_by_id(id)` (`custom_providers.py`; `ChatOpenRouter` = `langchain-openai` no base URL do OpenRouter,
 reasoning + custo real). Um `match config.provider` é o único ponto que conhece SDKs.
 
-- GLM 5.3 Flash: 0.15 in / 0 cached / 0.50 out por 1M; `reasoning_effort="high"`; upstreams EUA
-  (`coreweave`, `fireworks`, `deepinfra`) com `allow_provider_fallbacks=False` = **decisão de jurisdição**
-  (privacidade/App Review), não de preço. Não relaxe.
+- Claude Haiku 5.5 (`anthropic/claude-haiku-5.5`): 0.10 in / 0.01 cache read / 0.125 cache write / 0.50 out por 1M;
+  `reasoning_effort="low"` (maiores são lentos demais p/ WhatsApp: medium p90 12s, xhigh p90 28s, max p50 79s);
+  upstreams EUA `("anthropic", "amazon-bedrock/us-east-1", "google-vertex/us")` com `allow_provider_fallbacks=False`
+  = **decisão de jurisdição** (declarada à Meta/privacidade), não de preço. Não relaxe. Tokenizer ~1,6x mais
+  tokens que o GLM p/ o mesmo texto. Bake-off 2026-10-10: ≈ metade do custo do GLM high, 6–9x menos fatos inventados.
 - Whisper: preço por HORA (0.04), não passa por `init_model`.
 - **Modelo sem preço no registry lê custo ZERO em silêncio.** Todo modelo novo nasce com preço.
 - Modelo novo só se a rule `ai-agents.md` mudar (`propagation.md`).
@@ -46,8 +48,9 @@ e UI guardam tudo. Todo agente de chat leva o middleware, primeiro da lista.
 
 ## Prompt cache
 
-- **Do provedor** (OpenRouter/GLM): implícito por PREFIXO; aparece em `cache_read`, cobrado em
-  `cached_input_price_per_1m`. Única exigência: prefixo estável — prompt base estático → instruções do tenant
+- **Do provedor** (OpenRouter/Haiku): NÃO é implícito — só com `cache_control: {type: ephemeral}` no topo do body
+  (flag `prompt_cache_control=True` no `ModelConfig`, aplicada pelo `init_model`). Leitura = 10% do preço, escrita = 125%;
+  aparece em `cache_read`, cobrado em `cached_input_price_per_1m`. Exigência: prefixo estável — prompt base estático → instruções do tenant
   → dado dinâmico; nada de timestamp/request id/UUID no topo; mesma ordem de tools.
 - **`prompt_cache.py`**: memo TTL in-process (`settings.agents.tenant_config_ttl_seconds`, 30 s) das instruções
   do tenant — o middleware roda antes de CADA chamada de modelo (loop de tool = várias). Salvar pela API

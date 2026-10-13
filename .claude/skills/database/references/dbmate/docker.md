@@ -104,7 +104,7 @@ docker compose run --rm migrate status
 # Rollback
 docker compose run --rm migrate rollback
 
-# Resetar DB do zero
+# Resetar DB do zero (SÓ dev/teste local — `down -v` apaga volumes; nunca em prod/staging)
 docker compose down -v && docker compose up
 ```
 

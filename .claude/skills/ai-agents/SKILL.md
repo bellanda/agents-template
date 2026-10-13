@@ -1,6 +1,6 @@
 ---
 name: ai-agents
-description: PORTÃO obrigatório de TUDO que é IA dentro de um app (stack única, decisão 2026-09-30, fonte canônica `~/code/github-templates/agents-template`). INVOCAR ANTES de QUALQUER trabalho com LLM — chamada one-shot (`llm.complete`), saída estruturada (`complete_structured`, extração/roteamento/score), agente com tools (`create_agent`, `agents/<name>/`, `@tool`), subagente/delegação (`run_subagent`, supervisor), chat com streaming SSE (`/agents/chat/completions`, `stream_agent`, threads, interrupção), frontend de IA (`ai-elements`, `use-chat-session`/`useChat`, cards de tool result/`tool_envelope`, anexos, reasoning, custo/contexto, sugestões), mídia (imagem/vídeo via GLM, áudio via Groq Whisper, OCR de PDF escaneado, `media.py`/`ocr.py`), custo/uso por tenant (`UsageContext`, `agent_message_usage`, teto de gasto), history window, prompt cache, checkpointer, config/instruções de agente por tenant (Markdown, versões, botão ChatGPT, `agent_configs`), catálogo de modelos, handoff humano, adicionar agente/tool novo e propagar o template (`sync_agents_to_another_fastapi_project.py`). Checklist de invariantes + tabela "qual ferramenta usar" + roteia pras references. NUNCA provedor fora de OpenRouter GLM 5.3 Flash (texto/imagem/vídeo) e Groq Whisper (áudio); NUNCA chamar LLM sem `UsageContext`; NUNCA SDK cru de provedor (sempre `init_model`); NUNCA reimplementar `core/agents/` num app (nasce no template e propaga); NUNCA agente quando `complete`/`complete_structured` resolve.
+description: PORTÃO obrigatório de TUDO que é IA dentro de um app (stack única, decisão 2026-09-30; modelo Claude Haiku 5.5 desde 2026-10-10, fonte canônica `~/code/github-templates/agents-template`). INVOCAR ANTES de QUALQUER trabalho com LLM — chamada one-shot (`llm.complete`), saída estruturada (`complete_structured`, extração/roteamento/score), agente com tools (`create_agent`, `agents/<name>/`, `@tool`), subagente/delegação (`run_subagent`, supervisor), chat com streaming SSE (`/agents/chat/completions`, `stream_agent`, threads, interrupção), frontend de IA (`ai-elements`, `use-chat-session`/`useChat`, cards de tool result/`tool_envelope`, anexos, reasoning, custo/contexto, sugestões), mídia (imagem/vídeo via Haiku 5.5, áudio via Groq Whisper, OCR de PDF escaneado, `media.py`/`ocr.py`), custo/uso por tenant (`UsageContext`, `agent_message_usage`, teto de gasto), history window, prompt cache, checkpointer, config/instruções de agente por tenant (Markdown, versões, botão ChatGPT, `agent_configs`), catálogo de modelos, handoff humano, adicionar agente/tool novo e propagar o template (`sync_agents_to_another_fastapi_project.py`). Checklist de invariantes + tabela "qual ferramenta usar" + roteia pras references. NUNCA provedor fora de OpenRouter Claude Haiku 5.5 effort low (texto/imagem/vídeo por quadros) e Groq Whisper (áudio); NUNCA chamar LLM sem `UsageContext`; NUNCA SDK cru de provedor (sempre `init_model`); NUNCA reimplementar `core/agents/` num app (nasce no template e propaga); NUNCA agente quando `complete`/`complete_structured` resolve.
 ---
 
 # AI Agents — O Portão
@@ -8,7 +8,7 @@ description: PORTÃO obrigatório de TUDO que é IA dentro de um app (stack úni
 Ponto de entrada único de IA dentro de app. **NUNCA escreva código que chama LLM, monta agente, tela de
 chat ou config de agente sem passar por aqui.** A rule `ai-agents.md` fixa a stack (invariante); este
 skill é o "como" padronizado. Decisão do usuário (2026-09-30): tudo de IA é **centralizado e idêntico
-em todos os apps** (kailos, balizap, nexarena, optimuslar, akmeo).
+em todos os apps** (kailos, balizap, nexarena, optimuslar, akmeo, promoservice).
 
 **Fonte canônica:** `~/code/github-templates/agents-template` (`AGENTS_SUBSYSTEM.md` = spec completa,
 `backend/src/api/core/agents/` = infra, `backend/agents/` = exemplos, `frontend/src/components/{ai-elements,chat,agent-config}/`).
@@ -19,11 +19,12 @@ pro template primeiro (ver `references/propagation.md`).
 
 | Modalidade | Provedor | Modelo |
 | --- | --- | --- |
-| Texto, tools, extração, imagem, vídeo | OpenRouter | GLM 5.3 Flash — `Models.OpenRouter.GLM_5_3_FLASH` |
+| Texto, tools, extração, imagem | OpenRouter | Claude Haiku 5.5, effort `low` — `Models.OpenRouter.CLAUDE_HAIKU_5_5` (`anthropic/claude-haiku-5.5`) |
+| Vídeo | OpenRouter | mesmo modelo, lendo 6 QUADROS (OpenCV em `media.py`; sem o áudio do vídeo) |
 | Áudio → texto | Groq | `whisper-large-v3-turbo` (só se o app recebe áudio) |
 
-Secrets: só `OPENROUTER_API_KEY` e `GROQ_API_KEY`. Proibido DeepSeek/Gemini/OpenAI/Anthropic direto/etc.
-GLM não aceita PDF nem áudio inline → PDF escaneado = `ocr.py`, áudio = Whisper.
+Secrets: só `OPENROUTER_API_KEY` e `GROQ_API_KEY`. Proibido DeepSeek/Gemini/OpenAI/Anthropic DIRETO/GLM/etc. (Claude só via OpenRouter).
+PDF escaneado = `ocr.py` (Haiku aceita PDF inline, mas `supports_pdf_input=False` até decisão testada), vídeo = quadros, áudio = Whisper.
 
 ## Qual ferramenta usar (escolha a MENOR que resolve)
 
@@ -47,7 +48,7 @@ e quantas vezes. Se código decide a sequência, use `complete*` (mais barato, t
 
 - [ ] **1. Escolha da ferramenta.** Passou pela tabela acima? Justifique agente/subagente; o default é
   one-shot. → tabela + `one-shot-structured.md`.
-- [ ] **2. Modelo via registry.** `Models.OpenRouter.GLM_5_3_FLASH` + `init_model(cfg)`/`init_model_by_id`.
+- [ ] **2. Modelo via registry.** `Models.OpenRouter.CLAUDE_HAIKU_5_5` + `init_model(cfg)`/`init_model_by_id`.
   Nunca `ChatOpenAI(...)`/SDK de provedor direto, nunca slug hardcoded. → `usage-cost.md` (modelos).
 - [ ] **3. `UsageContext` em TODA chamada de produto.** `thread_id` + `agent_id` estáveis por propósito
   (`f"job:{id}"` p/ fora de chat), `tenant_id` preenchido. Sem ele a chamada escapa de custo e de teto.
@@ -57,7 +58,7 @@ e quantas vezes. Se código decide a sequência, use `complete*` (mais barato, t
   descobre sozinho. → `agents-and-tools.md` (+ `propagation.md` §"Adicionar agente/tool").
 - [ ] **5. Tools.** `@tool("name", args_schema=Pydantic)`, docstring = o que o LLM lê; falha ESPERADA →
   `action_error(...)` (não raise); escrita → `action_confirmation(...)`. → `agents-and-tools.md`.
-- [ ] **6. Mídia/OCR.** Áudio=Whisper (grava texto ANTES de disparar o agente), imagem/vídeo=GLM via
+- [ ] **6. Mídia/OCR.** Áudio=Whisper (grava texto ANTES de disparar o agente), imagem/vídeo(quadros)=Haiku via
   LangChain (nunca SDK cru), PDF escaneado=`ocr.py`. Uploads seguem o gate `uploads-storage`. → `media-ocr.md`.
 - [ ] **7. Chat/streaming (backend).** Identidade SEMPRE da seam `get_auth_context`, nunca do body;
   SSE protocolo Vercel AI SDK v5; subagente não vaza no stream; save destacado na interrupção.
@@ -74,7 +75,7 @@ e quantas vezes. Se código decide a sequência, use `complete*` (mais barato, t
 
 ## Invariantes não negociáveis (sempre)
 
-- Só OpenRouter + GLM 5.3 Flash e Groq Whisper; nada de provedor novo no registry/`Settings`/`.env.example`/deps.
+- Só OpenRouter + Claude Haiku 5.5 (effort low) e Groq Whisper; nada de provedor novo no registry/`Settings`/`.env.example`/deps.
 - Toda chamada de modelo passa por `init_model*` (callback de custo `usage_recorder` vem junto); toda
   chamada de produto leva `UsageContext`. Mídia por SDK cru = custo invisível = bug.
 - `complete_structured` usa `function_calling` (não `json_schema`) e reasoning OFF por default; erro de
@@ -97,7 +98,7 @@ e quantas vezes. Se código decide a sequência, use `complete*` (mais barato, t
 - `references/subagents.md` — supervisor + `run_subagent`, quando delegar, invariantes.
 - `references/streaming-backend.md` — `POST /agents/chat/completions`, SSE, threads, interrupção, auth seam.
 - `references/frontend-chat.md` — ai-elements, `use-chat-session`, cards de tool, anexos, reasoning, custo/contexto, sugestões.
-- `references/media-ocr.md` — imagem/vídeo (GLM), áudio (Whisper), PDF OCR, uploads no chat.
+- `references/media-ocr.md` — imagem/vídeo (Haiku, vídeo por quadros), áudio (Whisper), PDF OCR, uploads no chat.
 - `references/usage-cost.md` — modelos/registry, `agent_message_usage`, custo por tenant/teto, history window, prompt cache.
 - `references/tenant-config.md` — instruções por tenant (Markdown, versões, ChatGPT), catálogo de modelos, handoff (rotas).
 - `references/propagation.md` — sync script, adicionar agente/tool/modelo, convergência por app.
