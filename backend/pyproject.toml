@@ -44,3 +44,7 @@ packages = ["config", "src/api"]
 [tool.hatch.build.targets.wheel.sources]
 "config" = "config"
 "src/api" = "api"
+
+[tool.pytest.ini_options]
+# Only the tracked suite: backend/temp/ is git-ignored scratch whose debug scripts hit the network.
+testpaths = ["tests"]
