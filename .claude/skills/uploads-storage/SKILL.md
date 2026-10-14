@@ -356,6 +356,41 @@ const onPick = async (file: File) => {
 
 Para chat de agente: a feature monta o `FormData` e chama `client.upload` via `useUploadMutation` (`hooks/useFileUpload.ts`, progresso real) com sessionId/modelId; `useFileUpload` segue validator-only (`frontend/references/file-upload.md`).
 
+## 9b. Arquivos grandes no B2 (multipart / stream) — pesquisa 2026-10-14
+
+Limites oficiais (https://www.backblaze.com/docs/cloud-storage-large-files,
+https://www.backblaze.com/apidocs/s3-upload-part):
+
+| Caso | Limite |
+| --- | --- |
+| PUT único (`put_object` / `b2_upload_file`) | até **5 GB** |
+| Large file (multipart) | 5 MB a **10 TB** por arquivo |
+| Parte | 5 MB a 5 GB (a última pode ser menor), **máx. 10.000 partes**, mínimo 2 |
+| Teto prático | tamanho da parte × 10.000 (100 MB → ~1 TB) — escolha a parte pelo pior caso |
+
+- `save_bytes(key, content: bytes)` é para arquivo **pequeno** (upload de usuário com size cap). Arquivo
+  grande ou de tamanho desconhecido (export, dump, vídeo longo) **nunca** vira `bytes` em memória: use
+  multipart em stream — `client.upload_fileobj(fileobj, bucket, key, Config=TransferConfig(multipart_threshold=…, multipart_chunksize=…))`
+  no aioboto3 (memória ≈ chunk × concorrência) — ou o `b2` CLI fora do processo da app.
+- **Checksum (armadilha real):** boto3/botocore ≥1.36 (aioboto3 recente) manda CRC32 por padrão como
+  trailer `aws-chunked`/`STREAMING-UNSIGNED-PAYLOAD-TRAILER`; há relatos do B2 rejeitando
+  (`Unsupported header 'x-amz-checksum-crc32'`, "Checksum Type mismatch" no multipart). Ao introduzir
+  multipart/stream, configure `Config(request_checksum_calculation="when_required", response_checksum_validation="when_required")`
+  e valide contra o bucket real antes de confiar.
+- **Stream de tamanho desconhecido** (`pg_dump | …`): `put_object` exige Content-Length → sempre multipart
+  (bufferiza 1 parte, envia, repete, `CompleteMultipartUpload`). Alternativa robusta: arquivo temporário +
+  upload (permite validar e reenviar).
+- **Upload interrompido é cobrado** (as partes ficam guardadas). Aborte (`AbortMultipartUpload` /
+  `b2 file large unfinished cancel`) ou use regra de ciclo de vida
+  `daysFromStartingToCancelingUnfinishedLargeFiles`.
+- **Chaves de aplicação** podem ser restritas a bucket + `namePrefix`; o fluxo multipart inteiro exige `writeFiles`,
+  listar uploads exige `listFiles`. Chave restrita por prefixo pode tomar 403 em `ListBuckets`/`HeadBucket` no boot.
+- **Ciclo de vida** (https://www.backblaze.com/docs/cloud-storage-lifecycle-rules): por `fileNamePrefix`,
+  granularidade de 1 dia, avaliado 1×/dia; "esconder" é o que expira a versão atual. Hoje a frota NÃO usa
+  regra de painel — a retenção dos backups é feita pelo próprio job (decisão 2026-10-14).
+- **Pasta `backups/` na raiz do bucket privado é reservada** ao serviço `pg-backup` (fora do `b2_key_prefix`
+  `prod/`/`staging/`). Código da app nunca grava nem apaga lá. Ver skill `database` → `references/backup-b2.md`.
+
 ## 10. Pitfalls
 
 - **Nunca** `orjson.loads`/`orjson.dumps` manual sobre `metadata` JSONB — asyncpg + Pydantic já resolvem.

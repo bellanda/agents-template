@@ -38,6 +38,8 @@ uploads/users/{user_id}/{domain}/{entity_id}/{slug}-{uuid4}.{ext}
 - **NUNCA** relaxar tenancy para `NULL`.
 - **NUNCA** usar a **master application key** na S3 API do B2 — só restricted/multi-bucket key (keyID + appKey). Master key não funciona na S3 API.
 - **NUNCA** misturar `public` e `private` no mesmo bucket B2 — acesso é bucket-wide ⇒ 2 buckets por env (público + privado).
+- **NUNCA** bufferizar arquivo grande ou de tamanho desconhecido inteiro em memória para um `put_object` (PUT único vai só até 5 GB) — multipart em stream (`upload_fileobj` + `TransferConfig`, checksum `when_required`) ou arquivo temporário + `b2` CLI. Ver skill §9b.
+- **NUNCA** gravar nem apagar em `backups/` na raiz do bucket privado pelo código da app — é do serviço `pg-backup` (skill `database` → `backup-b2.md`).
 - **NUNCA** `delete_object` simples em bucket versionado (B2 versiona por default) esperando limpar — apague TODAS as versões (`list_object_versions` + `delete_objects`), senão a história fica órfã e é cobrada.
 - **NUNCA** `b2_public_base_url` = endpoint S3 cru em prod/staging — público serve via **custom domain Cloudflare** (`https://cdn.{domain}/file/{bucket}`; **um CNAME proxied** `cdn.{domain}` → `f<NNN>.backblazeb2.com` serve todos os envs pelo bucket no path), garantindo CDN + egress free (Bandwidth Alliance). Privado NUNCA passa por CDN — presigned-direto pelo gate.
 - **NUNCA** criar `kind` novo sem atualizar `CHECK CONSTRAINT` + `UploadKind` enum no mesmo PR.
