@@ -56,7 +56,7 @@ bun install
 bun dev
 ```
 
-Full stack in Docker (postgres + dbmate + backend + nginx on `127.0.0.1:19080`):
+Full stack in Docker (postgres + valkey + nats + dbmate + backend + nginx on `127.0.0.1:19080`):
 
 ```bash
 docker compose up -d --build
@@ -406,12 +406,13 @@ Same pattern as the product apps (kailos, balizap) — this template is the cent
 
 | What | Where | Notes |
 | --- | --- | --- |
-| Secrets + `ENVIRONMENT` + `INGRESS_MODE` | `.env` (root, gitignored; template in `.env.example`) | `POSTGRES_PASSWORD`, `DATABASE_URL`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `APP_UID`. **Only secrets + env selectors** |
-| Non-secret config | `config/app/{local,staging,prod}.yaml` | `postgres.pool`, `logging`, `cors`, `openrouter`, `agents`, `vite`. Keep the 3 files symmetric |
+| Secrets + `ENVIRONMENT` + `INGRESS_MODE` | `.env` (root, gitignored; template in `.env.example`) | `POSTGRES_PASSWORD`, `DATABASE_URL`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `VALKEY_PASSWORD`, `APP_UID`. **Only secrets + env selectors** |
+| Non-secret config | `config/app/{local,staging,prod}.yaml` | `postgres.pool`, `valkey`, `nats`, `logging`, `cors`, `openrouter`, `agents`, `vite`. Keep the 3 files symmetric |
 | Runtime resolution | `backend/config/settings.py` | `APP_YAML_PATH` > `/app/app.yaml` (docker bind-mount of `config/app/${ENVIRONMENT}.yaml`) > `config/app/{ENVIRONMENT}.yaml` |
 | Test config | `backend/tests/app.test.yaml` | conftest must set `APP_YAML_PATH` before importing `api`/`config` |
 | Granian + resources | `config/docker/compose.<env>.yaml` | `GRANIAN_*` are compose env (read by the Dockerfile CMD), not yaml |
 | `VITE_*` | yaml `vite:` (host) + `nginx.build.args` in `compose.<env>.yaml` (Docker build) | Must mirror each other; the image build cannot read the yaml |
+| Valkey + NATS (fleet baseline, 2026-10-14) | `compose.yaml` (`valkey`, `nats`), `config/nats/<env>.conf`, `backend/src/api/services/{cache,messaging}/` | Cache = Valkey over UDS (`get_valkey()`, bytes + orjson, TTL on every key); messaging = NATS JetStream (`get_js()`, streams declared in `messaging/streams.py`, consumers registered in `messaging/consumers/__init__.py`; both empty here). Never swap roles — skill `infra` |
 | nginx | `config/nginx/` | `INGRESS_MODE=loopback` (dev, `127.0.0.1:19080`) or `gateway` (behind a central TLS gateway). No `edge` mode here — copy from kailos if an app needs it |
 
 Rules: never the same key in yaml and `.env`; business code never calls `os.getenv`; new config = edit all

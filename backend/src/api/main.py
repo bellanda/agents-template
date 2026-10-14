@@ -10,6 +10,9 @@ from api.core.agents.checkpointer import close_checkpointer, init_checkpointer
 from api.core.logging import get_logger, setup_logging, shutdown_logging
 from api.middlewares.logging_middleware import LoggingMiddleware
 from api.services.agents.registry import get_agents_registry, reload_agents_registry
+from api.services.cache import close_valkey, init_valkey
+from api.services.messaging import close_nats, connect_nats
+from api.services.messaging.consumers import start_consumers, stop_consumers
 from config.api import api_config
 from config.database import close_asyncpg_pool, init_asyncpg_pool
 from config.settings import settings
@@ -24,6 +27,21 @@ async def lifespan(app: FastAPI):
     # 1. Initialize database pool
     await init_asyncpg_pool()
 
+    # 2. Valkey (cache) and NATS (messaging) — fleet baseline. A failure is logged, not fatal: the
+    # app degrades (no cache / no events) instead of refusing to boot; `get_valkey()`/`get_js()`
+    # raise on use. Boundary: cache -> Valkey, messaging -> NATS (skill `infra`).
+    try:
+        await init_valkey()
+        log.info("valkey_ready")
+    except Exception:
+        log.exception("valkey_init_failed")
+
+    try:
+        await connect_nats()
+        await start_consumers()
+    except Exception:
+        log.exception("nats_connect_failed")
+
     # 3. Initialize checkpointer (Postgres)
     await init_checkpointer()
 
@@ -34,7 +52,11 @@ async def lifespan(app: FastAPI):
     yield
 
     # Cleanup
+    # Inverse order of startup; consumers drain BEFORE NATS closes.
     await close_checkpointer()
+    await stop_consumers()
+    await close_nats()
+    await close_valkey()
     await close_asyncpg_pool()
     shutdown_logging()
 

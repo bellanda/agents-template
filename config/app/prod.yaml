@@ -10,6 +10,18 @@ postgres:
     command_timeout: 60.0
     timeout: 30.0
 
+valkey:
+  # Cache only (messaging is NATS). UDS-only; docker overrides sock_path via VALKEY_SOCK_PATH.
+  sock_path: /run/valkey/valkey.sock
+  cache_default_ttl: 600
+
+nats:
+  # JetStream messaging. Docker overrides url via NATS_URL.
+  url: nats://nats:4222
+  connect_timeout: 5.0
+  max_reconnect_attempts: 60
+  reconnect_time_wait: 2.0
+
 logging:
   service_name: agents-template-backend
   app_env: prod

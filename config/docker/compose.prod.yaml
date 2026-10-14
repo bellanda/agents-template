@@ -10,6 +10,28 @@ services:
           cpus: "0.25"
           memory: 512m
 
+  valkey:
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4g
+          pids: 256
+        reservations:
+          cpus: "0.1"
+          memory: 512m
+
+  nats:
+    deploy:
+      resources:
+        limits:
+          cpus: "2.0"
+          memory: 4g
+          pids: 256
+        reservations:
+          cpus: "0.1"
+          memory: 512m
+
   backend:
     environment:
       # Granian sizing for this env. Pool max_size (yaml) is per process: workers x max_size

@@ -57,6 +57,82 @@ services:
         max-file: "5"
         compress: "true"
 
+  valkey:
+    container_name: agents-template-valkey
+    image: valkey/valkey:8.1.8-alpine
+    <<: *no-new-privs
+    # Cache only (UDS, no TCP port). AOF everysec; allkeys-lru bounds memory — every key MUST carry
+    # a TTL or be re-creatable (skill `infra`). Messaging is NATS, never Valkey.
+    command: >
+      valkey-server
+      --unixsocket /run/valkey/valkey.sock
+      --unixsocketperm 770
+      --port 0
+      --appendonly yes
+      --appendfsync everysec
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --requirepass ${VALKEY_PASSWORD}
+    volumes:
+      - valkey-data:/data
+      - valkey-sock:/run/valkey
+    networks:
+      - internal
+    # Run directly as valkey (uid 999, gid 1000): the image ships /data and /run/valkey owned by
+    # valkey. Skips the entrypoint's root chown branch, which needs CHOWN + DAC_READ_SEARCH
+    # (dropped) and otherwise crash-loops on `find: Permission denied`. The backend (gid 1000)
+    # reaches the socket through the 770 group permission.
+    user: "999:1000"
+    cap_drop: [ALL]
+    environment:
+      VALKEY_PASSWORD: ${VALKEY_PASSWORD}
+    healthcheck:
+      <<: *healthcheck-pace
+      test:
+        [
+          "CMD-SHELL",
+          "valkey-cli -s /run/valkey/valkey.sock -a $$VALKEY_PASSWORD --no-auth-warning ping",
+        ]
+      timeout: 3s
+      start_period: 15s
+    restart: always
+    stop_grace_period: 10s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
+        compress: "true"
+
+  nats:
+    container_name: agents-template-nats
+    image: nats:2.14.2-alpine
+    <<: *no-new-privs
+    command: ["-c", "/etc/nats/nats-server.conf"]
+    volumes:
+      - ./config/nats/${ENVIRONMENT}.conf:/etc/nats/nats-server.conf:ro
+      - natsdata:/data/nats
+    networks:
+      - internal
+    cap_drop: [ALL]
+    cap_add:
+      - SETGID
+      - SETUID
+    healthcheck:
+      <<: *healthcheck-pace
+      test: ["CMD", "wget", "-q", "--spider", "http://localhost:8222/healthz"]
+      timeout: 1s
+      start_period: 15s
+    restart: always
+    stop_grace_period: 30s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
+
   migrate:
     container_name: agents-template-migrate
     image: ghcr.io/amacneil/dbmate:2.33.0
@@ -101,9 +177,14 @@ services:
       GRANIAN_INTERFACE: asgi
       GRANIAN_HTTP: auto
       GRANIAN_LOOP: uvloop
+      # Container-internal paths beat the host-style values in config/app/<env>.yaml (see
+      # settings._apply_env_overrides).
+      VALKEY_SOCK_PATH: /run/valkey/valkey.sock
+      NATS_URL: nats://nats:4222
     volumes:
       - ./config/app/${ENVIRONMENT}.yaml:/app/app.yaml:ro
       - ./backend/uploads:/app/uploads
+      - valkey-sock:/run/valkey:ro
     networks:
       - internal
     cap_drop: [ALL]
@@ -113,6 +194,10 @@ services:
       - /tmp:size=128M,mode=1777
     depends_on:
       postgres:
+        condition: service_healthy
+      valkey:
+        condition: service_healthy
+      nats:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
@@ -174,6 +259,9 @@ services:
 
 volumes:
   pgdata:
+  valkey-data:
+  valkey-sock:
+  natsdata:
 
 networks:
   internal:

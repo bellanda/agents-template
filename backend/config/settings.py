@@ -60,6 +60,22 @@ class PostgresSettings(BaseModel):
     pool: PostgresPoolSettings
 
 
+class ValkeySettings(BaseModel):
+    """Cache (Valkey) over a Unix socket. Messaging is NATS, never Valkey (skill `infra`)."""
+
+    sock_path: str
+    cache_default_ttl: int
+
+
+class NatsSettings(BaseModel):
+    """NATS + JetStream client. Server tuning lives in config/nats/<env>.conf."""
+
+    url: str
+    connect_timeout: float
+    max_reconnect_attempts: int
+    reconnect_time_wait: float
+
+
 class LoggingSettings(BaseModel):
     service_name: str
     app_env: str
@@ -118,6 +134,8 @@ class Settings(BaseModel):
 
     # From the yaml
     postgres: PostgresSettings
+    valkey: ValkeySettings
+    nats: NatsSettings
     logging: LoggingSettings
     cors: CorsSettings
     openrouter: OpenRouterSettings = OpenRouterSettings()
@@ -128,6 +146,10 @@ class Settings(BaseModel):
     database_url: SecretStr = Field(
         default_factory=lambda: SecretStr(getenv_or_raise_exception("DATABASE_URL"))
     )
+
+    # Valkey UDS is gated by `--requirepass` in docker; None in pure-host dev (a passwordless
+    # local Valkey) is fine — the client sends AUTH only when set.
+    valkey_password: SecretStr | None = Field(default_factory=lambda: _opt("VALKEY_PASSWORD"))
 
     # AI providers — exactly two, and only these: OpenRouter is the gateway for ALL chat
     # (text, image, video; default model is multimodal) and Groq only does audio transcription
@@ -142,6 +164,19 @@ def _opt(key: str) -> SecretStr | None:
     return SecretStr(value) if value else None
 
 
+def _apply_env_overrides(data: dict) -> dict:
+    """Let compose `environment:` override the host-style paths in the yaml.
+
+    The yaml reflects host-only dev (socket in /tmp, NATS on localhost); in docker the compose
+    base injects the container-internal socket path and service DNS name.
+    """
+    if v := os.getenv("VALKEY_SOCK_PATH"):
+        data.setdefault("valkey", {})["sock_path"] = v
+    if v := os.getenv("NATS_URL"):
+        data.setdefault("nats", {})["url"] = v
+    return data
+
+
 def _load() -> Settings:
     if not APP_YAML_PATH.is_file():
         env = os.getenv("ENVIRONMENT", "local")
@@ -154,7 +189,7 @@ def _load() -> Settings:
         data = yaml.safe_load(f)
     if not isinstance(data, dict):
         raise RuntimeError(f"app yaml at {APP_YAML_PATH} is not a mapping at the root")
-    return Settings(**data)
+    return Settings(**_apply_env_overrides(data))
 
 
 settings = _load()
