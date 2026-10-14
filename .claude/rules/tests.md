@@ -56,6 +56,16 @@ Todo teste que envolve tempo tem dois lados: o **dado** (a data semeada) e o **r
 - **Integration-first via HTTP.** Testa comportamento observável pelo public interface.
 - **Unit tests só para lógica pura, sem I/O.** Se integration cobre, não duplica.
 - **DB de teste real** para persistência/queries/transactions/constraints/serialization/permissions. NUNCA mock DB.
+- **NATS real nos testes, com os métodos reais do nats-py** (decisão do usuário 2026-10-14): o
+  `nats-server` da sessão + `get_js()` de verdade; publica, roda o consumer e assere no estado do
+  JetStream. PROIBIDO duplo de JetStream/subscription escrito à mão ou módulo `nats_client` falso
+  espelhado: ele aceita qualquer método e o teste passa com chamada que não existe (kailos
+  2026-10-14: `js.update_consumer` não existe no nats-py 2.16, os testes passaram e o consumer caiu
+  em loop no deploy). Injeção de falha de broker que o servidor real não produz sob demanda = wrapper
+  que DELEGA tudo ao objeto real (`__getattr__`) e sobrescreve só a chamada que falha. Caminho de
+  migração de estado (durable antigo ganhando filtro novo, stream existente) tem teste que cria o
+  estado antigo no NATS real antes. Atualizar durable = `add_consumer` com o mesmo nome (é o
+  update no servidor); `update_consumer` não existe.
 - Reutiliza fixtures shared (client, auth, base data). Sem recriar setup pesado por arquivo.
 
 ## Structure
