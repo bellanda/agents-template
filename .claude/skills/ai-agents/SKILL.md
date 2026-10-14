@@ -1,6 +1,6 @@
 ---
 name: ai-agents
-description: PORTÃO obrigatório de TUDO que é IA dentro de um app (stack única, decisão 2026-09-30; modelo Claude Haiku 5.5 desde 2026-10-10, fonte canônica `~/code/github-templates/agents-template`). INVOCAR ANTES de QUALQUER trabalho com LLM — chamada one-shot (`llm.complete`), saída estruturada (`complete_structured`, extração/roteamento/score), agente com tools (`create_agent`, `agents/<name>/`, `@tool`), subagente/delegação (`run_subagent`, supervisor), chat com streaming SSE (`/agents/chat/completions`, `stream_agent`, threads, interrupção), frontend de IA (`ai-elements`, `use-chat-session`/`useChat`, cards de tool result/`tool_envelope`, anexos, reasoning, custo/contexto, sugestões), mídia (imagem/vídeo via Haiku 5.5, áudio via Groq Whisper, OCR de PDF escaneado, `media.py`/`ocr.py`), custo/uso por tenant (`UsageContext`, `agent_message_usage`, teto de gasto), history window, prompt cache, checkpointer, config/instruções de agente por tenant (Markdown, versões, botão ChatGPT, `agent_configs`), catálogo de modelos, handoff humano, adicionar agente/tool novo e propagar o template (`sync_agents_to_another_fastapi_project.py`). Checklist de invariantes + tabela "qual ferramenta usar" + roteia pras references. NUNCA provedor fora de OpenRouter Claude Haiku 5.5 effort low (texto/imagem/vídeo por quadros) e Groq Whisper (áudio); NUNCA chamar LLM sem `UsageContext`; NUNCA SDK cru de provedor (sempre `init_model`); NUNCA reimplementar `core/agents/` num app (nasce no template e propaga); NUNCA agente quando `complete`/`complete_structured` resolve.
+description: PORTÃO obrigatório de TUDO que é IA dentro de um app (stack única, decisão 2026-09-30; modelo Claude Haiku 5.5 desde 2026-10-10, fonte canônica `~/code/github-templates/agents-template`). INVOCAR ANTES de QUALQUER trabalho com LLM — chamada one-shot (`llm.complete`), saída estruturada (`complete_structured`, extração/roteamento/score), agente com tools (`create_agent`, `agents/<name>/`, `@tool`), subagente/delegação (`run_subagent`, supervisor), chat com streaming SSE (`/agents/chat/completions`, `stream_agent`, threads, interrupção), frontend de IA (`ai-elements`, `use-chat-session`/`useChat`, cards de tool result/`tool_envelope`, anexos, reasoning, custo/contexto, sugestões), mídia (imagem/vídeo via Haiku 5.5, áudio via Groq Whisper, OCR de PDF escaneado, `media.py`/`ocr.py`), custo/uso por tenant (`UsageContext`, `agent_message_usage`, teto de gasto), history window, prompt cache, checkpointer, config/instruções de agente por tenant (Markdown, versões, botão ChatGPT, `agent_configs`), catálogo de modelos, handoff humano, segurança de chatbot público (flood/mensagem gigante, teto de gasto, prompt injection/manipulação → `report_manipulation_attempt`), adicionar agente/tool novo e propagar o template (`sync_agents_to_another_fastapi_project.py`). Checklist de invariantes + tabela "qual ferramenta usar" + roteia pras references. NUNCA provedor fora de OpenRouter Claude Haiku 5.5 effort low (texto/imagem/vídeo por quadros) e Groq Whisper (áudio); NUNCA chamar LLM sem `UsageContext`; NUNCA SDK cru de provedor (sempre `init_model`); NUNCA reimplementar `core/agents/` num app (nasce no template e propaga); NUNCA agente quando `complete`/`complete_structured` resolve.
 ---
 
 # AI Agents — O Portão
@@ -40,6 +40,7 @@ PDF escaneado = `ocr.py` (Haiku aceita PDF inline, mas `supports_pdf_input=False
 | Tool que deve virar card no chat | `tool_envelope.action_confirmation/tool_result` + registry do front | `frontend-chat.md` |
 | Dono do negócio edita o que o agente diz | `agent_configs` + `tenant_instructions_middleware` | `tenant-config.md` |
 | IA passa cliente para humano | gate `integrations` → `human-handoff-queues.md` | (fora daqui) |
+| Chatbot fala com o PÚBLICO (WhatsApp/Instagram/site) | as 3 camadas de segurança | `chatbot-security.md` |
 
 Regra de bolso: **se o fluxo é determinístico, não é agente.** Agente = o MODELO decide quais tools chamar
 e quantas vezes. Se código decide a sequência, use `complete*` (mais barato, testável, sem checkpointer).
@@ -70,7 +71,11 @@ e quantas vezes. Se código decide a sequência, use `complete*` (mais barato, t
   `tenant_id` da seam (nunca do body). → `tenant-config.md` (+ `frontend/references/agent-instructions.md`).
 - [ ] **10. Contexto & cache.** `sliding_window_middleware` em agente de chat; prefixo do prompt ESTÁTICO
   (base → tenant → dinâmico; nada de timestamp/request id no topo). → `usage-cost.md`.
-- [ ] **11. Propagação.** Mudou `core/agents/`, `routes|services|repositories|models|schemas/agents/`,
+- [ ] **11. Segurança de chatbot público (OBRIGATÓRIO se o agente fala com quem não é usuário
+  logado).** Travas fixas (flood/tamanho, Valkey, antes do agente) + teto de gasto + trava de
+  manipulação (`report_manipulation_attempt`, código conta, 2ª tentativa → humano com resposta FIXA,
+  sem bloquear). Tudo termina num humano com nota interna. → `chatbot-security.md`.
+- [ ] **12. Propagação.** Mudou `core/agents/`, `routes|services|repositories|models|schemas/agents/`,
   migration de agentes ou front de chat? Mude no TEMPLATE, rode o sync. → `propagation.md`.
 
 ## Invariantes não negociáveis (sempre)
@@ -101,6 +106,7 @@ e quantas vezes. Se código decide a sequência, use `complete*` (mais barato, t
 - `references/media-ocr.md` — imagem/vídeo (Haiku, vídeo por quadros), áudio (Whisper), PDF OCR, uploads no chat.
 - `references/usage-cost.md` — modelos/registry, `agent_message_usage`, custo por tenant/teto, history window, prompt cache.
 - `references/tenant-config.md` — instruções por tenant (Markdown, versões, ChatGPT), catálogo de modelos, handoff (rotas).
+- `references/chatbot-security.md` — as 3 camadas obrigatórias de chatbot público: travas fixas (flood/tamanho), teto de gasto, manipulação/prompt injection (tool + contador Valkey + resposta fixa + rótulos no inbox).
 - `references/propagation.md` — sync script, adicionar agente/tool/modelo, convergência por app.
 
 Skills vizinhos: `database` (migrations/repos), `frontend` (layout, `agent-instructions.md`),

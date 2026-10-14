@@ -81,6 +81,7 @@ some por reimportação de lista.
   durante, pausa automática na queda, e kill switch manual.
 - Num SaaS multi-tenant onde cada cliente tem WABA própria, o estrago começa no número do cliente —
   mas padrão repetido entre tenants sobe para **o seu Meta App / Business Manager**.
+- Implementação de referência (automático por lead + campanha) → `whatsapp-campaigns.md`.
 
 ## Disclosure de IA
 

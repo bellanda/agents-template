@@ -27,6 +27,9 @@ também.
   fila), FK `assigned_queue_id`, tool `handoff_to_human(queue_name, …)`, bloco `## EQUIPES DE
   ATENDIMENTO` em runtime, SLA em horário comercial + rodízio, permissões `queue:*`, UI (texto visível diz "Equipes") →
   **`references/human-handoff-queues.md`**.
+  Transferências de SEGURANÇA (flood/mensagem gigante `abuse_*`, teto de gasto, manipulação
+  `manipulation_suspected`) usam o mesmo caminho de handoff, com nota interna e rótulo próprio no
+  inbox → skill `ai-agents` → `references/chatbot-security.md`.
 
 ## Invariantes não negociáveis (sempre)
 
@@ -64,4 +67,5 @@ também.
 - `references/meta-invariants.md` — invariantes Meta (App, secrets, endpoints, Don'ts) — antes era a rule always-on.
 - `references/meta-app-setup.md` — runbook técnico completo (código backend + frontend, HMAC, troubleshooting).
 - `references/meta-policy.md` — política de plataforma: janela 24h, categorias, opt-in/opt-out, qualidade do número, disclosure de IA, App Review.
+- `references/whatsapp-campaigns.md` — template automático na chegada do lead + campanha em massa (declaração de opt-in da lista, ritmo pelo tier, pausa por qualidade, kill switch). Canônico kailos.
 - `references/human-handoff-queues.md` — equipes (filas humanas) e handoff do agente de IA (schema, tool, bloco de prompt, SLA/rodízio, API, UI; "Equipes" na tela, `queue` no código).

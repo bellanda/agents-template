@@ -87,6 +87,13 @@ Botão **"Imprimir / salvar PDF"** desabilitado até o dado chegar; antes de imp
 como PDF". Dados do cabeçalho da loja vêm de endpoint próprio (`useDocumentHeader`), o resto a tela
 já tem (`StorePrintDialog`).
 
+**Nome do PDF = `fileName`** (prop opcional, 2026-10-14): o "Salvar como PDF" sugere o
+`document.title` da página, que é o nome do app ("Nexarena.pdf"). Passe sempre um nome descritivo
+de quem/o quê + identificador ("Dossiê do atleta - Maria Souza - NX-7F3K-92QD", "Orçamento 123 -
+Cliente"), sem extensão. O dialog troca o título só durante a impressão, tira os caracteres
+proibidos em nome de arquivo e restaura no `afterprint` (o `window.print()` não bloqueia no Safari
+mobile). Botão que monta o `PrintSheet` fora do dialog: mesma troca de título.
+
 ## Rota pública por token (link do cliente)
 
 `/orcamento/$token`, `/acompanhar/$token`, `/checklist/$token`, `/nota/$token`: rota **fora da casca**,
