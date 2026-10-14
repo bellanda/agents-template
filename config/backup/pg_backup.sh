@@ -19,10 +19,14 @@
 #   BACKUP_DRY_RUN=1      dump + validate, skip every B2 call
 #   BACKUP_DIR            default /backup (volume: dump temp file + state)
 #
-# Retention (user decisions 2026-10-14): 1 daily + 4 weekly, logical dump until it no longer fits the
-# night window. Layout at the bucket ROOT, outside prod/ and staging/:
-#   backups/postgres/daily/<app>-<YYYY-MM-DDTHHMM>.dump   keep newest 1
-#   backups/postgres/weekly/<app>-<YYYY-MM-DD>.dump       Sunday copy, keep newest 4
+# Retention (user decisions 2026-10-14): 7 days + 4 weekly, logical dump until it no longer fits the
+# night window. Started as "1 daily + 4 weekly"; the user widened it the same day so a corruption noticed
+# days later can still be restored from the day before it (not only from last Sunday).
+# Layout at the bucket ROOT, outside prod/ and staging/:
+#   backups/postgres/daily/<app>-<YYYY-MM-DDTHHMM>.dump   every file of the 7 most recent DAYS
+#   backups/postgres/weekly/<app>-<YYYY-MM-DD>.dump       Sunday copy, 4 most recent
+# Retention counts distinct DAYS, not files: the pre-deploy `now` also lands in daily/, and 3 deploys in a
+# day must not push 3 older days out.
 set -euo pipefail
 
 TZ="${TZ:-America/Sao_Paulo}"
@@ -35,7 +39,7 @@ RETRY_BACKOFF_SECONDS=900
 HEALTHY_MAX_AGE_SECONDS=$((26 * 3600))
 DAILY_PREFIX="backups/postgres/daily"
 WEEKLY_PREFIX="backups/postgres/weekly"
-KEEP_DAILY=1
+KEEP_DAILY=7
 KEEP_WEEKLY=4
 STATE_DIR="$BACKUP_DIR/state"
 DUMP_DIR="$BACKUP_DIR/dump"
@@ -52,11 +56,19 @@ log_step() { # event status [file] [bytes] [seconds] [message]
      + (if $message != "" then {message: $message} else {} end)'
 }
 
-# Keep the newest N (names sort chronologically because they embed an ISO timestamp), print the rest.
+# Keep every name dated within the N most recent distinct days (names embed an ISO date, so they sort
+# chronologically), print the rest. Weekly names have one file per day, so there N days = N files.
 select_expired() {
   local keep="$1"
   [[ "$keep" =~ ^[0-9]+$ ]] || { echo "select-expired: N must be a non-negative integer, received '$keep'" >&2; return 2; }
-  grep -v '^[[:space:]]*$' | sort -u | sort -r | tail -n +"$((keep + 1))" || true
+  # Interval-free regex on purpose: the image's awk is mawk, which may not support {4}.
+  grep -v '^[[:space:]]*$' | sort -u | sort -r | awk -v keep="$keep" '
+    {
+      day = $0
+      if (match($0, /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)) day = substr($0, RSTART, RLENGTH)
+      if (!(day in seen)) { seen[day] = 1; days++ }
+      if (days > keep) print
+    }' || true
 }
 
 require_env() {
@@ -125,7 +137,10 @@ do_backup() {
   day=$(date +%F)
   mkdir -p "$STATE_DIR" "$DUMP_DIR"
   dump_file="$DUMP_DIR/$BACKUP_APP-$stamp.$$.dump"
-  trap 'rm -f "$dump_file"' RETURN
+  # The RETURN trap is global once set: it must reset itself, or it fires again when main() returns,
+  # outside this function, where $dump_file is unbound (set -u) → exit 1 after a successful "done"
+  # (found on the first real run, 2026-10-14; the dry run never hit it because it clears the trap).
+  trap 'rm -f "$dump_file"; trap - RETURN' RETURN
 
   t0=$(date +%s)
   PGPASSWORD="${POSTGRES_PASSWORD:-}" pg_dump -Fc --compress=zstd \
