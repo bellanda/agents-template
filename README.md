@@ -417,3 +417,26 @@ Same pattern as the product apps (kailos, balizap) — this template is the cent
 Rules: never the same key in yaml and `.env`; business code never calls `os.getenv`; new config = edit all
 three yamls + a `Settings` sub-model; new secret = `.env.example` + a `SecretStr` field (skill `python-config-bootstrap`).
 The host `.env` `DATABASE_URL` (localhost) is overridden inside docker by the compose `environment:` value.
+
+## Backup do Postgres (B2)
+
+TEMPLATE (sem B2 ainda: preencher `B2_PRIVATE_BUCKET`/`B2_PRIVATE_KEY_ID` no compose.prod e `B2_PRIVATE_APP_KEY` no `.env` quando o projeto ganhar B2). Desde 2026-10-14 (padrão da frota; canônico em `config/backup/` + skill `database` → `references/backup-b2.md`).
+Serviço `pg-backup`, **só** em `config/docker/compose.prod.yaml`:
+
+- Todo dia às 03:00 (America/Sao_Paulo) faz `pg_dump -Fc --compress=zstd` direto no serviço `postgres` via TCP (`PGHOST=postgres`; o template não tem socket nem pgbouncer). Depois valida com `pg_restore --list` e sobe com o `b2` CLI no bucket privado `agents-template-private`, com a
+  mesma chave privada da app (`B2_PRIVATE_APP_KEY` do `.env`).
+- Layout na raiz do bucket, fora de `prod/`: `backups/postgres/daily/` (mantém 1) e `backups/postgres/weekly/`
+  (cópia de domingo, mantém 4). A retenção só apaga depois que o arquivo novo subiu e foi conferido.
+- Healthcheck: unhealthy se o último sucesso tiver mais de 26h.
+- **Antes de todo deploy:** `docker compose run --rm pg-backup now`. Se falhar, não faça o deploy.
+- Dump lógico enquanto couber na janela ociosa das 22h às 06h. Só depois disso vale backup físico + WAL (decisão do
+  usuário, 2026-10-14).
+
+```bash
+docker compose run --rm pg-backup now                 # backup manual
+docker compose logs --tail=50 pg-backup               # JSON por passo; "event":"done" = sucesso
+docker compose run --rm --entrypoint b2 pg-backup ls --long -r "b2://agents-template-private/backups/postgres/"
+```
+
+**Restore** (num banco NOVO, conferir, só então trocar): runbook completo em
+`.claude/skills/database/references/backup-b2.md` → "Restore".

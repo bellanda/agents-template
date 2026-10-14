@@ -44,3 +44,74 @@ services:
         reservations:
           cpus: "0.1"
           memory: 128m
+
+  # Daily logical backup of Postgres to the app's private B2 bucket (fleet standard, 2026-10-14).
+  # Canonical service: identical in every app; only BACKUP_APP / bucket / key id differ. The bucket and
+  # key id are the literals from config/app/prod.yaml (not secrets); the key SECRET (B2_PRIVATE_APP_KEY)
+  # and POSTGRES_PASSWORD come from .env (interpolated). Prod only: dev/test must never write to B2.
+  # Manual run (e.g. before a deploy): `docker compose run --rm pg-backup now`.
+  # TEMPLATE: this app has no B2 yet. Fill B2_PRIVATE_BUCKET / B2_PRIVATE_KEY_ID (and B2_PRIVATE_APP_KEY in .env)
+  # when the project gets its private bucket; until then do not enable this service in prod.
+  # Design, restore runbook and retention: docs/for-infra.md ("Backup do Postgres (B2)").
+  pg-backup:
+    container_name: agents-template-pg-backup
+    build:
+      context: ../backup
+    environment:
+      BACKUP_APP: agents-template
+      BACKUP_HOUR_LOCAL: "3"
+      TZ: America/Sao_Paulo
+      POSTGRES_USER: agents_template
+      POSTGRES_DB: agents_template
+      B2_PRIVATE_BUCKET: agents-template-private
+      B2_PRIVATE_KEY_ID: "CHANGEME-b2-private-key-id"
+      # No pgsocket volume in this template: dump over TCP straight to the postgres service (never pgbouncer).
+      PGHOST: postgres
+      HOME: /backup
+      # Only these two secrets are passed (interpolated from .env), not env_file: the rest of .env
+      # (JWT, Meta, OpenRouter...) has no business inside the backup container.
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      B2_PRIVATE_APP_KEY: ${B2_PRIVATE_APP_KEY}
+    volumes:
+      # Dump temp file + state (last success date/heartbeat, b2 account cache). Survives restarts so a
+      # container restart after 03:00 catches up instead of skipping the day.
+      - pgbackup-tmp:/backup
+    tmpfs:
+      # `exec` is required: the b2 binary (staticx) self-extracts and runs from /tmp, and Docker tmpfs is
+      # noexec by default ("Failed to execv() /tmp/staticx-*/b2v4: Permission denied"). Also holds the
+      # "started at" marker for the healthcheck.
+      - /tmp:exec
+    read_only: true
+    security_opt:
+      - no-new-privileges:true
+    cap_drop: [ALL]
+    networks:
+      - internal
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/usr/local/bin/pg_backup.sh", "healthcheck"]
+      interval: 5m
+      timeout: 10s
+      retries: 1
+      start_period: 30s
+    restart: unless-stopped
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "5"
+        compress: "true"
+    deploy:
+      resources:
+        limits:
+          cpus: "1.0"
+          memory: 512m
+          pids: 128
+        reservations:
+          cpus: "0.05"
+          memory: 64m
+
+volumes:
+  pgbackup-tmp:
