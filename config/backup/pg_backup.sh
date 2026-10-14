@@ -83,7 +83,7 @@ b2_upload() { # local_path object_key
 # Verify the object landed with the exact local size (the CLI already checks sha1 during upload).
 b2_confirm_size() { # object_key expected_bytes
   local remote
-  remote=$(b2 file info "b2://$B2_PRIVATE_BUCKET/$1" | jq -r '.contentLength')
+  remote=$(b2 file info "b2://$B2_PRIVATE_BUCKET/$1" | jq -r '.size')
   [[ "$remote" == "$2" ]] || { echo "size mismatch for $1: remote=$remote local=$2" >&2; return 1; }
 }
 
