@@ -40,6 +40,34 @@ instruções), metadata do `usage_recorder` e `chat_history`. Rotas de gestão u
 - WhatsApp: desligar agente/handoff → `transition(state="human_handling")` + evento + `handoff_summary`
   (`integrations` → `human-handoff-queues.md`). Debounce/superseded via Valkey (gate `infra`).
 
+### WhatsApp — turno descartável (kailos 2026-10-14, decisão do usuário)
+
+Debounce de entrada (5 s de silêncio, estado `last_id`/`last_at` no Valkey, trigger antigo =
+superseded) junta a rajada ANTES de o agente começar. Mensagem que chega DURANTE a geração tem regra
+própria — **interrompe, descarta e responde ao conjunto** (1 + 2 + …), nunca responde à 1 por cima da 2:
+
+- **Watcher** (`agent_turn_runner.run_discardable_agent_turn`): task group com o `ainvoke` + um loop
+  que relê o debounce a cada 0,5 s; `last_id` ≠ trigger → cancela o scope. Valkey fora no watcher =
+  segue (fail-open; a entrada já é fail-closed). Reconfere uma vez depois do `ainvoke`. Exceção do
+  agente sai do task group como veio (guardada e relançada, sem `ExceptionGroup`).
+- **Limite = primeira ação visível**: tool com efeito (enviar fotos/documento, transferir) chama
+  `claim_turn_side_effect(config)` ANTES de qualquer `await` (`AgentTurnGuard` em
+  `configurable["turn_guard"]`; marcar/cancelar e reservar/agir são síncronos, sem corrida no event
+  loop). Já agiu → o turno não é mais descartado (desfazer faria o agente esquecer o que mandou).
+- **Descartar = desfazer**: `checkpointer.alatest_checkpoint_id(thread)` antes do turno e
+  `arollback_thread(thread, keep_through)` no descarte (apaga `checkpoints`/`checkpoint_writes` com
+  id maior; uuid6 ordena como texto). `last_agent_trigger_at` NÃO anda.
+- **Fila por conversa, nunca entre conversas** (usuário 2026-10-14): o consumer do agente NÃO
+  processa o lote em sequência (`for msg: await handle`) — isso fazia uma conversa esperar atrás de
+  outras do mesmo lote. Cada trigger vira uma task (`anyio.Semaphore(MAX_CONCURRENT_TURNS_PER_WORKER)`,
+  8; o `fetch` só pede o que cabe nas vagas livres, o resto fica no stream para outro worker) com
+  heartbeat `msg.in_progress()` a cada 20 s (espera + geração pode passar do `ack_wait` e o JetStream
+  reentregaria o mesmo trigger). A MESMA conversa é serializada entre workers por trava no Valkey
+  (`SET NX EX 180` com token, solta por Lua CAS; espera até 30 s, depois NAK). Erro do handler sai do
+  task group guardado e relançado (senão `ExceptionGroup` não casa com os `except` de supersede/debounce).
+- **`last_agent_trigger_at` = `created_at` da última inbound LIDA no turno**, nunca `NOW()` do envio:
+  com `NOW()` a mensagem que chegou durante a geração ficava antes do carimbo e sumia do turno seguinte.
+
 ## Mensagem do usuário (multimodal)
 
 `_extract_user_content` (`chat.py`): imagem → parte `image_url` inline (400 se `supports_image_input`
