@@ -13,10 +13,11 @@ app vive no compose.
   mesmo `.env` das outras.
 - **Pasta na RAIZ do bucket**, fora do `b2_key_prefix` (`prod/` / `staging/`): `backups/postgres/`. O código da
   app nunca grava nem apaga em `backups/`.
-- **Retenção: 1 diário + 4 semanais.** O objetivo é conter danos (servidor perdido, migration que
+- **Retenção: 7 dias + 4 semanais.** Começou como "1 diário + 4 semanais", e o usuário ampliou no mesmo dia: com 1
+  diário, uma corrupção percebida dias depois só voltava até o domingo. O objetivo é conter danos (servidor perdido, migration que
   corrompeu, invasão), não recuperar algo que o usuário apagou semanas atrás.
-- **Backup antes de todo deploy** (`docker compose run --rm pg-backup now`). O deploy roda migrations, e com
-  só 1 diário retido é esse backup que salva uma migration ruim. Ver `global/agent-behavior.md` → Deploy.
+- **Backup antes de todo deploy** (`docker compose run --rm pg-backup now`). O deploy roda migrations, e esse backup é a
+  cópia imediatamente anterior a elas. Ver `global/agent-behavior.md` → Deploy.
 - **Dump lógico (`pg_dump -Fc`) até a casa dos TB.** Os apps ficam ociosos das 22h às 06h. Migrar para
   backup físico + WAL (PITR, `pg_basebackup --incremental`; o `summarize_wal = on` já está no `prod.conf`)
   **só quando o dump ou o restore não couber mais nessa janela**. Não há limite fixo de GB.
@@ -26,11 +27,13 @@ app vive no compose.
 ```
 <app>-private/
   prod/…                                        ← uploads da app (b2_key_prefix)
-  backups/postgres/daily/<app>-<YYYY-MM-DDTHHMM>.dump    ← mantém o mais recente
+  backups/postgres/daily/<app>-<YYYY-MM-DDTHHMM>.dump    ← todos os arquivos dos 7 dias mais recentes
   backups/postgres/weekly/<app>-<YYYY-MM-DD>.dump        ← cópia de domingo, mantém 4
 ```
 
 Os nomes embutem um timestamp ISO, então a ordem alfabética é a ordem cronológica, e a retenção depende disso.
+A retenção diária conta **dias distintos**, não arquivos: o backup antes do deploy também cai em `daily/`, e
+3 deploys num dia não podem empurrar 3 dias para fora.
 
 ## Como funciona (`pg_backup.sh`)
 
@@ -39,7 +42,7 @@ Os nomes embutem um timestamp ISO, então a ordem alfabética é a ordem cronol�
 | `run` (default) | Loop de 60s. Faz 1 backup por dia local, a partir de `BACKUP_HOUR_LOCAL` (3 = 03:00 `America/Sao_Paulo`). A checagem é `>=`, então um restart depois das 03h ainda recupera o dia perdido. Falha → nova tentativa em 15 min. |
 | `now` | Faz 1 backup imediato e sai com 0/1. É o modo manual e o do "backup antes do deploy". |
 | `healthcheck` | Fica unhealthy se o último **sucesso** tiver mais de 26h. Há tolerância de 26h desde o start do container, para o deploy recém-feito não aparecer unhealthy. |
-| `select-expired N` | Recebe nomes no stdin e devolve todos menos os N mais novos. É a lógica de retenção, isolada para teste. |
+| `select-expired N` | Recebe nomes no stdin e devolve os que estão fora dos N dias mais recentes. É a lógica de retenção, isolada para teste. |
 
 Passos de cada backup (1 linha JSON de log por passo):
 1. `pg_dump -Fc --compress=zstd` pelo **socket direto** (`pgsocket`, nunca pgbouncer em transaction mode),
@@ -132,3 +135,7 @@ Validado em 2026-10-14: dump de 50 mil linhas → restore num banco novo, contag
   (`"$0" __backup`); sem isso, um passo que falha seguiria até a retenção.
 - O bucket é versionado: `b2 rm` sem `--versions` só esconde, e a versão segue cobrada.
 - O tmpfs `/tmp` precisa de `exec`, porque o binário `b2` se autoextrai ali ("Failed to execv() /tmp/staticx-*").
+- O trap `RETURN` do bash é global depois de setado. Ele tem de se auto-resetar (`trap - RETURN` dentro dele);
+  senão dispara de novo quando o `main()` retorna, fora da função, com a variável não definida, e o `set -u`
+  derruba um backup que já tinha dado certo. Achado no 1º backup real (2026-10-14); o dry run não pegava.
+- O `b2 file info` (v4) devolve o tamanho em `.size`, não `.contentLength`.
