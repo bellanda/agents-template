@@ -326,6 +326,35 @@ class AsyncpgCheckpointSaver(BaseCheckpointSaver[str]):
         async with self.pool.acquire() as conn, conn.transaction():
             await conn.executemany(query, params)
 
+    async def alatest_checkpoint_id(self, thread_id: str) -> str | None:
+        """Id do checkpoint mais recente da thread (raiz, ns ''), ou `None` se ela é nova."""
+        async with self.pool.acquire() as conn:
+            return await conn.fetchval(
+                "SELECT checkpoint_id FROM checkpoints WHERE thread_id = $1 AND checkpoint_ns = ''"
+                " ORDER BY checkpoint_id DESC LIMIT 1",
+                str(thread_id),
+            )
+
+    async def arollback_thread(self, thread_id: str, keep_through: str | None) -> None:
+        """Desfaz um turno: apaga o que foi gravado DEPOIS de `keep_through` (`None` = tudo).
+
+        Para turno descartado (cliente mandou outra mensagem enquanto o agente gerava): a
+        próxima execução parte do estado anterior, como se o turno não tivesse existido.
+        `checkpoint_id` é uuid6 (ordem de tempo também como texto), a mesma ordem do `ORDER BY
+        checkpoint_id DESC` que acha o último. Blobs ficam: são endereçados por versão, e versão
+        órfã nunca é lida.
+        """
+        if keep_through is None:
+            await self.adelete_thread(thread_id)
+            return
+        async with self.pool.acquire() as conn, conn.transaction():
+            for table in ("checkpoints", "checkpoint_writes"):
+                await conn.execute(
+                    f"DELETE FROM {table} WHERE thread_id = $1 AND checkpoint_id > $2",
+                    str(thread_id),
+                    keep_through,
+                )
+
     async def adelete_thread(self, thread_id: str) -> None:
         async with self.pool.acquire() as conn, conn.transaction():
             for table in ("checkpoints", "checkpoint_blobs", "checkpoint_writes"):
