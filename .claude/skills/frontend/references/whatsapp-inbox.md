@@ -3,7 +3,7 @@
 > Reference do gate `frontend`. Abra ANTES de construir/alterar a caixa de entrada de conversas de um
 > canal de mensagens (WhatsApp) em qualquer app: lista de conversas + janela de chat + envio +
 > tempo real. Backend (webhook, janela de 24h, política Meta, handoff, filas) → gate `integrations`.
-> Decisão de **2026-10-01**: o inbox do **kailos** é o canônico. balizap alinha a ele (e corrige o
+> Decisão de **2026-10-01**: o inbox do **kailos** é o canônico. emporion alinha a ele (e corrige o
 > SSE, abaixo); nexarena `/atendimento` adota o mesmo inbox **sem** filas/transferência.
 
 ## Canônico (onde copiar)
@@ -57,7 +57,7 @@
 useWhatsAppStream(orgId); // deps do effect: [accessToken, auth, queryClient, orgId] — NUNCA o contato aberto
 ```
 
-**O bug do balizap (corrigir ao alinhar):** `useWhatsAppStream(activeContactId)` colocava o contato
+**O bug do emporion (corrigir ao alinhar):** `useWhatsAppStream(activeContactId)` colocava o contato
 aberto nas deps do `useEffect`. Cada clique na lista **derrubava e reabria o SSE**, e como não há
 replay, os eventos da janela de reconexão se perdiam (mensagem nova que só aparece no próximo refetch). O
 handler **não precisa** saber a conversa ativa: ele invalida `["whatsapp","conversations"]` e
@@ -80,7 +80,7 @@ Invariantes do stream (todas já no canônico — não remova ao adaptar):
   pelo domínio público, nada até ~125s.
 - **Ressincroniza ao reconectar:** não há replay, então a cada reabertura (menos a primeira) o loop
   invalida `["whatsapp","conversations"]` e `["whatsapp","messages"]` — o que aconteceu com o
-  stream fora do ar só aparece via REST (`onReconnect` do `useReconnectingStream` no balizap; loop
+  stream fora do ar só aparece via REST (`onReconnect` do `useReconnectingStream` no emporion; loop
   inline no kailos).
 
 - **Um stream por org**, aberto com `?org_id=` explícito. Sem isso o backend adivinha o primeiro
@@ -172,6 +172,68 @@ route-guards precisa passar `search` ao `beforeLoad`.
   `~x~`, `# Título` → `*Título*`, `[t](url)` → `t: url`. O prompt pede a sintaxe do WhatsApp; isto é
   a rede de segurança (o WhatsApp não entende Markdown e o cliente veria os símbolos).
 
+## Janela fechada, template e reenvio (kailos, 2026-10-14)
+
+Pastas em `kailos/frontend/src/components/whatsapp/`. Política e travas de envio → `integrations`
+(`whatsapp-campaigns.md` §3).
+
+- **`WindowClosedFooter`** substitui o `Composer` quando a janela de 24h fechou (texto livre dá `131047`):
+  aviso + botão "Enviar template" que abre **`templates/SendTemplateDialog`** (`orgId`, `contactId`,
+  `defaultVehicleId?`, `defaultTemplateId?`). O dialog pede `/preview` ao backend (valores resolvidos +
+  `blocking_reason`), mostra a prévia em `TemplateBubble` e só habilita enviar sem bloqueio. Sem opt-in
+  abre `WhatsAppOptInDialog`. Mesmo dialog serve lista de leads e ficha do contato.
+- **`TemplateBubble`** (`templates/`): prévia/bolha de template com cores semânticas shadcn (não `--wa-*`):
+  foto do header (`headerImageUrl`) ou placeholder, corpo com `{{variável}}` ainda não resolvida destacada,
+  rodapé e **chips de botão** (`quick_reply` / `url`). No timeline, `MessageBubble` renderiza
+  `messageType: "template"` a partir de `metadata` (`headerImageUrl`, `buttons`, `templateId`, `vehicleId`).
+- **`bubbles/ButtonReplyCard`**: `messageType: "button"` (toque no quick reply) = "Resposta ao botão do
+  template" + `textBody`. Sem esse caso o tipo cai em placeholder (backend → `integrations/meta-invariants.md`).
+- **Falha tardia + `Reenviar`:** `failureReason(message.error)` mostra `error.reason` (pt-BR, gravado pelo
+  webhook de status) e, se faltar, `A Meta não entregou: <errors[0].title>`. `bubbles/ResendFailedMessage` +
+  `canResendFailedMessage(message)`: só outbound com contato; **template** (com `metadata.templateId`) reabre
+  `SendTemplateDialog` com o mesmo template/carro (prévia nova, mesmas travas); **texto** reenvia o mesmo
+  texto (precisa de janela aberta); **mídia não** tem reenvio. A bolha falha fica como histórico; reenvio é
+  mensagem nova. Falha OTIMISTA (nunca chegou ao servidor) usa o retry do store, não este botão.
+- **Desbloquear contato** (anti-abuso bloqueia sozinho): no rodapé de `ChatWindowFooter`, só com
+  `whatsapp:manage` (`canUnblock`), botão "Desbloquear contato" → `ConfirmDialog` explicando que o bloqueio é
+  automático e pode ter pego cliente real → `useUnblockContact`.
+
+## Transferir, linha do tempo e cabeçalho (kailos, 2026-10-09)
+
+- **Transferir** (`6c3cec1`, `37915a2`): `TransferPicker` = equipes ("próximo da vez") + pessoas A–Z com busca
+  e `ConfirmDialog`. Regra espelha o backend: `showTransferButton = state !== "closed" && (canManage ||
+  (canAssign && (minha || sem dono)))`; **equipe só com `manage`** (`canTransferToQueue`,
+  `queue_transfer.py`); `useTransferConversationToQueue` → `POST /whatsapp/conversations/{id}/transfer-queue`, invalida
+  `["whatsapp","conversations"|"messages"]`. `manage` transfere até a própria conversa (ADM não ficava
+  preso nela).
+- **Conversa na URL** (`?contact=`): o gesto de voltar do Android volta para a lista, não sai do app.
+- **Ordem da timeline** (`ChatTimeline.buildTimeline`): mensagens por `createdAt` (desempate por id);
+  eventos por id; merge por id, com a resposta da IA empurrada para antes do
+  evento de transição que a segue (`senderKind === "agent"` na mesma conversa). `EventCard`: hora com
+  segundos; `ROUTING_LABELS` (`explicit_seller`, `sold_by`, `preferred`, `rotation`) vira
+  "Transferido → <quem> (<motivo>) (equipe)" — o destinatário, não o ator (parecia duplicado).
+- **Cabeçalho mobile** estilo WhatsApp (nome + "com X", ações no ⋮; Finalizar com confirmação); sem barra
+  Conversas|Chat — voltar = seta/gesto. nginx precisa de `geolocation=(self)` para o GPS (localização).
+
+## Anexos, mural e mídia privada (kailos, 2026-10-09/13)
+
+- **`AttachMenu`**: clipe → lista vertical no desktop (≥md) e grade de tiles redondos no celular (Popover
+  largura total; sem `ui/drawer`). Opções com `accept` próprio: Documento, Fotos e vídeos (múltipla, até 30),
+  **Câmera** (`capture`, só touch), Áudio; ações em diálogo: Localização (GPS atual), Pedir localização,
+  Contato. Cada opção tem seu `<input>` escondido FORA do popover e o `.click()` roda síncrono no gesto.
+- **Mural/álbum** (`77a7373`, `8227a74`): seleção múltipla → faixa de miniaturas, legenda na primeira,
+  envio sequencial na ordem, todas otimistas; casamento otimista↔servidor 1:1 (fotos iguais sem legenda
+  apagavam o spinner das outras). Viewer: tira de miniaturas **centralizada** sob a foto, atual com anel.
+- **Mensagens ricas** (`867400b`): `POST /conversations/{contact_id}/messages/rich` (location, contacts,
+  location_request); recebidos: cartões `LocationCard`/`ContactsCard`/`LocationRequestCard`, `StickerBubble`
+  e **reação** (`lib/whatsapp/reactions.foldReactions`: linha própria `reaction`, vence a mais recente por
+  lado, `null` remove; some da lista e vira selo no canto do balão alvo). O agente recebe coordenadas/números
+  (`describe_for_agent`).
+- **Mídia privada** (`hooks/useAuthedMedia` + `useMessageMediaUrl`): mídia recebida é `tenant`; `<img>/<audio>/
+  <video>/<a>` não mandam `Authorization` (token em memória) → `client.getBlob` e `blob:` revogado ao
+  desmontar. URL absoluta pública (outbound) vai direto; preview local otimista fica até a mídia do servidor
+  estar pronta (sem piscar). O `getBlob` segue o 302 do gate para URL assinada do B2 → CSP em `api-and-csp.md`.
+
 ## Tema — vars `--wa-*` (exceção deliberada a "sem cor crua")
 
 O inbox imita a identidade do canal. As cores vivem **escopadas** em `.whatsapp-theme` (+ variante
@@ -194,4 +256,5 @@ dentro de componente do inbox — sempre `var(--wa-*)`.
   Só aparece em prod — o `bun dev` não passa pelo nginx (Kailos, 2026-10-09).
 - **NUNCA** conteúdo de mensagem no evento SSE; **NUNCA** `useIsMobile()` para trocar lista/chat.
 - **NUNCA** `h-[calc(100dvh-Xrem)]` no chat; **NUNCA** botão de enviar desabilitado com anexo e sem texto.
+- **NUNCA** `src` cru em mídia recebida (401) — `useAuthedMedia`; **NUNCA** `Reenviar` de mídia.
 - **NUNCA** inbox próprio por app — copie o do kailos; diferença legítima é só a presença de equipes.

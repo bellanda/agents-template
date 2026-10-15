@@ -6,7 +6,7 @@
 > `DocumentSlot`, `DocumentList`, `DocumentPreviewDialog`, `PhotoGallery`, `UploadProgress`),
 > `components/branding/ImageDropzone.tsx`, `hooks/useFileUpload.ts` (`useFileUpload` +
 > `useUploadMutation`), `lib/api/client.ts` (`ApiClient.upload`), `lib/utils/image-compress.ts`,
-> `lib/utils/file-types.ts`. Kailos já vendora `hooks/useFileUpload.ts` + `components/uploads/{DocumentDropzone,DocumentSlot,UploadProgress}.tsx`. O `DocumentSlot` nasceu no **balizap** (`components/documents/
+> `lib/utils/file-types.ts`. Kailos já vendora `hooks/useFileUpload.ts` + `components/uploads/{DocumentDropzone,DocumentSlot,UploadProgress}.tsx`. O `DocumentSlot` nasceu no **emporion** (`components/documents/
 > DocumentSlot.tsx`) e foi adaptado aos primitivos do promoservice. Os utils puros (`validate`,
 > `upload-error`, `file-types`) são **vendoráveis verbatim**; os componentes são apresentacionais
 > (recebem callbacks) — a camada de dados (hooks/services/endpoints) é por projeto.
@@ -26,7 +26,7 @@ tira inline). Backend: gate `uploads-storage` / `uploads.md`.
 | Documento de **título predefinido** (Termos, CNH, Orçamento assinado) | **`DocumentSlot`** (single-instance; subir de novo troca)   |
 | Anexo solto, sem título/slot (lista de anexos da entidade)        | `DocumentDropzone` (`onSelect(file)`) + `DocumentList`          |
 | Visualizar o arquivo (PDF/Office/imagem)                          | **`DocumentPreviewDialog`**                                     |
-| Documento livre com **título capturado** do usuário e/ou **link externo** | variante do **balizap** (`DocumentDropzone captureTitle` + `onLink`) — só onde o produto exige |
+| Documento livre com **título capturado** do usuário e/ou **link externo** | variante do **emporion** (`DocumentDropzone captureTitle` + `onLink`) — só onde o produto exige |
 | Arquivos escolhidos **antes** da entidade existir (form de criação) | variante **nexarena** (seção abaixo)                          |
 | Captura de câmera / base64 in-place (NÃO é upload de doc)         | widget próprio (fora deste padrão)                              |
 
@@ -35,7 +35,7 @@ tira inline). Backend: gate `uploads-storage` / `uploads.md`.
 - **Título predefinido** (`DocumentSlot`): o slot já sabe o título/categoria (ex.: "Termos de Uso").
   Dropzone → upload direto, sem perguntar título. O `DocumentSlot` do promoservice é dono do preview
   e da confirmação de exclusão; a feature só fornece o documento e as ações de rede.
-- **Título capturado** (balizap `DocumentDropzone captureTitle=true`): após escolher o arquivo, um
+- **Título capturado** (emporion `DocumentDropzone captureTitle=true`): após escolher o arquivo, um
   input inline pede o título (default = nome do arquivo sem extensão) antes de submeter. Também aceita
   **link externo** (URL) como alternativa ao arquivo. Não faz parte do kit base do promoservice.
 
@@ -225,7 +225,7 @@ Na mutation: `mutationFn` faz `FormData` (`file`, `title?`, `aliases?`, `categor
 `react-icons/fa6` (PDF=red, Word=blue, Excel=emerald, Texto=zinc, Markdown=violet). `fileTypeMeta`
 resolve nome/ext/MIME → `{ Icon, colorClass, label, ext }` com fallback neutro. Exporta também
 `ALLOWED_DOC_EXTENSIONS` / `DOC_ACCEPT_ATTR` (single source pro `accept` e o guard) e
-`isAllowedDocFile(name)`. Vendor verbatim do balizap (`lib/utils/file-types.ts`); ajuste a whitelist
+`isAllowedDocFile(name)`. Vendor verbatim do emporion (`lib/utils/file-types.ts`); ajuste a whitelist
 de extensões à do backend do projeto.
 
 ```tsx
@@ -238,7 +238,7 @@ No estado cheio, o card/imagem é o `DropdownMenuTrigger`. Itens canônicos, nes
 **Visualizar** (`Eye`/`Expand`) · **Copiar link** (`Copy`) · **Baixar** (`Download`, oculto em link
 externo) · `DropdownMenuSeparator` · **Substituir** (`FileUp`, dispara `<input type="file" hidden>`)
 · **Excluir** (`Trash2`, `variant="destructive"` → abre `ConfirmDialog`). "Copiar link" só existe
-onde há URL pública (balizap); o `DocumentSlot`/`ImageDropzone` do promoservice têm Visualizar ·
+onde há URL pública (emporion); o `DocumentSlot`/`ImageDropzone` do promoservice têm Visualizar ·
 Baixar · Substituir · Excluir. Ícone de ação inline: o set do projeto (`react-icons/lu` nos apps
 novos — promoservice/kailos; `lucide-react` onde ainda é o idiom shadcn do arquivo); ícone de
 identidade de arquivo = `react-icons/fa6` (`file-types`).

@@ -3,7 +3,7 @@
 > Reference do gate `frontend`. Consolida itens de configuração dispersos da sidebar num único
 > Dialog grande com nav lateral + busca (estilo "Claude GUI Settings"). O mecanismo de deep-link
 > é o de `overlays.md > Dialog deep-linkado via search param`.
-> **Padrão em TODOS os apps de multi-tenant (kailos, balizap, nexarena, akmeo, promoservice) —
+> **Padrão em TODOS os apps de multi-tenant (kailos, emporion, nexarena, akmeo, promoservice) —
 > exceto optimuslar (decisão 2026-10-01).** Canônico: **kailos** `components/settings/*`
 > (`SettingsDialog.tsx`, `SettingsNav.tsx`, `sections-config.ts`, `sections/*`, `components/members/*`).
 
@@ -106,7 +106,7 @@ export function getVisibleSections(can: (p: Permission) => boolean, isAdminLevel
 - A ordem do array = ordem da nav = ordem do tour de onboarding ("passo N de M"). Primeiros passos
   no kailos: Empresa → Membros → Equipes → Atendente de IA → WhatsApp (a IA precisa das equipes
   para transferir; o número só liga depois de haver quem atenda).
-- Cada app mantém **suas** seções/gates (balizap/nexarena/akmeo/promoservice têm conjuntos
+- Cada app mantém **suas** seções/gates (emporion/nexarena/akmeo/promoservice têm conjuntos
   diferentes); o que é padrão é o **mecanismo** (`id/label/group/icon/gate/render` +
   `getVisibleSections`) e a casca.
 

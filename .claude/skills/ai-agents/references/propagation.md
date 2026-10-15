@@ -61,7 +61,7 @@ em `model_catalog.py` + migration reescrevendo slugs legados. Atualize a rule, a
 - **Todos:** `custom_providers` lendo `config.integrations` (shim `integrations_config`); `iter_model_configs`;
   `media_to_text(..., usage=UsageContext, message_id=...)`; `tenant_id` na seam; middlewares `sliding_window` +
   `tenant_instructions`.
-- **kailos/balizap:** `organization_id` ≈ `tenant_id` (mapear no callback ou migrar); `media.py` do template
+- **kailos/emporion:** `organization_id` ≈ `tenant_id` (mapear no callback ou migrar); `media.py` do template
   (retry + custo do Whisper); `org_agent_configs` fica no app até convergir; sugestões ganham `action`.
 - **nexarena:** usar `insert_agent_message_usage` do template; `conversation_id` como `thread_id`; sem
   `streaming=False` fixo em `custom_providers`.

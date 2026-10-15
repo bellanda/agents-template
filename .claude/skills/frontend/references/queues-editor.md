@@ -3,7 +3,7 @@
 > Reference do gate `frontend`. Abra ANTES de construir/alterar a tela de **Equipes** (filas humanas
 > do atendente de IA: quem atende, o que atende, quando a IA transfere, SLA, rodízio). Contrato de
 > backend, schema, tool `handoff_to_human` e rodízio → gate `integrations`
-> (`references/human-handoff-queues.md`). Redesenho de **2026-10-01**; vale para kailos e balizap
+> (`references/human-handoff-queues.md`). Redesenho de **2026-10-01**; vale para kailos e emporion
 > (os únicos apps com handoff para humano). **Canônico:** kailos
 > `components/settings/sections/QueuesSection.tsx` (seção `queues` do hub — ver `settings-dialog.md`)
 > + `sections/queues/`: `QueueCard.tsx` (card), `QueueEditorDialog.tsx` (FormDialog + rodapé +
@@ -34,7 +34,7 @@ Clique no card (ou "Nova equipe") → FormDialog size="xl" (full-bleed no mobile
 │  Nome da equipe                     │  ≡ #1 Ana            [x]         │   mobile: empilhado
 │  O que esta equipe atende           │  ≡ #2 Bruno          [x]         │   (dados → membros)
 │  Quando a IA transfere para cá      │  [ + Adicionar membro ▾ ]        │
-│  Responder em até (minutos)         │  texto do rodízio (balizap)      │
+│  Responder em até (minutos)         │  texto do rodízio (emporion)      │
 ├─────────────────────────────────────────────────────────────────────────┤
 │ [ Excluir equipe ]  (vermelho)                               [ Salvar ] │
 └─────────────────────────────────────────────────────────────────────────┘
@@ -51,7 +51,7 @@ Clique no card (ou "Nova equipe") → FormDialog size="xl" (full-bleed no mobile
   coluna. Mobile = coluna única empilhada, dados primeiro.
 - **Coluna esquerda (dados)**: nome, o que atende, gatilhos de handoff, SLA em minutos
   (`NumericField`, limites vindos do backend `SLA_RESPONSE_MIN/MAX_SECONDS`), e o texto de rodízio do
-  balizap quando existir. A chave técnica (`name`) é gerada do nome (`queueKeyFromLabel`:
+  emporion quando existir. A chave técnica (`name`) é gerada do nome (`queueKeyFromLabel`:
   "Pós-venda" → `pos_venda`) **só na criação** — o lojista nunca digita chave.
 - **Coluna direita (membros + ordem)**: lista ordenável com **dnd-kit** (`DndContext` +
   `SortableContext` + `useSortable`, sensores `PointerSensor` com `distance: 6` + `KeyboardSensor`;

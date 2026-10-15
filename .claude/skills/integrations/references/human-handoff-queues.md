@@ -97,6 +97,40 @@ rodízio. Inativo/fora da equipe cai para o próximo degrau. O motivo vai em `ro
 evento e aparece no `EventCard`. As equipes dizem PARA QUEM; QUANDO transferir é do método da
 plataforma (prompt-base), não do gatilho da equipe.
 
+### Rodízio e fila de roteamento (kailos `services/queues/`)
+
+- **`assignment.pick_assignee(conn, org_id, contact_id=…)`** é o ÚNICO ponto que decide dono quando não há
+  vendedor explícito (handoff da IA, anti-abuso/contato bloqueado). Chame dentro de transação:
+  `queue_repository.pick_routing_queue_id` escolhe a fila (ativa **com membro ativo**, preferindo a de
+  vendas criada com a org) e `pick_next_for_contact` respeita o vendedor grudado no contato e senão avança
+  o `rotation_pointer` sob `FOR UPDATE` (dois handoffs simultâneos não pegam o mesmo). Sem fila utilizável
+  cai no titular da loja (`organizations.owner_user_id`, senão o admin mais antigo): conversa nunca fica
+  órfã. Antes só o `owner` recebia contato bloqueado (SQL cru + 403 de `assigned_user_id`), o que numa loja
+  de dez vendedores era uma fila de um.
+- **`handoff_routing.py`** monta `HandoffAssignment(user_id, routing, seller_name)` na ordem
+  `explicit_seller` → `sold_by` (só `kind="post_sale"`) → `preferred` → `rotation`; `find_seller` casa nome
+  por substring/palavra e só então fuzzy (`SELLER_NAME_FUZZY_THRESHOLD = 85`, rapidfuzz); abaixo disso a IA
+  pergunta de novo em vez de transferir para a pessoa errada.
+- **`queue_repository.list_serving_members`** = critério único de "vendedor válido": usuário ativo + membro
+  da org + membro ATIVO de ao menos uma fila ATIVA. Alimenta `find_seller` e a checagem do `seller_id`;
+  vendedor desligado ou fora das filas nunca recebe cliente por indicação da IA (cai no próximo degrau).
+- **Contato bloqueado pelo anti-abuso** (`abuse_service.apply_abuse`): em UMA transação bloqueia
+  (`contacts.is_blocked` + `block_reason`), grava auditoria `CONTACT_BLOCKED` (bloqueio automático erra —
+  cliente que manda 25 fotos do carro que vende parece robô), escolhe dono por `pick_assignee`, transiciona
+  para `human_handling` (evento `abuse_<motivo>`), deixa nota interna com o motivo e notifica o dono. O
+  agente NÃO é acionado. Desbloqueio é ação humana (`whatsapp:manage`) → `whatsapp-inbox.md`.
+- **Rodízio por prazo** (`cron/sla_redistribution.py`, commit `5741fec`, 2026-10-09): o prazo de cada dono
+  conta da CHEGADA da conversa nele (`sla_started_at` = último inbound ou última mudança de dono depois
+  dele). Contar sempre do inbound fazia o recém-atribuído herdar prazo já estourado: três vendedores em
+  três minutos em prod. O rodízio NUNCA passa adiante quem já respondeu na conversa (decisão do usuário
+  2026-10-09): estourou o prazo → grava `sla_owner_idle` + evento `cron.lead.owner_idle` para a gestão,
+  uma vez por inbound. Piso da varredura 1 min (mínimo da fila). Mudança de dono pelo cron publica
+  `conversation.assigned` (SSE) — sem F5.
+- **Contador e motivo na UI** (`4e024cc`, 2026-10-09): `services/portals/whatsapp/sla_deadline.py` PREVÊ o
+  próximo rodízio espelhando as regras do cron (só `human_handling` com inbound sem resposta; dono que já
+  respondeu = sem contador; relógio recomeça a cada troca de dono; após a volta inteira `sla_escalated` =
+  sem contador). Muda o cron, muda o arquivo — `tests/whatsapp/test_sla_deadline.py` prende os dois.
+
 ## API e permissões
 
 - `queue:read` / `queue:manage` de verdade na rota (nunca check de papel).

@@ -1,7 +1,7 @@
 # Instruções de agente de IA — tela de configuração (Markdown + ChatGPT + versões)
 
 > Reference do gate `frontend`. Vale para **todo app com agente de IA configurável** — o CLIENTE do
-> SaaS configura o que um agente diz/faz (atendente de WhatsApp por org no kailos/balizap; agentes de
+> SaaS configura o que um agente diz/faz (atendente de WhatsApp por org no kailos/emporion; agentes de
 > anúncios por org no akmeo; agente da plataforma no nexarena). Decisão de **2026-10-01**: UM
 > desenho em todos os apps. Backend do agente e política de plataforma (disclosure, janela de 24h) →
 > gate `integrations` (`meta-policy.md`, `human-handoff-queues.md`); gate `ai-agents`
@@ -21,12 +21,12 @@ por inteiro** para o app (cada app vendora; não importe entre repos):
 | `chatgpt-builder-prompt.ts`  | Pré-prompt do ChatGPT — **o único lugar** que sabe o que o runtime já injeta                   |
 | `use-agent-config.ts`        | Queries/mutations de config e versões (`setQueryData` antes do `invalidateQueries`)            |
 
-Origem: balizap `agent-config/*` (estrutura) + `chatgpt-builder-prompt` do **kailos** (o mais
+Origem: emporion `agent-config/*` (estrutura) + `chatgpt-builder-prompt` do **kailos** (o mais
 completo: recebe `ChatGptStoreFacts` — nome, cidade, endereço, telefone já cadastrados — para o
 ChatGPT não perguntar de novo, e lista tudo que o runtime injeta). `AgentTester`, `DocumentAiConfig`
-e `ModelSetup` do balizap são **extras do balizap**, não fazem parte do padrão.
+e `ModelSetup` do emporion são **extras do emporion**, não fazem parte do padrão.
 
-**Onde monta:** seção "Atendente de IA" do hub de Settings (kailos/balizap — `settings-dialog.md`);
+**Onde monta:** seção "Atendente de IA" do hub de Settings (kailos/emporion — `settings-dialog.md`);
 página `/o/$id/agents/$agentId` com abas (akmeo — vários agentes por org); **área de superusuário**
 no nexarena (agente da plataforma: 1 número monitorado por superusuários, **sem Equipes**, com
 tabela de config/versões da plataforma — modelo do `tenant_agent_configs` do template, sem tenant).

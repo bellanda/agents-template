@@ -38,6 +38,23 @@ para achar o `fetch` de `blob:`) versus o header servido de verdade
 (`curl -sI https://<domínio> | rg -i content-security-policy`) — o arquivo no repo pode estar certo e o
 edge servindo a versão antiga.
 
+### Hosts que o inbox/WhatsApp exigem (kailos `config/nginx/snippets/security-headers-base.conf`)
+
+- **Storage privado em `connect-src` (`https://*.backblazeb2.com`, ou o CDN/bucket do app)** — commit
+  `8bba0cc` (2026-09-22). Arquivo `tenant`/`private` (CRLV, mídia recebida no WhatsApp) é buscado por JS
+  (`getBlob`): o gate `/api/v1/uploads` responde **302** para URL assinada do bucket e o destino do redirect
+  passa por `connect-src`. Sem o host a prévia falha SÓ em produção. O bucket privado também precisa de
+  regra CORS para a origem do app.
+- **Meta** (`e1c3db9`, `874aeeb`; 2026-09-10): `connect.facebook.net` em `script-src` **e** `connect-src`
+  (o SDK faz `fetch` de `app_config` ao carregar; só no script ele morre e o botão fica no spinner);
+  `graph.facebook.com` + `www.facebook.com` em `connect-src`; `frame-src` com `www`/`web`/`business`/
+  `staticxx.facebook.com` (iframe do Embedded Signup).
+- **Cloudflare Web Analytics** (`b604d04`): `static.cloudflareinsights.com` em `script-src` (beacon injetado
+  pela borda) e `cloudflareinsights.com` em `connect-src` (POST `/cdn-cgi/rum`) — hosts diferentes, liberar
+  só um mantém o erro no console.
+- `d389f64`: `brasilapi.com.br` em `connect-src`, `'self' blob:` em `frame-src`, `media-src` espelhando
+  `img-src`. `microphone=(self)` e `geolocation=(self)` no `Permissions-Policy` (áudio e localização).
+
 ## `fetch` cru SÓ para API externa
 
 BrasilAPI, IBGE, ViaCEP. Todo endpoint próprio passa pelo `ApiClient` — inclusive download (`getBlob`) e

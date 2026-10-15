@@ -27,6 +27,8 @@ profunda está nas references abaixo.
 - Refresh em **cookie HttpOnly** path-scopado SameSite=Strict — **NUNCA** no corpo JSON.
 - Refresh on 401 concurrency-safe (Web Locks API + BroadcastChannel).
 - Senha: **Argon2id** (OWASP RFC 9106 §4). JWT com claims `iss/aud/fam/jti`; refresh opaco family+used+SHA-256.
+- Login por senha tem throttle Valkey por IP + usuário (5 falhas/15 min → 429, zera no sucesso) e contador
+  separado só-IP para refresh/Google — `auth-hardened.md` §12c.
 - Google: **sempre** re-verificar id_token no backend (JWKS, `id_token.verify_oauth2_token`), nunca
   via `/oauth2/v3/userinfo`; popup usa só Authorized JavaScript origins (sem redirect URIs).
 - Trilha de acesso: todo login e toda sessão retomada gravam em `user_access_events` — best-effort

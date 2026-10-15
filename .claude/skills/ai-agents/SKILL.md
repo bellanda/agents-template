@@ -8,7 +8,7 @@ description: PORTÃO obrigatório de TUDO que é IA dentro de um app (stack úni
 Ponto de entrada único de IA dentro de app. **NUNCA escreva código que chama LLM, monta agente, tela de
 chat ou config de agente sem passar por aqui.** A rule `ai-agents.md` fixa a stack (invariante); este
 skill é o "como" padronizado. Decisão do usuário (2026-09-30): tudo de IA é **centralizado e idêntico
-em todos os apps** (kailos, balizap, nexarena, optimuslar, akmeo, promoservice).
+em todos os apps** (kailos, emporion, nexarena, optimuslar, akmeo, promoservice).
 
 **Fonte canônica:** `~/code/github-templates/agents-template` (`AGENTS_SUBSYSTEM.md` = spec completa,
 `backend/src/api/core/agents/` = infra, `backend/agents/` = exemplos, `frontend/src/components/{ai-elements,chat,agent-config}/`).

@@ -1,6 +1,6 @@
 /**
  * Reference: shape of the real `useAuth()` (kailos `frontend/src/hooks/useAuth.ts`, mirrored in
- * promoservice/akmeo/balizap). Copy the real file from kailos — this stub only documents the contract.
+ * promoservice/akmeo/emporion). Copy the real file from kailos — this stub only documents the contract.
  *
  * Corrected 2026-10-01: there is NO zustand `useAuthStore`. Auth state is:
  *   - `lib/api/access-token-store.ts`  access token in memory (+ BroadcastChannel across tabs)

@@ -84,7 +84,7 @@ standalone e são linkados no roteamento (fim do arquivo).
 - [ ] **8c. Uploads & Mídia.** Upload de arquivo/imagem → **dropzone** (clique/arraste) no vazio;
   cheio = asset/card é o trigger do menu (visualizar/copiar/baixar/substituir/excluir, sem
   three-dots). Canônico = **promoservice** (`useFileUpload` + `ui/file-dropzone`/`image-dropzone`,
-  `upload-error`, `file-types`) + **`DocumentSlot`** do balizap (slot predefinido com título fixo).
+  `upload-error`, `file-types`) + **`DocumentSlot`** do emporion (slot predefinido com título fixo).
   **Progresso real de envio**: `ApiClient.upload(url, form, { onProgress })` (XHR) +
   `useUploadMutation({ mutationFn: (vars, onProgress) => … })` → `{ …mutation, progress: number|null }`
   alimenta `<UploadProgress value>` (100% = "Processando..."); `useFileUpload` segue sendo o
@@ -282,7 +282,7 @@ Confirme cada item do Modo 1 satisfeito + `tsgo --noEmit` e build do projeto ver
   plataforma injeta em runtime fica FORA do texto; versões com restaurar; tools como colunas de
   permissão no akmeo; template canônico `agent-config/`).
 - `references/queues-editor.md` — Equipes: grid de cards + editor one-page (`FormDialog xl`, dados |
-  membros com dnd-kit, rodapé Excluir/Salvar); kailos canônico, balizap alinha.
+  membros com dnd-kit, rodapé Excluir/Salvar); kailos canônico, emporion alinha.
 - `references/whatsapp-inbox.md` — inbox `/chat` do kailos (layout lista/janela, SSE keyed por ORG e
   nunca pelo contato ativo, envio otimista, tema `--wa-*`); nexarena adota sem equipes.
 - `references/feedback-states.md` — `EmptyState`, erro≠vazio (`ErrorState`), `NetworkStatusBanner`,

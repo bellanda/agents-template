@@ -13,7 +13,8 @@ também.
 ## Checklist (em ordem; desça o que a tarefa exige)
 
 - [ ] **1. Invariantes da plataforma** — 1 Meta App por SaaS, separação `.env` (2 secrets) vs yaml
-  (públicos), tabela canônica de endpoints de webhook, regra 200<10s, `facebook_user_id` obrigatório,
+  (públicos), tabela canônica de endpoints de webhook, regra 200<10s (503 se o enfileiramento falha),
+  `facebook_user_id` obrigatório, pipeline WhatsApp (mídia, ticks, opt-out por botão, SSE, ES só-`code`),
   Don'ts → **`references/meta-invariants.md`** (leitura curta, sempre primeiro em trabalho Meta).
 - [ ] **2. Implementação Meta** — runbook de código: Settings pydantic, WhatsApp client (exchange ES,
   get_facebook_user_id, subscribe, register), endpoint `/embedded-signup`, `decode_signed_request`,
@@ -36,12 +37,25 @@ também.
 - **1 Meta App por SaaS** — NUNCA compartilhar entre produtos. Mesmo App em local/staging/prod (só URL muda).
 - **2 secrets em `.env`**: `META_APP_SECRET` (HMAC das 3 surfaces) + `WHATSAPP_WEBHOOK_VERIFY_TOKEN`.
   NUNCA `WHATSAPP_APP_SECRET` separado. APP_ID/ES_CONFIG_ID/Graph version são **públicos** → yaml.
-- Webhook **sempre** `200` em <10s (Meta faz retry indefinido); trabalho pesado → NATS JetStream (gate `infra`).
+- Webhook `200` em <10s (Meta faz retry indefinido); trabalho pesado → NATS JetStream (gate `infra`). O 200 só
+  sai **depois** do `publish` aceito — NATS fora do ar → **`503`** para a Meta retentar (nunca 200 engolindo o erro).
+- **WhatsApp inbound/status:** download de mídia com retry por `num_delivered` (trigger do agente na última
+  tentativa mesmo sem arquivo); status de entrega monotônico (`sent<delivered<read<failed`) com stash Valkey
+  para status que chega antes da linha; mídia outbound por `media_id`; SSE com `no-transform` +
+  `X-Accel-Buffering`; Embedded Signup conecta só com `code` (descobre WABA/número, recusa ambíguo) —
+  detalhe em `meta-invariants.md` § "Pipeline do WhatsApp".
 - HMAC **sempre** com `hmac.compare_digest` (timing-safe) — NUNCA `==`.
 - **Gravar `facebook_user_id`** em `portal_connections.metadata_extra` no Embedded Signup — sem isso
   Deauth/Data-Deletion validam HMAC mas não acham a conexão.
 - NUNCA logar `signed_request`/assinatura/body bruto em prod; NUNCA marcar Pages/Ads/Catalog/Pixel/IG como `required`.
 - **Token de portal SEMPRE cifrado at rest** — nunca token vivo em coluna ou JSONB legível.
+- **Inbound do WhatsApp: tipo desconhecido NUNCA derruba o persist.**
+  - O toque em quick-reply de template chega como `type:"button"`; ele está no CHECK de `message_type`
+    e na constante Python.
+  - Qualquer tipo fora da lista vira `unsupported`, com o payload cru em `metadata`.
+  - Sem isso a mensagem do cliente some: sem janela reaberta, sem IA/vendedor, e o opt-out por botão
+    não registra (Kailos 2026-10-15).
+  - Detalhe em `meta-invariants.md`.
 - **Origin de `postMessage`** (Embedded Signup): `new URL(origin).hostname` igual a `facebook.com`
   ou terminando em **`.facebook.com`** (com o ponto), `https:` — NUNCA `origin.endsWith("facebook.com")`
   cru (casa `evil-facebook.com`) e NUNCA lista fixa de 3 subdomínios (descartou o FINISH em prod,
@@ -67,5 +81,5 @@ também.
 - `references/meta-invariants.md` — invariantes Meta (App, secrets, endpoints, Don'ts) — antes era a rule always-on.
 - `references/meta-app-setup.md` — runbook técnico completo (código backend + frontend, HMAC, troubleshooting).
 - `references/meta-policy.md` — política de plataforma: janela 24h, categorias, opt-in/opt-out, qualidade do número, disclosure de IA, App Review.
-- `references/whatsapp-campaigns.md` — template automático na chegada do lead + campanha em massa (declaração de opt-in da lista, ritmo pelo tier, pausa por qualidade, kill switch). Canônico kailos.
+- `references/whatsapp-campaigns.md` — template automático na chegada do lead + campanha em massa (declaração de opt-in da lista, ritmo pelo tier, pausa por qualidade, kill switch), criação/envio de template, classificação de erros da Meta. Canônico kailos.
 - `references/human-handoff-queues.md` — equipes (filas humanas) e handoff do agente de IA (schema, tool, bloco de prompt, SLA/rodízio, API, UI; "Equipes" na tela, `queue` no código).

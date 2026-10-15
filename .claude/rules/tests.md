@@ -12,7 +12,14 @@ paths:
 
 # Backend Testing
 
-> Aplica-se **quando o user pede** para escrever/rodar testes ou para criar regression test do bug que está sendo corrigido. Não escreva testes especulativos (ver `agent-behavior.md > Autonomia & Guardrails`).
+> **Política (decisão do usuário 2026-10-15):** testes são parte da entrega, sem precisar de pedido.
+>
+> 1. **Bug corrigido → teste de regressão** que falha sem o fix (reproduz o cenário real do incidente).
+> 2. **Funcionalidade principal/crítica** (auth, tenancy, dinheiro, webhook/integração, envio de mensagem, migrations
+>    com dado) → testes **consolidados e equilibrados**: poucos arquivos, cenários densos de ponta a ponta + bordas.
+> 3. **Demais funcionalidades** → cobertura razoável (caminho feliz + falha mais provável).
+>    Proibido teste especulativo, duplicado ou que só espelha a implementação. Siga o formato rápido abaixo
+>    (xdist, banco por worker, NATS real) — é o que deixa a suíte inteira em ~2 min.
 
 ## Agent-runnable first
 

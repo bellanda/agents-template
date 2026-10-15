@@ -11,7 +11,7 @@ Most existing projects already have the **sidebar shape right** — shadcn `<Sid
 
 ## What differs (normalize it)
 
-Auth contract is **already standard** in kailos/promoservice/akmeo/balizap: `useAuth()` over
+Auth contract is **already standard** in kailos/promoservice/akmeo/emporion: `useAuth()` over
 `useDataProvider()`, `authStore` (vanilla, `ready` gate in `main.tsx`) and `access-token-store.ts`.
 (An earlier revision of this file prescribed a zustand `persist` store — wrong, never built, and
 persisting tokens is an XSS hole. Corrected 2026-10-01.) A project that deviates: copy those three

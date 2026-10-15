@@ -45,6 +45,17 @@ Quatro decisões (onde apps que copiaram à mão erraram):
 - `ENRICHMENT_AGENT_ID = "media-enrichment"` separa o custo de mídia do de conversa.
 - Prompts em pt-BR (texto volta pro usuário brasileiro).
 
+### Cache da leitura da mídia (`media_transcript`)
+
+kailos `agent_dispatcher._row_to_text` / `_remember_transcript` (`whatsapp_message_repository.
+set_media_transcript`): a primeira leitura de áudio (Whisper) ou imagem/vídeo (visão) é gravada na PRÓPRIA
+linha da mensagem (`media_transcript`, já com prefixo `(áudio transcrito) …`); nos triggers seguintes
+`_row_to_text` devolve o cache antes de reabrir o arquivo. Uma rajada do cliente dispara vários triggers
+sobre as mesmas linhas, e sem o cache cada um pagava a mesma mídia de novo — mesmo com modelo que lê imagem
+nativamente, o cache é o que impede repagar a cada turno. Best-effort: falha ao gravar só loga
+(`media_transcript_persist_failed`), nunca derruba o atendimento. Ordem de resolução: metadata de
+localização/contato → `text_body` → `media_transcript` → mídia (Whisper/visão) → placeholder.
+
 ### Ordem no canal que chama (WhatsApp/e-mail)
 
 Grave o texto da mídia **ANTES** de disparar o agente. "Baixar mídia" e "responder" publicados juntos com

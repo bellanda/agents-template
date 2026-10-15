@@ -7,7 +7,7 @@
 >
 > Canônico = **kailos** (`backend/src/api/services/portals/whatsapp/abuse_service.py`,
 > `services/agents/ai_budget.py`, `services/agents/manipulation_guard.py`). Portado em
-> balizap e nexarena (2026-10-14).
+> emporion e nexarena (2026-10-14).
 
 ## Princípio
 
@@ -22,7 +22,7 @@ vai para um humano, com uma nota interna explicando o porquê, e a IA não é ma
 | 2. Teto de gasto de IA | código | dispatcher, antes de invocar | humano + aviso ao dono | `ai_budget_exceeded` / `cost_ceiling` |
 | 3. Manipulação do modelo | modelo (tool) + código (conta) | durante o turno | humano + nota + resposta FIXA ao cliente; NÃO bloqueia | `manipulation_suspected` |
 
-\* Bloqueio de contato só onde existe a coluna (kailos/balizap `contacts.is_blocked`); nexarena
+\* Bloqueio de contato só onde existe a coluna (kailos/emporion `contacts.is_blocked`); nexarena
 transfere + nota sem flag. Manipulação NUNCA bloqueia: contato bloqueado não recebe nem a
 resposta do vendedor.
 

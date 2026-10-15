@@ -32,7 +32,7 @@ reasoning + custo real). Um `match config.provider` é o único ponto que conhec
   `response_metadata["provider_cost_usd"]` (+ `upstream_provider`) e `build_usage_from_ai_message` o prefere.
 - Agregações (`repositories/agents/usage.py`): `get_thread_total_cost_usd`, `get_user_total_cost_usd`,
   `get_tenant_cost_usd_since(conn, tenant_id, month_start_utc())` — base de qualquer teto de gasto por tenant
-  (índice parcial `(tenant_id, created_at)`). kailos/balizap mapeiam `organization_id` → `tenant_id`.
+  (índice parcial `(tenant_id, created_at)`). kailos/emporion mapeiam `organization_id` → `tenant_id`.
 - One-shot: `LlmResult.cost_usd` + `cost_is_real` para creditar o teto assim que a chamada volta.
 - Checagem de teto: antes de fluxo caro (`spent + estimate > cap`) → recuse com mensagem clara ao usuário;
   a política do teto (valor, plano) é do app, a medição é do template.

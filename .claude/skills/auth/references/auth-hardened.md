@@ -323,7 +323,7 @@ Resultado esperado, e o que o teste tem que provar: **uma família viva por disp
 ```typescript
 // lib/api/access-token-store.ts
 let accessToken: string | null = null;
-const CHANNEL_NAME = "<project>-auth";  // namespaced (kailos-auth, balizap-auth, ...)
+const CHANNEL_NAME = "<project>-auth";  // namespaced (kailos-auth, emporion-auth, ...)
 const channel = typeof BroadcastChannel !== "undefined" ? new BroadcastChannel(CHANNEL_NAME) : null;
 
 export function getAccessToken(): string | null {
@@ -498,6 +498,33 @@ const useGoogleLogin = () =>
 
 Os passos 1–2 vão no `mutationFn`, **não** no `onSuccess`: semear por cima de um cache antigo não é limpar. `endServerSession()` engole 401/rede fora — a limpeza é best-effort e não pode impedir o login.
 
+## 12c. Throttle de login (Valkey) — brute force em `/auth/token`
+
+Canônico: kailos `backend/src/api/services/auth/login_throttle.py` + uso em `routes/auth/auth.py`. É
+defesa em profundidade atrás do rate limit do nginx (`/api/v1/auth/` 5 r/s): o nginx freia rajada, o
+throttle conta FALHAS por alvo.
+
+| Contador (Valkey)             | Chave                     | Conta quando                      | Usado em                                    |
+| ----------------------------- | ------------------------- | --------------------------------- | ------------------------------------------- |
+| Por IP (senha)                | `rl:login:ip:{ip}`        | senha errada                      | `grant_type=password`                       |
+| Por usuário (senha)           | `rl:login:user:{username}` (minúsculo) | senha errada          | `grant_type=password`                       |
+| IP dos endpoints sem usuário  | `rl:authep:ip:{ip}`       | refresh/Google/etc. **falhou**    | refresh, Google, demais token endpoints     |
+
+- **Limites:** `security.max_login_attempts` (kailos prod = **5**) por janela de
+  `security.login_lockout_duration_minutes` (prod = **15**), ambos no yaml (`config/security.py`). Janela
+  FIXA: `INCR` + `EXPIRE … NX` num pipeline sem transação — o TTL só é setado na primeira falha, então
+  tentar de novo não renova o bloqueio.
+- **Fluxo (`grant_type=password`):** `assert_login_allowed(ip, username)` ANTES de tocar a senha (`MGET` dos
+  dois contadores; qualquer um ≥ limite → `RateLimitError`, **429** "Muitas tentativas de login…") → autentica →
+  `AuthenticationError` ⇒ `record_failed_login` (INCR nos dois) e re-raise → sucesso ⇒ `reset_login_attempts`
+  (`DEL` dos dois). O IP vem de `core/client_ip.client_ip` (`X-Real-IP` posto pelo nginx; NUNCA o primeiro
+  `X-Forwarded-For`, que o atacante controla e usaria para travar o IP de uma vítima).
+- **Os endpoints sem username** (refresh, Google) usam o contador SEPARADO `rl:authep:ip:`
+  (`assert_auth_endpoint_allowed` / `record_auth_endpoint_failure`): só FALHA incrementa e sucesso nunca
+  toca. Assim um refresh barulhento (várias abas) não trava o login por senha nem o reseta.
+- Contador por usuário significa que atacante pode travar a conta-alvo por 15 min (DoS de login) — aceito
+  em troca de barrar credential stuffing distribuído; Google login não é afetado.
+
 ## 13. Config & secrets
 
 YAML (`config/app/{env}.yaml`):
@@ -550,5 +577,6 @@ Deixe `refresh_token_expire_days` + os 2 knobs **explícitos nos 3 envs** (não 
 - **NUNCA** login que só limpa no `onSuccess` — access em memória e `queryClient` limpam ANTES da chamada (§12b).
 - **NUNCA** cunhar sessão nova sem revogar a família do cookie anterior (§8b) — família órfã viva no Postgres é a dessincronia browser↔banco.
 - **NUNCA** `persist` em Zustand auth store.
+- **NUNCA** login por senha sem `assert_login_allowed` antes e `record_failed_login`/`reset_login_attempts` depois (§12c); **NUNCA** deixar sucesso de refresh/Google zerar ou contar no contador de senha.
 - **NUNCA** redirect manual no 401 — interceptor retenta com refresh primeiro.
 - **NUNCA** refresh token em JSON body — backend strip defensivo + cookie só.

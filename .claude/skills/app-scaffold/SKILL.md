@@ -23,7 +23,7 @@ infra comum de casca padronizada em 2026-10-01 (itens "Infra comum da casca" na 
 
 | Pilar | Regra |
 | --- | --- |
-| **Split de rota** | `__root.tsx` é `<Outlet/>` puro. Rotas públicas (`/`, `/auth/login`, `/auth/convite`) renderizam full-screen, sem casca. Um layout route autenticado (`_authenticated.tsx` pathless — o que balizap/kailos usam; ou `/app` pathed) é dono da casca + o único guard. Toda rota autenticada nasce sob ele. |
+| **Split de rota** | `__root.tsx` é `<Outlet/>` puro. Rotas públicas (`/`, `/auth/login`, `/auth/convite`) renderizam full-screen, sem casca. Um layout route autenticado (`_authenticated.tsx` pathless — o que emporion/kailos usam; ou `/app` pathed) é dono da casca + o único guard. Toda rota autenticada nasce sob ele. |
 | **Contrato `useAuth()`** | Token de acesso em **memória**, refresh em **cookie HttpOnly** (ver gate `auth`). Dois módulos vanilla leem fora do React: `lib/api/access-token-store.ts` (token em memória, BroadcastChannel entre abas) e `lib/auth/auth-store.ts` (`authStore.getState()` → `{ user, isAuthenticated, isLoading, status }` + `ready`). `useAuth()` (`hooks/useAuth.ts`) é a API pública dentro do React. |
 | **Sidebar** | shadcn `<Sidebar collapsible="icon">` — Header (brand) / Content (nav groups) / Footer (user dropdown). Montada dentro do layout do gate. |
 
@@ -141,7 +141,7 @@ nomes/endpoints.
   O link da sidebar pode sumir (nível 1) e mesmo assim a URL digitada à mão cai no redirect (nível 2).
   A API é o terceiro nível e o único que protege dado (403) — gate de front é UX, não segurança.
 - Quem ainda não tem o hook `useCurrentOrgRoles` (nexarena) ganha o mesmo, com a mesma assinatura.
-- **Não existe componente `<Can>`**: `auth/Can.tsx` (balizap/promoservice) estava sem uso e foi
+- **Não existe componente `<Can>`**: `auth/Can.tsx` (emporion/promoservice) estava sem uso e foi
   apagado — se precisar de condicional, `can(...) && <X/>` inline.
 
 **3. Notificações + push/PWA (kailos).**

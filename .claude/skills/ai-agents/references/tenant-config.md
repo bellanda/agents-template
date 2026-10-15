@@ -37,7 +37,7 @@ com `request.override(model=init_model_by_id(model_id))`.
 
 Dados do negócio injetados em runtime (horário, filas, catálogo), flags de captura (`sections`), `enabled`
 on/off do atendente (nasce DESLIGADO; ligar exige canal conectado), preview/tester, regras de disclosure
-(`integrations` → `meta-policy.md`), `org_agent_configs` legado do kailos/balizap até convergir.
+(`integrations` → `meta-policy.md`), `org_agent_configs` legado do kailos/emporion até convergir.
 
 ## Catálogo de modelos
 

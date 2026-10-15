@@ -234,7 +234,7 @@ The bare-parent exit was **added in nats-py 2.16.0** (`js/client.py:1295`/`:1302
 timeout exit raised a nats subclass, so the narrow catch worked and this was invisible. After the
 bump, every idle poll of a `batch > 1` consumer fell through to `except Exception` and logged a
 stack trace at `error` level. Found in prod on 02/10/2026: 21 consumers across akmeo, kailos,
-balizap and promoservice, ~400-600 lines/hour per deployed app, drowning every real event in the
+emporion and promoservice, ~400-600 lines/hour per deployed app, drowning every real event in the
 worker log. Nothing broke (the loop retried anyway) — but the signal was gone.
 
 ```python
