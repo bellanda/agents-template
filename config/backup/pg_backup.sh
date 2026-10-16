@@ -3,9 +3,9 @@
 #
 # Subcommands:
 #   run                 (default) loop every 60s; once per local day at/after BACKUP_HOUR_LOCAL do a backup
-#   now                 run one backup immediately, exit 0/1 (manual + "backup before deploy")
+#   now                 run one backup immediately into predeploy/, exit 0/1 (manual + "backup before deploy")
 #   healthcheck         exit 1 if the last success is older than 26h (container-start grace, see below)
-#   select-expired N    stdin: names, one per line -> stdout: all but the newest N (retention logic, testable)
+#   select-expired N    stdin: names, one per line -> stdout: what retention deletes (testable)
 #
 # Env (everything app-specific comes from compose):
 #   BACKUP_APP            app slug, prefix of the object names           (required)
@@ -23,10 +23,11 @@
 # night window. Started as "1 daily + 4 weekly"; the user widened it the same day so a corruption noticed
 # days later can still be restored from the day before it (not only from last Sunday).
 # Layout at the bucket ROOT, outside prod/ and staging/:
-#   backups/postgres/daily/<app>-<YYYY-MM-DDTHHMM>.dump   every file of the 7 most recent DAYS
-#   backups/postgres/weekly/<app>-<YYYY-MM-DD>.dump       Sunday copy, 4 most recent
-# Retention counts distinct DAYS, not files: the pre-deploy `now` also lands in daily/, and 3 deploys in a
-# day must not push 3 older days out.
+#   backups/postgres/daily/<app>-<YYYY-MM-DDTHHMM>.dump       scheduled run, 1 per day, 7 most recent days
+#   backups/postgres/weekly/<app>-<YYYY-MM-DD>.dump           Sunday copy, 4 most recent
+#   backups/postgres/predeploy/<app>-<YYYY-MM-DDTHHMM>.dump   `now` (before a deploy), ONLY the newest one
+# Pre-deploy dumps live apart (user decision 2026-10-16): they used to land in daily/, and a day with 9
+# deploys kept 9 files. A new deploy makes the previous pre-deploy dump useless, so only the last is kept.
 set -euo pipefail
 
 TZ="${TZ:-America/Sao_Paulo}"
@@ -39,8 +40,10 @@ RETRY_BACKOFF_SECONDS=900
 HEALTHY_MAX_AGE_SECONDS=$((26 * 3600))
 DAILY_PREFIX="backups/postgres/daily"
 WEEKLY_PREFIX="backups/postgres/weekly"
+PREDEPLOY_PREFIX="backups/postgres/predeploy"
 KEEP_DAILY=7
 KEEP_WEEKLY=4
+KEEP_PREDEPLOY=1
 STATE_DIR="$BACKUP_DIR/state"
 DUMP_DIR="$BACKUP_DIR/dump"
 # tmpfs (container fs is read-only): reset on every container start, so it doubles as "started at" marker.
@@ -56,8 +59,9 @@ log_step() { # event status [file] [bytes] [seconds] [message]
      + (if $message != "" then {message: $message} else {} end)'
 }
 
-# Keep every name dated within the N most recent distinct days (names embed an ISO date, so they sort
-# chronologically), print the rest. Weekly names have one file per day, so there N days = N files.
+# Keep the NEWEST name of each of the N most recent distinct days (names embed an ISO timestamp, so they
+# sort chronologically), print the rest. One survivor per day also sweeps the pre-deploy dumps that
+# landed in daily/ before 2026-10-16; for predeploy/ with N=1 it keeps exactly the last file.
 select_expired() {
   local keep="$1"
   [[ "$keep" =~ ^[0-9]+$ ]] || { echo "select-expired: N must be a non-negative integer, received '$keep'" >&2; return 2; }
@@ -66,7 +70,8 @@ select_expired() {
     {
       day = $0
       if (match($0, /[0-9][0-9][0-9][0-9]-[0-9][0-9]-[0-9][0-9]/)) day = substr($0, RSTART, RLENGTH)
-      if (!(day in seen)) { seen[day] = 1; days++ }
+      if (day in seen) { print; next }
+      seen[day] = 1; days++
       if (days > keep) print
     }' || true
 }
@@ -130,8 +135,8 @@ retain_prefix() { # prefix keep_count newest_name
   done <<<"$expired"
 }
 
-do_backup() {
-  local started stamp day dump_file daily_key weekly_key bytes t0
+do_backup() { # kind: scheduled | predeploy
+  local kind="$1" started stamp day dump_file daily_key weekly_key bytes t0
   started=$(date +%s)
   stamp=$(date +%Y-%m-%dT%H%M)
   day=$(date +%F)
@@ -162,6 +167,12 @@ do_backup() {
   b2_setup
   b2_cancel_stale_unfinished
 
+  if [[ "$kind" == "predeploy" ]]; then
+    upload_predeploy "$dump_file" "$stamp" "$bytes"
+    log_step "done" ok "$PREDEPLOY_PREFIX/$BACKUP_APP-$stamp.dump" "$bytes" "$(($(date +%s) - started))"
+    return 0
+  fi
+
   daily_key="$DAILY_PREFIX/$BACKUP_APP-$stamp.dump"
   t0=$(date +%s)
   b2_upload "$dump_file" "$daily_key"
@@ -184,11 +195,22 @@ do_backup() {
   log_step "done" ok "$daily_key" "$bytes" "$(($(date +%s) - started))"
 }
 
+# Pre-deploy dump: no heartbeat / last-date update on purpose — it must not stand in for the scheduled
+# 03:00 run (a deploy at 02:00 would otherwise skip that day's daily/ copy).
+upload_predeploy() { # dump_file stamp bytes
+  local key="$PREDEPLOY_PREFIX/$BACKUP_APP-$2.dump" t0
+  t0=$(date +%s)
+  b2_upload "$1" "$key"
+  b2_confirm_size "$key" "$3"
+  log_step upload_predeploy ok "$key" "$3" "$(($(date +%s) - t0))"
+  retain_prefix "$PREDEPLOY_PREFIX" "$KEEP_PREDEPLOY" "$key"
+}
+
 # do_backup runs in a child process: bash ignores `set -e` inside anything on the left of `||`, so a
 # subshell would silently continue past a failed step (and then delete things). The child keeps errexit.
-run_once() {
+run_once() { # kind
   local rc=0
-  "$0" __backup || rc=$?
+  "$0" __backup "$1" || rc=$?
   if ((rc != 0)); then
     log_step failed error "" 0 0 "backup failed (exit $rc); B2 retention not applied past the failing step"
   fi
@@ -211,7 +233,7 @@ run_loop() {
   log_step start ok "" 0 0 "hour=$BACKUP_HOUR_LOCAL tz=$TZ dry_run=$BACKUP_DRY_RUN"
   while true; do
     if is_due && (($(date +%s) >= next_attempt)); then
-      if ! run_once; then next_attempt=$(($(date +%s) + RETRY_BACKOFF_SECONDS)); fi
+      if ! run_once scheduled; then next_attempt=$(($(date +%s) + RETRY_BACKOFF_SECONDS)); fi
       # Dry-run never records a success date; avoid re-dumping every tick.
       if [[ "$BACKUP_DRY_RUN" == "1" ]]; then date +%F >"$LAST_DATE_FILE"; fi
     fi
@@ -237,11 +259,11 @@ main() {
   case "$cmd" in
     select-expired) select_expired "${2:?usage: select-expired N}" ;;
     healthcheck) check_health ;;
-    __backup) require_env BACKUP_APP POSTGRES_USER POSTGRES_DB; do_backup ;;
+    __backup) require_env BACKUP_APP POSTGRES_USER POSTGRES_DB; do_backup "${2:?usage: __backup scheduled|predeploy}" ;;
     run | now)
       require_env BACKUP_APP POSTGRES_USER POSTGRES_DB
       [[ "$BACKUP_DRY_RUN" == "1" ]] || require_env B2_PRIVATE_BUCKET B2_PRIVATE_KEY_ID B2_PRIVATE_APP_KEY
-      if [[ "$cmd" == "now" ]]; then run_once; else run_loop; fi
+      if [[ "$cmd" == "now" ]]; then run_once predeploy; else run_loop; fi
       ;;
     *) echo "unknown command '$cmd' (run | now | healthcheck | select-expired N)" >&2; exit 2 ;;
   esac
