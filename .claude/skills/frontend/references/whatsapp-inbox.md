@@ -233,6 +233,12 @@ Pastas em `kailos/frontend/src/components/whatsapp/`. Política e travas de envi
   <video>/<a>` não mandam `Authorization` (token em memória) → `client.getBlob` e `blob:` revogado ao
   desmontar. URL absoluta pública (outbound) vai direto; preview local otimista fica até a mídia do servidor
   estar pronta (sem piscar). O `getBlob` segue o 302 do gate para URL assinada do B2 → CSP em `api-and-csp.md`.
+- **Card de áudio** (`whatsapp/AudioPlayer.tsx`, 2026-10-16): igual ao WhatsApp — avatar à esquerda, play,
+  ondas, e embaixo a duração à esquerda e **horário + tiques à direita na MESMA linha** (prop `meta`; o
+  `MessageBubble` só omite o rodapé próprio quando o áudio não tem legenda, e o `MediaUnavailable` também
+  mostra o meta). Depois que tocou, o avatar vira a pílula de **velocidade 1× → 1,5× → 2×**
+  (`AUDIO_PLAYBACK_RATES`, rótulo pt-BR "1,5×"), reaplicada no `onPlay`. Usuário: "visualmente é estranho o
+  horário e tick estarem fora do resto do conteúdo". Apps com player: kailos (canônico) e emporion.
 
 ## Tema — vars `--wa-*` (exceção deliberada a "sem cor crua")
 
