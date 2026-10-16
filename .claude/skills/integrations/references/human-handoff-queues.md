@@ -173,6 +173,33 @@ Invariantes (o bug clássico deste recurso é timer órfão / loop):
 - Texto da IA entra na memória da thread como `AIMessage` (`aupdate_state`), nunca como user falso.
 - Máximo = nº de etapas; mais insistência derruba a nota de qualidade do número na Meta.
 - Isso NÃO é o SLA/rodízio (cliente esperando + vendedor calado) — é o caso inverso.
+- **A IA pode desistir (2026-10-16).** O prompt da retomada manda PRIMEIRO decidir se faz sentido
+  escrever (cliente se despediu/recusou, a IA já se despediu, brincadeira/cantada, mensagem
+  automática) e responder só `NAO_ENVIAR`; aí nada sai e um marcador no Valkey (25 h,
+  `mark/is_agent_followup_declined`) encerra TODAS as etapas daquela conversa. Carro do estoque que
+  não apareceu na conversa é sugestão nova — nunca "passei pra lembrar do X".
+
+## Bom senso: quando a IA NÃO responde (decisão do usuário 2026-10-16)
+
+"Deveria se portar como AI/Claude e se portou como chatbot robótico": a IA respondeu duas vezes a um
+"72674 é seu código do Instagram" e seguiu vendendo a quem já tinha se despedido depois de cantadas.
+- **Guard barato em código** (`automated_message_guard.py`): turno cujas mensagens novas são TODAS
+  notificação automática (código 4–8 dígitos E frase "não compartilhe/é seu código/verification
+  code") não chama o modelo. Os dois sinais juntos — "o código do anúncio é 12345" segue respondido.
+- **O resto é julgamento do modelo:** seção "Quando NÃO responder" no prompt do atendente
+  (automática; conversa encerrada com despedida dos dois lados; provocação repetida sem interesse;
+  "na dúvida, responda"). O modelo responde só `SEM_RESPOSTA` (`AGENT_SILENCE_TOKEN`,
+  `is_agent_silence` tolera aspas/ponto) e o dispatcher não envia nada.
+- Nos dois casos o marcador de leitura (`last_agent_trigger_at`) avança, senão a próxima mensagem
+  real é respondida junto com o OTP. Sem mensagem da IA, a retomada também não tem âncora.
+- **Texto mal escrito é normal** (analfabetismo funcional é comum no Brasil — usuário, 2026-10-16):
+  o prompt de todo atendente manda ler pelo som e pelo contexto ("ronda civi" = Honda Civic,
+  "voagem" = Voyage), nunca corrigir nem pedir para escrever direito, e confirmar em uma frase só
+  quando a leitura muda o pedido. Número que pode ser modelo ("1.30" = i30, "hb 20", "208") é
+  buscado como modelo antes de virar motor/preço (Luziel: "carro 1.30" virou lista de R$ 130 mil).
+- **Áudio de voz < 1,5 s** gravado no inbox não é enviado (toque sem querer chegou como áudio de
+  0,22 s ao cliente): `MIN_VOICE_NOTE_MS` + `isVoiceNoteTooShort` em `useVoiceRecorder`, toast pt-BR.
+
 Canônico: kailos `services/portals/whatsapp/{agent_followup*,seller_reengage}.py`.
 
 ## API e permissões

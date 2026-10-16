@@ -61,6 +61,28 @@ async def fetch_multiple_pages(base_url: str, page_count: int) -> list[dict]:
 | `verify`          | SSL verification          | `verify=False` (only for dev)       |
 | `allow_redirects` | Follow redirects          | `allow_redirects=True` (default)    |
 
+## Multipart upload — `CurlMime`, NEVER `files=`
+
+curl_cffi has no requests-style `files=`: it raises `NotImplementedError` inside `set_curl_options`,
+BEFORE any network I/O. A test that mocks `session.post` never sees it. Kailos prod, 2026-10-16:
+every customer audio to Groq Whisper failed this way while the suite stayed green.
+
+```python
+from curl_cffi import AsyncSession, CurlMime
+
+form = CurlMime()
+form.addpart(name="file", content_type=mime, filename="audio.ogg", data=content)
+form.addpart(name="model", data=b"whisper-large-v3-turbo")  # plain fields are parts too
+try:
+    async with AsyncSession() as session:
+        response = await session.post(url, headers=headers, multipart=form, timeout=30)
+finally:
+    form.close()
+```
+
+Test uploads against a real local HTTP server (`ThreadingHTTPServer` on port 0 + parse the
+multipart), never by mocking `post` — canonical: kailos `tests/agents/test_audio_transcription.py`.
+
 ## Notes
 
 - Always use `impersonate="chrome"` for external APIs to avoid bot detection.
