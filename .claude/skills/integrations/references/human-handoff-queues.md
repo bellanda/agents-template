@@ -59,16 +59,23 @@ async def handoff_to_human(queue_name: str, reason: str, summary: str, config: R
   e registra o evento de estado com `reason`. Depois publica o realtime para o atendente e para quem
   vê a caixa inteira — nunca broadcast para a org toda.
 - A docstring da tool é **genérica**: a lista de filas é dinâmica e chega pelo prompt.
+- **Trava de cumprimento (código, não prompt):** `handoff_to_human` de VENDA com o cliente tendo dito
+  só "oi/opa/bom dia/tudo bem" na conversa é RECUSADO pela tool (`greeting_handoff_guard.is_greeting_only`
+  sobre as inbound da conversa) e devolve ao modelo "não transferido: cumprimente e pergunte o que ele
+  procura". Qualquer palavra fora do vocabulário de cumprimento, mídia ou botão libera. Pós-venda,
+  trava de manipulação e transferências forçadas por código não passam pela trava. Origem: kailos
+  2026-10-16, "opa" do dono virou lead porque o gatilho da equipe ("transfira sempre… rapidamente")
+  venceu o método no Haiku `low` — regra só em prompt já tinha falhado duas vezes.
 
 ## Bloco de prompt em runtime
 
 ```
 ## EQUIPES DE ATENDIMENTO
-Estas são as equipes humanas da loja. Use a tool `handoff_to_human` com o `queue_name` exato
-quando o assunto do cliente casar com os gatilhos de uma delas.
+Estas são as equipes humanas da loja. Os gatilhos dizem PARA QUAL equipe transferir; QUANDO
+transferir segue o método (seção 8). Use `handoff_to_human` com o `queue_name` exato da equipe escolhida.
 
 - `financiamento` — Financiamento: crédito, simulação, documentação do banco
-  Transferir quando: pedir simulação, perguntar taxa, falar em entrada
+  Assuntos desta equipe (escolhem a equipe, não a hora): pedir simulação, perguntar taxa, falar em entrada
 ```
 
 Só filas **ativas** (`list_for_agent`, sem paginação: o consumidor é o prompt e uma loja tem uma
@@ -130,6 +137,43 @@ plataforma (prompt-base), não do gatilho da equipe.
   próximo rodízio espelhando as regras do cron (só `human_handling` com inbound sem resposta; dono que já
   respondeu = sem contador; relógio recomeça a cada troca de dono; após a volta inteira `sla_escalated` =
   sem contador). Muda o cron, muda o arquivo — `tests/whatsapp/test_sla_deadline.py` prende os dois.
+
+## Assinatura do atendente humano (decisão do usuário 2026-10-16)
+
+IA e todos os vendedores falam pelo MESMO número: depois da transferência o cliente só sabe quem
+está do outro lado se a mensagem disser. Toda mensagem humana de texto livre (texto, link,
+legenda de mídia) sai como `*PrimeiroNome*: texto` — primeiro nome de `users.name` (split, `*`
+removido, capitalizado). Só no fio (o que vai à Meta); `text_body` salvo fica CRU (o inbox mostra
+o autor e o histórico que a IA relê não ganha ruído). Não assinam: IA (persona própria) e template
+(texto aprovado é fixo). Canônico: kailos `services/portals/whatsapp/human_signature.py`
+(`fetch_human_sender_name` + `sign_human_text`) chamado em `whatsapp_service.send_message` /
+`send_prepared_media(sender_name=)`; teste `TestHumanSignature`.
+
+## Retomada quando o cliente some (decisão do usuário 2026-10-16)
+
+Dois lados, MESMA função pura de agenda (`agent_followup_schedule.next_step_due_at`/`plan_followup`,
+relógio injetado, sem I/O):
+
+| Quem falou por último | Quem age | Etapas (após a última msg real) |
+| --- | --- | --- |
+| IA (`ai_handling`) | IA escreve ao cliente | 5 min (mensagem completa: tudo em que ajuda, só o que é verdade) · 1 h (gancho concreto) · 22 h (despedida leve antes da janela fechar) |
+| Vendedor (`human_handling` + atribuído) | NOTIFICA o vendedor (sino + push), nunca o cliente | 1 h · 6 h · 21 h ("a janela fecha em 3h — depois só template") |
+
+Invariantes (o bug clássico deste recurso é timer órfão / loop):
+- **Sem timer agendado.** Um tick (cron → NATS → consumer, 60 s) DERIVA tudo das mensagens: âncora =
+  última mensagem real; progresso = follow-ups (`metadata.followup_step`) / notificações
+  (`data.step` + `anchor_at`) depois dela. Nada a cancelar.
+- **Follow-up NUNCA move a âncora** (senão a IA manda um a cada 5 min para sempre).
+- **Qualquer mensagem real reinicia** (cliente, IA respondendo, vendedor); handoff troca o lado;
+  sair do estado para tudo. Reatribuição continua a sequência do vendedor no novo dono.
+- **Horário comercial** da org (default 08–20 America/Sao_Paulo): fora dele adia para a abertura
+  se a janela de 24h ainda tiver ≥30 min, senão pula. Gap mínimo de 1 h; uma etapa por passada.
+- **Uma vez só:** trava de turno da conversa + claim `SET NX` no Valkey (conversa+etapa+âncora) +
+  reconferência antes de enviar; cliente que escreve durante a geração descarta o follow-up.
+- Texto da IA entra na memória da thread como `AIMessage` (`aupdate_state`), nunca como user falso.
+- Máximo = nº de etapas; mais insistência derruba a nota de qualidade do número na Meta.
+- Isso NÃO é o SLA/rodízio (cliente esperando + vendedor calado) — é o caso inverso.
+Canônico: kailos `services/portals/whatsapp/{agent_followup*,seller_reengage}.py`.
 
 ## API e permissões
 

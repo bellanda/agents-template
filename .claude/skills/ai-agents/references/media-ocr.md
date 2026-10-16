@@ -37,6 +37,29 @@ Quatro decisões (onde apps que copiaram à mão erraram):
    cobrado por HORA de áudio (tokens 0, `cost_usd` = duração × 0.04/h).
 4. **Retry diferenciado, fail-soft:** 429/5xx 2 tentativas com backoff; 401/400 não. Log SEMPRE com
    `status_code`. Nada levanta.
+5. **Nome do arquivo do Whisper vem do MIME** (`whisper_upload_filename`, dentro de
+   `transcribe_audio`): a Groq valida pela EXTENSÃO do nome, não pelos bytes. Áudio do WhatsApp chega
+   como `audio/ogg; codecs=opus` sem nome; o caller passava `"arquivo"` ou a chave salva `wa-audio-….bin`
+   e a Groq respondia 400 → toda nota de voz caía no "não consegui ouvir" (kailos + nexarena prod,
+   2026-10-16). Caller passa o nome que tiver; o `media.py` corrige.
+
+### Ler a mídia de volta: SEMPRE pelo `StorageBackend`, nunca pelo disco
+
+Mídia recebida do cliente é salva PRIVADA; em prod (`storage.backend: b2`) ela só existe no bucket
+privado. Ler de volta para Whisper/visão = `storage.read_bytes(storage.key_from_url(url), public=False)`
+(kailos `services/portals/whatsapp/inbound_media.py`). **PROIBIDO** `url_to_filesystem_path` +
+`anyio.Path.exists()` fora de rota de serving local: no B2 o arquivo nunca está no disco, o `exists()`
+dá `False` em silêncio e o agente responde o placeholder sem nenhum erro no log (kailos + emporion,
+incidente 2026-10-16). Teste de regressão com um backend fake SEM disco (só `read_bytes` privado), nunca
+com arquivo escrito em `get_upload_base()` — é exatamente o caminho que mascarou o bug.
+
+**Foto salva em AVIF não vai crua ao modelo.** `save_upload` mode `image` transcodifica para AVIF, e o
+Claude só lê JPEG/PNG/GIF/WebP inline: a data URL AVIF é recusada e o agente responde "não consigo ver"
+mesmo com a leitura do storage certa (kailos 2026-10-16 14:11). Antes da visão, `image_bytes_for_model(
+bytes, mime)` (mesmo `inbound_media.py`) devolve o original se o MIME já é aceito, senão re-encoda para
+JPEG (`decode_image_bytes` + `cv2.imencode(".jpg")` em `anyio.to_thread`); imagem indecodificável → None
+→ placeholder. Teste de regressão com AVIF de verdade (`encode_avif_bytes`) checando o magic `FF D8 FF`.
+App que passa os bytes originais da Meta à visão (nexarena) não precisa.
 
 - **Dica de domínio:** `extra_instructions: str | None` em `media_to_text`/`describe_media`/`describe_images`
   é ANEXADA ao prompt canônico (nunca substitui) — o app injeta vocabulário (placas, números de peito…)

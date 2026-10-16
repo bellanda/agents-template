@@ -56,6 +56,17 @@ async def get_weather(city: str) -> dict:
 - Ação destrutiva/irreversível: confirmar com o usuário antes (o agente pergunta) ou separar "preparar"
   de "executar".
 
+### Tool de busca em catálogo (texto livre do cliente)
+
+A busca por palavras (`search_patterns` → `ILIKE ALL`) exige TODAS no título. O cliente cola o título
+do anúncio de outro site ("Audi A4 1.8 Tip./ Multitronic Turbo 2014/2015", Mercado Livre) e o
+cadastro escreve a versão de outro jeito → zero resultado → a IA nega um item que está em estoque
+(kailos 2026-10-16). Quando a busca exata volta vazia, ANTES dos degraus de afrouxamento: mantenha da
+esquerda para a direita cada palavra que ainda casa algo com as anteriores e os demais filtros
+(`narrow_query_to_stock_words`, kailos `services/agents/vehicle_catalog.py`), devolva os itens dizendo
+ao modelo quais palavras ignorou, e avise que palavra ignorada que é parte do MODELO ("Corolla Cross")
+faz do resultado uma alternativa, não o mesmo item. Nada casa → segue o "não temos" normal.
+
 ## Checkpointer e thread
 
 `AsyncPostgresSaver` singleton (`checkpointer.py`: `init_checkpointer`/`get_checkpointer`/`close_checkpointer`

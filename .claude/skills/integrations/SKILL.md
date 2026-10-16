@@ -67,6 +67,13 @@ também.
   "whatsapp_embedded_signup"` nunca foi parâmetro documentado. Em v4 a variação do fluxo
   (coexistência, Marketing Messages, CTWA) é marcada na **Configuration**, não no código — o
   `config_id` é que decide. Detalhe e o que NÃO converte sozinho → `meta-app-setup.md`.
+- **Depois do FINISH, a tela NUNCA fica muda.** O `POST …/embedded-signup` leva ~25s (o
+  `/register` da Meta sozinho levou ~24s, Kailos prod 2026-10-16). Durante esse tempo o
+  botão recebe `connecting={connectES.isPending}`, que mostra spinner, "Ativando o número…" e
+  um aviso `role="status"` ("pode levar até 1 minuto… não feche nem recarregue"). Também liga
+  um `beforeunload` que pede confirmação para recarregar. Sem isso o lojista deu F5 em ~23s,
+  a página voltou "Desconectado" e o número só apareceu 2s depois. É a primeira impressão do
+  app. Canônico em `meta-app-setup.md` §7.
 
 ## Invariantes de política (quando o produto manda mensagem)
 

@@ -165,11 +165,49 @@ export async function registerServiceWorkerAtBoot(): Promise<void> {
   o notch nem sob o home indicator; project `android` (Pixel 7, Chromium) — `minimal-ui` expõe
   a barra com reload.
 
+## 8. Atualização após deploy (decisão do usuário 2026-10-16)
+
+Aba aberta durante um deploy segue com o bundle velho; ao navegar, o chunk com hash antigo dá 404
+e a tela quebra (só Ctrl+Shift+R salvava). Contrato: o build publica `/version.json`, o app compara
+com o `__APP_BUILD_ID__` embutido e **recarrega o documento**. Canônicos: `app-version.ts` (funções
+puras + anti-loop), `use-app-version-watcher.ts` (hook, montado UMA vez no `__root`),
+`update-banner.tsx`. Mapa em `frontend/src/lib/app-version/`.
+
+**Exceção explícita ao §3:** `location.reload()` é proibido no *botão de recarregar dados*; aqui ele
+é a troca de bundle. Os assets têm hash e o HTML é no-store, então equivale a Ctrl+Shift+R. A sessão
+volta pelo cookie de refresh no boot, como no F5.
+
+- **Quando checa:** `visibilitychange`→visible e `focus`; a cada 5 min com a aba visível; em
+  `vite:preloadError` (`preventDefault` + reload na hora, o chunk velho já sumiu).
+- **Versão nova (`updatePending`):** aba oculta → reload imediato; próxima navegação
+  (`router.subscribe("onBeforeNavigate")`) → `window.location.assign(toLocation.href)`; parado na
+  tela → `UpdateBanner` "Nova versão disponível — atualizando em 15s" + "Atualizar agora". O contador
+  **pausa** com `input`/`textarea`/`[contenteditable]` em foco ou `[role=dialog]` aberto (o banner é
+  `role="status"`, nunca `dialog`).
+- **Anti-loop:** `sessionStorage` guarda o buildId para o qual já recarregamos; se após recarregar o
+  servido ainda difere (cache de borda), só o banner (sem contagem). Storage indisponível = falha
+  fechada (banner). `preloadError` recarrega no máx. 1x por 60s.
+- **`RouteErrorFallback`:** erro de import dinâmico (`isChunkLoadError`) → auto-reload (1x/janela) e
+  botão "Atualizar página" em vez de "Tentar novamente".
+- **Dev:** `bun dev` não tem version.json; o watcher é no-op (`import.meta.env.PROD`).
+- **vite.config.ts:** `const BUILD_ID = process.env.BUILD_ID || new Date().toISOString()`;
+  `define: { __APP_BUILD_ID__: JSON.stringify(BUILD_ID) }` (+ `declare const __APP_BUILD_ID__: string`
+  em `src/vite-env.d.ts`); plugin inline `apply: "build"` com `generateBundle() { this.emitFile({
+  type: "asset", fileName: "version.json", source: JSON.stringify({ buildId: BUILD_ID }) }) }`.
+  Sem dependência nova nem ARG no Dockerfile.
+- **nginx (`snippets/spa-routing.conf`):** `location = /version.json { expires epoch; }` e o fallback
+  `location / { expires epoch; try_files ... }` (antes não mandava Cache-Control e o F5 podia pegar
+  HTML velho). `expires epoch` = `Cache-Control: no-cache` + `Expires` no passado, SEM `add_header`:
+  a location continua herdando todos os headers do server (CSP + HSTS do edge); `add_header` ali
+  cancelaria a herança. `sw.js` segue no-store.
+- **Testes:** `decideUpdateAction`, anti-loop, handler de preloadError, `isChunkLoadError`
+  (vitest, ver `app-version.test.ts` no kailos).
+
 ## Don'ts
 
 - **NUNCA** `display: standalone` sem afordância de recarga in-app — é o app que "trava" no
   celular e não recarrega de jeito nenhum.
-- **NUNCA** `location.reload()` como botão de atualizar (§3).
+- **NUNCA** `location.reload()` como botão de atualizar (§3) — a única exceção é a troca de bundle pós-deploy (§8).
 - **NUNCA** `viewport-fit=cover` sem as compensações de safe-area no mesmo commit.
 - **NUNCA** `preventDefault()` no `touchmove` do pull-to-refresh (trava o scroll do iOS).
 - **NUNCA** deixar `name`/`short_name`/`theme_color` de scaffold no manifest.

@@ -589,9 +589,48 @@ export function FacebookBusinessLoginButton({
     );
   };
 
-  return <Button onClick={handleClick} disabled={!sdkReady}>Conectar com Facebook</Button>;
+  // `connecting` = a mutation do POST /embedded-signup ainda rodando (o pai passa
+  // `connecting={connectES.isPending}`). Ver "Estado pós-FINISH" abaixo.
+  useEffect(() => {
+    if (!connecting) return;
+    function warnBeforeUnload(event: BeforeUnloadEvent) {
+      event.preventDefault();
+    }
+    window.addEventListener("beforeunload", warnBeforeUnload);
+    return () => window.removeEventListener("beforeunload", warnBeforeUnload);
+  }, [connecting]);
+
+  return (
+    <div className="space-y-2">
+      <Button onClick={handleClick} disabled={!sdkReady || submitting || connecting}>
+        {submitting || connecting ? <LuLoaderCircle className="animate-spin" /> : <FacebookGlyph />}
+        {connecting ? "Ativando o número…" : "Conectar com Facebook"}
+      </Button>
+      {connecting && (
+        <p role="status" className="text-muted-foreground text-xs leading-snug">
+          A Meta pode levar até 1 minuto para ativar o número. Não feche nem recarregue a página.
+        </p>
+      )}
+    </div>
+  );
 }
 ```
+
+### Estado pós-FINISH — a tela nunca fica muda (Kailos prod, 2026-10-16)
+
+O widget fecha no FINISH, mas a conexão ainda não terminou. O backend faz exchange →
+subscribe → **`/register`** → verify → upsert, e o `/register` da Meta sozinho levou ~24s
+(total de 25s). O `submitting` local do botão já voltou a `false` nessa hora, porque o
+callback terminou. Então o progresso TEM que vir da mutation do pai, pela prop `connecting`.
+O lojista viu só um botão desabilitado e deu F5 em ~23s (nginx 499). A página recarregou
+antes do upsert e mostrou "Desconectado". O número só apareceu num reload posterior, porque
+o handler terminou mesmo com o cliente desconectado. Por isso:
+- O pai passa `connecting={connectES.isPending}`. É a primeira conexão do lojista e a
+  primeira impressão do app.
+- O botão mostra spinner, "Ativando o número…" e o aviso `role="status"`.
+- Um `beforeunload` fica ligado só enquanto `connecting` (o navegador pede confirmação).
+- Teste de regressão: `components/whatsapp-setup/__tests__/facebook-login-connecting.test.tsx`
+  (kailos/emporion).
 
 Vite expõe `VITE_META_APP_ID`, `VITE_META_ES_CONFIG_ID`, `VITE_META_GRAPH_API_VERSION` automaticamente a partir do bloco `vite:` do yaml.
 
@@ -719,6 +758,7 @@ Tudo populado → frontend mostra botão "Conectar com Facebook" funcional. Algu
 | FB.login retorna sem `code` | Cliente fechou o popup | Retry, nada a fazer |
 | "A Meta concluiu o login, mas não enviou o número…" | (a) `event.data` tratado como objeto (é string JSON); (b) origem filtrada por lista fixa; (c) callback decidiu antes do postMessage; (d) domínio do app fora de "Allowed domains"/"Valid OAuth redirect URIs" no Facebook Login for Business | (a–c) já cobertos pelo componente canônico; a mensagem lista as mensagens recebidas — "nenhuma" aponta para (d): cadastre o domínio HTTPS no painel da Meta |
 | Widget mostra só "Business portfolio" + "Page (opcional)", sem escolher WhatsApp account nem número; termina "connected" sem `phone_number_id` (ou "business assets were not granted the requested permissions") | Configuration criada com login variation **General** em vez de **WhatsApp Embedded Signup** — vira Login for Business comum, que só concede acesso a WABA já existente (por isso o caminho "só o `code`" funcionava quando a WABA já tinha número) | A variação **não pode ser mudada depois**: criar Configuration NOVA com variation "WhatsApp Embedded Signup" (ou "Create from template" → "WhatsApp Embedded Signup Configuration With 60 Expiration Token"), ativos só WhatsApp accounts, e trocar o ID nos 3 yamls (`meta_es_config_id`) E no build arg `VITE_META_ES_CONFIG_ID` dos `config/docker/compose.*.yaml` — é o build arg que decide o bundle; precisa de build/deploy. Kailos prod, 2026-10-16 |
+| Depois do FINISH a tela não mostra nada por ~25s; F5 mostra "Desconectado" e só um reload posterior mostra conectado | `/register` da Meta lento (~24s), botão sem `connecting`; o reload veio antes do upsert | Prop `connecting={connectES.isPending}` + `beforeunload` (§7 "Estado pós-FINISH"). Kailos prod, 2026-10-16 |
 | `Invalid OAuth access token` no exchange_es_code | `code` expirou (~10s) | Cliente lento; refazer flow |
 | Webhook `SIGNATURE MISMATCH` | `META_APP_SECRET` errado | Re-copia da Meta, restart |
 | `meta_deauthorize ... revoked=0` mas validou HMAC | Conexão criada via token manual (sem `facebook_user_id`) | Esperado — só ES grava esse campo |

@@ -184,6 +184,9 @@ impede alguém de "simplificar" de volta.
 - `business_id` do FINISH é opcional. O postMessage vem como string JSON e de qualquer subdomínio
   `*.facebook.com` (seção acima); o front espera o desfecho por alguns segundos antes de cair no
   caminho "só code".
+- O POST inteiro leva ~25s (`/register` ~24s, 2026-10-16). O front mostra progresso pela
+  mutation (`connecting`) e liga `beforeunload` até a resposta chegar. Detalhe em
+  `meta-app-setup.md` §7 "Estado pós-FINISH".
 
 ## Don'ts
 

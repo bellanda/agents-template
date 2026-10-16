@@ -197,7 +197,8 @@ standalone e são linkados no roteamento (fim do arquivo).
   **"Instalar app" obrigatório em app real, SÓ no menu do usuário (rodapé da sidebar, área
   logada — nunca login/landing/header)**: `beforeinstallprompt` capturado no boot + dialog de
   passos no iOS/iPadOS, dialog irmão do `DropdownMenu`. `sw.js` push-only (sem `fetch`/cache)
-  registrado no boot; cache offline só com pedido explícito. *deep: `references/pwa-mobile.md` §6
+  registrado no boot; cache offline só com pedido explícito. **Atualização pós-deploy obrigatória** (`version.json` no-store + watcher + `UpdateBanner`; exceção ao
+  "nunca `location.reload()`" só p/ trocar bundle): `references/pwa-mobile.md` §8. *deep: `references/pwa-mobile.md` §6
   + `references/install-prompt.ts`/`pwa-platform.ts`/`install-app-button.tsx` (canônicos).*
 - [ ] **11. PADRÃO vs IDENTIDADE.** Padroniza (cross-projeto): layout, larguras (1440), enquadramento,
   overlays, grid-vs-stack, mobile-first, `react-icons`, `html { font-size: 17px }`. **NÃO** padroniza
