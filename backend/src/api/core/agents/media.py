@@ -44,7 +44,7 @@ from typing import Any, Final
 
 import anyio
 import cv2
-from curl_cffi import AsyncSession
+from curl_cffi import AsyncSession, CurlMime
 from langchain_core.messages import HumanMessage
 
 from api.core.agents.custom_providers import init_model
@@ -206,6 +206,29 @@ def whisper_upload_filename(filename: str, mime_type: str) -> str:
     return "audio" + WHISPER_EXT_BY_MIME.get(_bare_mime(mime_type), WHISPER_DEFAULT_EXT)
 
 
+def build_transcription_form(content: bytes, *, filename: str, mime_type: str) -> CurlMime:
+    """The multipart body Groq's transcription endpoint expects. Caller must `close()` it.
+
+    `curl_cffi` has no requests-style `files=`: it raises `NotImplementedError` before any
+    network I/O. That is how every customer audio went untranscribed in prod (2026-10-16, Promocar
+    "não consegui ouvir seu áudio") while the mocked-HTTP tests stayed green.
+    """
+    form = CurlMime()
+    form.addpart(
+        name="file",
+        content_type=mime_type,
+        filename=whisper_upload_filename(filename, mime_type),
+        data=content,
+    )
+    for name, value in (
+        ("model", Models.Groq.WHISPER_LARGE_V3_TURBO.model_id),
+        ("language", TRANSCRIPTION_LANGUAGE),
+        ("response_format", "verbose_json"),
+    ):
+        form.addpart(name=name, data=value.encode())
+    return form
+
+
 async def transcribe_audio(
     content: bytes, *, filename: str = "audio.ogg", mime_type: str = "audio/ogg"
 ) -> TranscriptionResult | None:
@@ -224,20 +247,17 @@ async def transcribe_audio(
 
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            async with AsyncSession() as session:
-                response = await session.post(
-                    GROQ_TRANSCRIPTION_URL,
-                    headers={"Authorization": f"Bearer {api_key}"},
-                    files={
-                        "file": (whisper_upload_filename(filename, mime_type), content, mime_type)
-                    },
-                    data={
-                        "model": Models.Groq.WHISPER_LARGE_V3_TURBO.model_id,
-                        "language": TRANSCRIPTION_LANGUAGE,
-                        "response_format": "verbose_json",
-                    },
-                    timeout=TRANSCRIPTION_TIMEOUT_SECONDS,
-                )
+            form = build_transcription_form(content, filename=filename, mime_type=mime_type)
+            try:
+                async with AsyncSession() as session:
+                    response = await session.post(
+                        GROQ_TRANSCRIPTION_URL,
+                        headers={"Authorization": f"Bearer {api_key}"},
+                        multipart=form,
+                        timeout=TRANSCRIPTION_TIMEOUT_SECONDS,
+                    )
+            finally:
+                form.close()
             if response.status_code >= HTTP_CLIENT_ERROR_FLOOR:
                 log.warning(
                     "transcription_http_error", status_code=response.status_code, attempt=attempt
