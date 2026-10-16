@@ -1,4 +1,4 @@
-from typing import Any
+from typing import Any, Final
 
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
@@ -6,6 +6,9 @@ from langchain_openai import ChatOpenAI
 
 from api.core.agents.models import ModelConfig, find_model_config_by_id
 from config.integrations import integrations_config
+
+OPENROUTER_REQUEST_TIMEOUT_SECONDS: Final = 45.0
+OPENROUTER_MAX_RETRIES: Final = 1
 
 
 class ChatOpenRouter(ChatOpenAI):
@@ -132,6 +135,12 @@ def init_openrouter_model(
         if value
     }
 
+    # Without these the OpenAI SDK defaults apply: 600s per request and 2 retries. A stalled
+    # OpenRouter stream then held the WhatsApp conversation lock until its TTL (180s) with not
+    # one log line — the customer waited 3 minutes for "Tem mais alguma opção?" (kailos prod,
+    # 2026-10-16). Callers may still override both via kwargs.
+    kwargs.setdefault("timeout", OPENROUTER_REQUEST_TIMEOUT_SECONDS)
+    kwargs.setdefault("max_retries", OPENROUTER_MAX_RETRIES)
     return ChatOpenRouter(
         model=model,
         openai_api_base=integrations_config.OPENROUTER_API_BASE,

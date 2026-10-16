@@ -68,6 +68,29 @@ VISION_MAX_TOKENS: Final = 512
 
 GROQ_TRANSCRIPTION_URL: Final = "https://api.groq.com/openai/v1/audio/transcriptions"
 TRANSCRIPTION_LANGUAGE: Final = "pt"
+# Groq validates the upload by the filename EXTENSION, not the bytes. WhatsApp audio arrives as
+# `audio/ogg; codecs=opus` with no name, and callers passed "arquivo"/"wa-audio-….bin" — Groq
+# answered 400 and every voice note fell back to "não consegui ouvir" (kailos + nexarena prod,
+# 2026-10-16). The name sent to Whisper is therefore always derived from the MIME.
+WHISPER_EXT_BY_MIME: Final[dict[str, str]] = {
+    "audio/ogg": ".ogg",
+    "audio/opus": ".opus",
+    "audio/mpeg": ".mp3",
+    "audio/mp3": ".mp3",
+    "audio/mp4": ".m4a",
+    "audio/x-m4a": ".m4a",
+    "audio/m4a": ".m4a",
+    "audio/wav": ".wav",
+    "audio/x-wav": ".wav",
+    "audio/webm": ".webm",
+    "audio/flac": ".flac",
+    "video/mp4": ".mp4",
+    "video/webm": ".webm",
+}
+WHISPER_ACCEPTED_EXTS: Final = frozenset(
+    {".flac", ".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".ogg", ".opus", ".wav", ".webm"}
+)
+WHISPER_DEFAULT_EXT: Final = ".ogg"
 TRANSCRIPTION_TIMEOUT_SECONDS: Final = 60.0
 
 # Whisper bills per HOUR OF AUDIO, not per token — check groq.com/pricing when changing it.
@@ -171,6 +194,18 @@ def transcription_cost_usd(duration_seconds: float) -> float:
     return round_cost_up(max(duration_seconds, 0.0) / SECONDS_PER_HOUR * WHISPER_USD_PER_HOUR)
 
 
+def whisper_upload_filename(filename: str, mime_type: str) -> str:
+    """A filename Groq accepts: the caller's when its extension is valid, else one from the MIME.
+
+    >>> whisper_upload_filename("wa-audio-1.bin", "audio/ogg; codecs=opus")
+    'audio.ogg'
+    """
+    dot = filename.rfind(".")
+    if dot != -1 and filename[dot:].lower() in WHISPER_ACCEPTED_EXTS:
+        return filename
+    return "audio" + WHISPER_EXT_BY_MIME.get(_bare_mime(mime_type), WHISPER_DEFAULT_EXT)
+
+
 async def transcribe_audio(
     content: bytes, *, filename: str = "audio.ogg", mime_type: str = "audio/ogg"
 ) -> TranscriptionResult | None:
@@ -193,7 +228,9 @@ async def transcribe_audio(
                 response = await session.post(
                     GROQ_TRANSCRIPTION_URL,
                     headers={"Authorization": f"Bearer {api_key}"},
-                    files={"file": (filename, content, mime_type)},
+                    files={
+                        "file": (whisper_upload_filename(filename, mime_type), content, mime_type)
+                    },
                     data={
                         "model": Models.Groq.WHISPER_LARGE_V3_TURBO.model_id,
                         "language": TRANSCRIPTION_LANGUAGE,
