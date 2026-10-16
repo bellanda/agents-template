@@ -27,22 +27,26 @@ app vive no compose.
 ```
 <app>-private/
   prod/…                                        ← uploads da app (b2_key_prefix)
-  backups/postgres/daily/<app>-<YYYY-MM-DDTHHMM>.dump    ← todos os arquivos dos 7 dias mais recentes
-  backups/postgres/weekly/<app>-<YYYY-MM-DD>.dump        ← cópia de domingo, mantém 4
+  backups/postgres/daily/<app>-<YYYY-MM-DDTHHMM>.dump      ← backup das 03:00, 1 por dia, 7 dias
+  backups/postgres/weekly/<app>-<YYYY-MM-DD>.dump          ← cópia de domingo, mantém 4
+  backups/postgres/predeploy/<app>-<YYYY-MM-DDTHHMM>.dump  ← `now` antes do deploy, SÓ o último
 ```
 
 Os nomes embutem um timestamp ISO, então a ordem alfabética é a ordem cronológica, e a retenção depende disso.
-A retenção diária conta **dias distintos**, não arquivos: o backup antes do deploy também cai em `daily/`, e
-3 deploys num dia não podem empurrar 3 dias para fora.
+A retenção guarda **o arquivo mais novo de cada um dos N dias mais recentes** (`daily/` N=7, `weekly/` N=4,
+`predeploy/` N=1 → só o último). Decisão do usuário 2026-10-16: o `now` do deploy caía em `daily/`, e um dia
+com 9 deploys guardava 9 dumps; um deploy novo torna inútil o backup do deploy anterior, então `predeploy/`
+fica com 1 só. O `now` não grava heartbeat nem a data do último sucesso: um deploy às 02h não pode pular o
+backup das 03h daquele dia.
 
 ## Como funciona (`pg_backup.sh`)
 
 | Subcomando | O que faz |
 | --- | --- |
 | `run` (default) | Loop de 60s. Faz 1 backup por dia local, a partir de `BACKUP_HOUR_LOCAL` (3 = 03:00 `America/Sao_Paulo`). A checagem é `>=`, então um restart depois das 03h ainda recupera o dia perdido. Falha → nova tentativa em 15 min. |
-| `now` | Faz 1 backup imediato e sai com 0/1. É o modo manual e o do "backup antes do deploy". |
+| `now` | Faz 1 backup imediato em `predeploy/` e sai com 0/1. É o modo manual e o do "backup antes do deploy". Não toca `daily/`/`weekly/`. |
 | `healthcheck` | Fica unhealthy se o último **sucesso** tiver mais de 26h. Há tolerância de 26h desde o start do container, para o deploy recém-feito não aparecer unhealthy. |
-| `select-expired N` | Recebe nomes no stdin e devolve os que estão fora dos N dias mais recentes. É a lógica de retenção, isolada para teste. |
+| `select-expired N` | Recebe nomes no stdin e devolve o que a retenção apaga (tudo menos o mais novo de cada um dos N dias mais recentes). Testado em `backend/tests/scripts/test_pg_backup_retention.py`. |
 
 Passos de cada backup (1 linha JSON de log por passo):
 1. `pg_dump -Fc --compress=zstd` pelo **socket direto** (`pgsocket`, nunca pgbouncer em transaction mode),
