@@ -31,6 +31,10 @@ reasoning + custo real). Um `match config.provider` é o único ponto que conhec
 - `compute_cost_usd`: `(fresh·in + cached·cached_in + out·out)/1e6`, `fresh = input − cache_read`, arredonda
   PARA CIMA (`round_cost_up`). **Custo reportado vence a tabela:** `ChatOpenRouter` expõe
   `response_metadata["provider_cost_usd"]` (+ `upstream_provider`) e `build_usage_from_ai_message` o prefere.
+  **BYOK** (chave Anthropic própria cadastrada no OpenRouter, decisão 2026-10-19 — créditos do Max 20x):
+  com `usage.is_byok`, `usage.cost` é só a taxa do OpenRouter (0 na franquia) e a inferência vem em
+  `usage.cost_details.upstream_inference_cost`; o stamp SOMA os dois. Ler só `usage.cost` zera o custo
+  de todo tenant e o teto de gasto. Teste: `tests/agents/test_openrouter_cost.py`.
 - Agregações (`repositories/agents/usage.py`): `get_thread_total_cost_usd`, `get_user_total_cost_usd`,
   `get_tenant_cost_usd_since(conn, tenant_id, month_start_utc())` — base de qualquer teto de gasto por tenant
   (índice parcial `(tenant_id, created_at)`). kailos/emporion mapeiam `organization_id` → `tenant_id`.

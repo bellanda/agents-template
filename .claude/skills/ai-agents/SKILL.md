@@ -87,7 +87,8 @@ e quantas vezes. Se código decide a sequência, use `complete*` (mais barato, t
   parse LEVANTA — trate no caller, não engula.
 - Retry só de erro transitório (429/5xx/timeout) e concorrência limitada por `settings.agents.max_concurrent_llm`
   (`with_llm_retry`); 401/400 não repetem.
-- Custo reportado pelo OpenRouter (`provider_cost_usd`) vence a tabela estática; arredonda pra CIMA.
+- Custo reportado pelo OpenRouter (`provider_cost_usd`) vence a tabela estática; arredonda pra CIMA. Sob BYOK
+  = `usage.cost` + `cost_details.upstream_inference_cost` (→ `usage-cost.md`).
 - Identidade/`tenant_id` de agente vêm da seam de auth/token verificado, **nunca** do body/query do cliente.
 - Subagente: `checkpointer=False`, tag `SUBAGENT_RUN_TAG`, `agent_id` com sufixo `:<nome>`.
 - Instrução do tenant é enriquecimento: falha/ausência → prompt base puro, nunca quebra o turno.
