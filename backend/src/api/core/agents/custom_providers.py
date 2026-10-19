@@ -23,8 +23,9 @@ class ChatOpenRouter(ChatOpenAI):
     2. **model_provider** is stamped as ``"openai"``; without rewriting it to
        ``"openrouter"`` ``find_model_config`` misses and the cost is recorded as zero.
     3. **real cost**: with ``usage: {include: true}`` OpenRouter returns ``usage.cost``
-       (what the routed upstream actually charged) and that upstream's name. Routing is
-       dynamic, so this beats the static price table — both go to ``response_metadata``
+       (what the routed upstream actually charged; under BYOK plus
+       ``cost_details.upstream_inference_cost`` — see the stamp below) and that upstream's name.
+       Routing is dynamic, so this beats the static price table — both go to ``response_metadata``
        and the usage repository prefers the real one.
     """
 
@@ -34,7 +35,16 @@ class ChatOpenRouter(ChatOpenAI):
         upstream = raw.get("provider")
         if upstream:
             target["upstream_provider"] = upstream
-        cost = (raw.get("usage") or {}).get("cost")
+        usage = raw.get("usage") or {}
+        cost = usage.get("cost")
+        if usage.get("is_byok"):
+            # BYOK (our own Anthropic key registered in OpenRouter, user decision 2026-10-19):
+            # `usage.cost` is only OpenRouter's BYOK fee (0 inside the free allowance) and the
+            # inference itself is billed to our key, reported in `cost_details`. Without the sum
+            # every tenant's AI cost — and the spend caps built on it — would read as zero.
+            upstream = (usage.get("cost_details") or {}).get("upstream_inference_cost")
+            if upstream is not None:
+                cost = (cost or 0) + upstream
         if cost is not None:
             target["provider_cost_usd"] = float(cost)
 
