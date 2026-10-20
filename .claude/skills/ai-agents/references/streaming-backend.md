@@ -68,6 +68,45 @@ própria — **interrompe, descarta e responde ao conjunto** (1 + 2 + …), nunc
 - **`last_agent_trigger_at` = `created_at` da última inbound LIDA no turno**, nunca `NOW()` do envio:
   com `NOW()` a mensagem que chegou durante a geração ficava antes do carimbo e sumia do turno seguinte.
 
+### WhatsApp — tempo, sessão, guard de transferência e follow-up (prod 2026-10-19)
+
+Tudo abaixo é texto montado SEM LLM, no dispatcher/serviço (não no prompt do agente).
+
+- **Carimbo por mensagem:** toda linha que o agente/follow-up vê (cliente, IA, vendedor) leva
+  `[seg 19/10 08:55]` (hora local da loja). Sem isso "vou amanhã" dito no domingo era lido na
+  segunda como ainda "amanhã". Um único formatador (`message_clock`) para todos os caminhos.
+- **"Agora: seg 19/10/2026 08:55 (horário de Brasília)" vai no FIM do `user_text`, NUNCA no system
+  prompt:** o prompt tem que ficar byte-estável por org para o prompt cache.
+- **Separador de retomada:** pausa >= 4 h (ou outro dia local) injeta "retomou após …" antes da
+  mensagem nova.
+- **Sessão nova após lacuna >= 8 h:** novo `thread_id` (checkpoint limpo); o antigo vai para
+  `metadata.previous_thread_ids`; `session_started_at` evita rotacionar duas vezes na rajada. O
+  turno novo recebe um bloco curto `## CONVERSA ANTERIOR` (últimas falas do cliente + falas do
+  vendedor, truncadas, gerado sem LLM) e a tool `read_conversation_history(days_back)` traz o
+  histórico completo só se o modelo precisar (default 7 d, teto 90, ~40 msgs). Decisão do usuário.
+- **Falas do vendedor** escritas durante o atendimento humano entram no contexto (`[Vendedor …]`);
+  o checkpoint do agente só guarda o que ele próprio viu.
+- **Trigger com `pending` vazio não invoca o agente** (nada novo do cliente = nada a responder).
+- **Erro pós-efeito-colateral avança o marcador do trigger** (`last_agent_trigger_at`): se fotos/
+  transferência já saíram e depois algo lançou, reentregar repetiria o efeito.
+- **Guard de anúncio de transferência sem a tool:** o modelo escreveu "passei pro consultor" sem
+  chamar `handoff_to_human` → o CÓDIGO completa o handoff (não reescreve a msg, o cliente já leu),
+  com resumo forçado. Regex de verbo + papel (consultor/vendedor/atendente); pergunta ("posso te
+  passar…?") e oferta condicional ("Se quiser, vou te passar…" — `se/caso/quando` antes do verbo na
+  mesma frase) NÃO contam. Turno que transferiu mas veio sem texto manda frase fixa.
+- **Botão de template "Quero atendimento" != pedido de humano:** é resposta de interesse; quem
+  decide a transferência é o agente.
+- **Follow-up da IA** (`agent_followup_schedule`, funções puras com `now` injetado): 20 min / 3 h /
+  22 h contados da última resposta da IA. Passo 1 só se a resposta está `read` (e o cliente quieto
+  >= 20 min) ou `delivered` há > 2 h; 1 ciclo por dia local por conversa (inbound novo reinicia o
+  relógio mas não o passo 1 se já houve follow-up hoje); sem menu/lista; guard de estilo no texto
+  gerado com 1 regeneração; só em horário da loja (adia, ou pula se a janela de 24 h fecharia); tick
+  deduplicado por minuto entre workers (`SET NX` do minuto, fail-open).
+- **SLA pós-handoff da IA:** conversa entregue pela IA sem fala de vendedor desde o handoff entra no
+  rodízio; o relógio começa no EVENTO de handoff (a despedida da IA outbound escondia cliente
+  quieto). Só sem resposta humana depois; janela de 48 h no evento para o 1º deploy não girar o
+  histórico antigo inteiro. Cron e `sla_deadline` (contador do header) mudam juntos.
+
 ## Mensagem do usuário (multimodal)
 
 `_extract_user_content` (`chat.py`): imagem → parte `image_url` inline (400 se `supports_image_input`

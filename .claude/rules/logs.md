@@ -11,7 +11,16 @@ Stack já bootstrapado nos projetos. Para configurar do zero ou auditar setup, i
 
 structlog → stdlib `logging` → QueueHandler/QueueListener → stderr →
 JSONRenderer com orjson em prod (NDJSON) | ConsoleRenderer em dev (TTY-aware) →
-Docker `json-file` driver (rotação, compressão).
+Docker logging driver: `journald` em PROD (tag `<app>-<serviço>`), `json-file` com rotação em
+local/staging.
+
+**Driver por ambiente (decisão do usuário, prod 2026-10-19):** `json-file` mora DENTRO do container
+e some a cada `up --force-recreate` do deploy; o journald do host sobrevive. O `logging:` de
+prod vive SÓ em `config/docker/compose.prod.yaml`; o `compose.yaml` base NÃO declara `logging` nos
+serviços da app (o `include:` do override entra POR BAIXO do base, então um bloco no base venceria).
+local/staging declaram `json-file` (`max-size`/`max-file`) no próprio override. Leitura:
+`journalctl CONTAINER_NAME=<app>-backend --since "…"`; `docker compose logs` segue funcionando.
+Confira `SystemMaxUse` do journald na VPS (`journalctl --disk-usage`; compartilhado com o host todo).
 
 ## Como usar (todo arquivo Python)
 
@@ -27,7 +36,7 @@ log = structlog.get_logger(__name__)
   - ✅ `log.info("user_login", user_id=42, method="oauth")`
   - ❌ `log.info(f"user {uid} logged in")`
 - `log.exception("operation_failed")` dentro de `except`. NUNCA `log.error(str(e))` — perde traceback.
-- Sem file handlers no container. stdout/stderr only. Docker driver rotaciona.
+- Sem file handlers no container. stdout/stderr only. O driver do Docker (journald em prod / json-file rotacionado fora dele) cuida de retenção.
 - `request_id` é contextvar populada pelo `LoggingMiddleware`. Toda linha herda automático.
 
 ## Quando logar (volume = sinal, não narração)

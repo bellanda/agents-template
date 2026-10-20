@@ -107,6 +107,15 @@ Invariantes do stream (todas já no canônico — não remova ao adaptar):
 invalida mensagens + conversas. `useWhatsAppMessages` mescla servidor + tmp (mesma direção, mesmo
 texto, `createdAt` ≤ 60s) para a invalidação do SSE não apagar a bolha antes da resposta.
 
+**Reconciliação por `client_id` (kailos, prod 2026-10-19):** a janela de ≤ 60 s acima duplicava/trocava
+bolhas (dois áudios iguais, resposta lenta). O envio gera um `clientId` (uuid), manda no POST como
+campo do form e o backend devolve em `metadata.client_id`; o merge casa otimista↔servidor POR ID
+(exato). Janela de tempo só como fallback para mensagem sem `client_id`.
+**Ordem no áudio:** crie a bolha otimista ANTES de `voice.finish()` (que espera o encode e a
+bolha ficava atrasada). **Duração:** o `<audio>` de blob WebM (Chrome) reporta `Infinity`/`NaN`; use
+`mediaDurationSeconds` (segundos gravados, enviado e persistido) quando `duration` não é finita.
+**Extensão do arquivo** derivada do mime gravado (iPhone grava `audio/mp4`, não `.webm`).
+
 ## Ticks de status — nunca regridem (kailos, 2026-10-09)
 
 Os webhooks de status da Meta chegam **fora de ordem** e às vezes **antes** de a linha da mensagem
@@ -199,6 +208,9 @@ Pastas em `kailos/frontend/src/components/whatsapp/`. Política e travas de envi
   automático e pode ter pego cliente real → `useUnblockContact`.
 
 ## Transferir, linha do tempo e cabeçalho (kailos, 2026-10-09)
+
+**Devolver à IA (2026-10-19):** botão no header quando a conversa está em atendimento humano,
+atrás de `ConfirmDialog` (a IA volta a responder o cliente). Invalida conversa + mensagens.
 
 - **Transferir** (`6c3cec1`, `37915a2`): `TransferPicker` = equipes ("próximo da vez") + pessoas A–Z com busca
   e `ConfirmDialog`. Regra espelha o backend: `showTransferButton = state !== "closed" && (canManage ||

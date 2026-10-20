@@ -165,6 +165,19 @@ impede alguém de "simplificar" de volta.
   `stale` (`_is_stale_button_reply`) se o toque está fora da janela de lookback ou se a loja mandou
   outro template depois dele (o cliente já reage ao mais novo). Sem respondido, usa o último template.
 
+**Mídia outbound — nota de voz e vídeo** (`outbound_media_ffmpeg.py`, prod 2026-10-19)
+- Voz = Ogg/Opus com `start_time` 0. Chrome/Android grava WebM com `granulepos` ABSOLUTO (ffprobe
+  mostrou start 11,7 s / 73 s / 47052 s): o player mostra duração errada e começa no meio.
+  `asetpts=PTS-STARTPTS` NÃO resolve. Use `asetpts=N/SR/TB`, rode ffprobe na SAÍDA e, se
+  `start_time` > ~0,1 s, refaça via PCM cru (fallback). `audio/mp4` do Safari também transcodifica.
+  Guarde o WebM cru como arquivo privado (diagnóstico/reprocesso). ffmpeg via arquivos temporários
+  + `anyio.run_process` com timeout (precisa de input seekable).
+- Vídeo: só H.264/AAC em MP4/3GPP, <= 16 MB. `.mov`/HEVC do iPhone => erro 131053. Compatível =
+  remux `-c copy`; senão `libx264` main `yuv420p` + `aac` + `+faststart`; > 16 MB reencode 720p CRF
+  28; ainda maior => erro pt-BR claro (nunca deixar a Meta recusar).
+- A Cloud API NÃO tem álbum: várias imagens sem legenda enviadas em sequência são agrupadas pelo
+  próprio cliente WhatsApp.
+
 **SSE** (`routes/whatsapp/chat.py`, `routes/agents/chat.py`; commits `eed7f17`, `35c40d9`, `55c5f82`,
 2026-10-09)
 - Headers: `Cache-Control: no-cache, no-transform` (Cloudflare comprime/bufferiza sem o `no-transform`)

@@ -34,7 +34,7 @@ log.info("event", **ctx)
   ↓ StreamHandler com ProcessorFormatter
   ↓ remove_processors_meta + final renderer (JSON ou Console)
   ↓ stderr.write(bytes + "\n")
-  ↓ Docker json-file driver (rotação)
+  ↓ Docker logging driver (prod: journald; local/staging: json-file com rotação)
 ```
 
 Pontos não-óbvios:
@@ -120,7 +120,20 @@ O glob negativo `"!src/**/*.py" = ["T20"]` ignora a categoria toda (T201 print +
 
 A005 isenta o `core/logging.py` — o nome do arquivo intencionalmente shadows o `logging` da stdlib (é wrapper do projeto). Imports internos usam paths absolutos qualificados.
 
-### 6. Editar `compose.yaml` — logging assimétrico
+### 6. Logging no compose — assimétrico E por ambiente
+
+**Driver (decisão do usuário, prod 2026-10-19):** em PROD o driver é `journald` com
+`tag: "<app>-<serviço>"`, declarado SÓ em `config/docker/compose.prod.yaml`. `json-file` mora dentro
+do container e some no `up --force-recreate` do deploy; journald fica no host. O `compose.yaml`
+base NÃO declara `logging` nos serviços da app (backend/cron-worker/nginx): o `include:` do
+override entra POR BAIXO do base, então um bloco no base venceria o do prod. local/staging declaram
+o `json-file` abaixo no próprio override (dev roda sem journald). Leitura em prod (host da VPS):
+`journalctl CONTAINER_NAME=<app>-backend --since "2026-10-19 08:00"`; `docker compose logs` continua
+valendo. Confira `journalctl --disk-usage` e `SystemMaxUse` em `/etc/systemd/journald.conf` (o
+journald é do host inteiro; sem teto o default é 10% do filesystem, máx. 4 GiB). O driver só troca
+no `up --force-recreate`.
+
+Os exemplos `json-file` abaixo valem para o override de local/staging:
 
 NÃO aplicar logging block em todos os services. Postgres/nats/migrate raramente são consultados em incidente — basta `docker logs` quando necessário, e o default do Docker daemon (~10MB sem rotação) cobre.
 
@@ -212,7 +225,8 @@ docker logs <projeto>-backend --since 5s 2>&1 | rg "rid-correlation" | jq
 
 # Rotação
 docker inspect <projeto>-backend --format '{{json .HostConfig.LogConfig}}' | jq
-# Esperado: {"Type":"json-file","Config":{"compress":"true","max-file":"10","max-size":"100m"}}
+# Esperado (local/staging): {"Type":"json-file","Config":{"compress":"true","max-file":"10","max-size":"100m"}}
+# Em prod: {"Type":"journald",...}
 ```
 
 ## Auditoria de projeto existente
@@ -225,7 +239,7 @@ Quando o user pede "verifica se o logging do projeto X está OK", checar nesta o
 4. **`setup_logging()` chamado no top-level** de `main.py`, antes de `app = FastAPI(...)`.
 5. **`shutdown_logging()`** no fim do lifespan.
 6. **`SERVICE_NAME` e `APP_ENV`** no compose, no service `backend`.
-7. **`logging:` block** no compose ao menos em `backend` (e nginx se existir).
+7. **`logging:` block** ao menos em `backend` (e nginx se existir): `journald` no `compose.prod.yaml`, `json-file` em local/staging, NADA no `compose.yaml` base para esses serviços.
 8. **`T20` no ruff.toml** com glob negativo `"!src/**/*.py" = ["T20"]`.
 9. **Zero `print()` em `src/`**: `cd backend && uv run ruff check --select T201 src/`.
 10. **Smoke test passa** (passo 8 acima).
@@ -243,6 +257,7 @@ Se algum item falhar, aplicar o passo correspondente do runbook. Não refatorar 
 - Chamar `setup_logging()` dentro do lifespan async → MOVER para top-level. Granian importa antes do lifespan; logs do startup ficam fora do pipeline.
 - `log.error(f"... {exc}")` em except → trocar por `log.exception("event_failed")`. Mantém traceback.
 - `f"... {var} ..."` no `event` do logger → ERRADO. Event = snake_case fixo, variável vai como kwarg.
+- `logging:` dos serviços da app no `compose.yaml` base (vence o override de prod) → mover para os overrides por ambiente.
 - Duplicar logging block em todos os services do compose → remover de postgres/nats/migrate. Default do daemon basta.
 
 ## Reference files
