@@ -163,6 +163,12 @@ route-guards precisa passar `search` ao `beforeLoad`.
 - `ImageViewer` (Radix Dialog cru, sem `DialogContent`) recebe `items`/`index`/`onIndexChange`: setas,
   teclado, swipe e **tira de miniaturas** embaixo como no WhatsApp (rolagem só dentro da tira, atual
   com anel e centralizada). Item único = sem tira nem setas.
+- **Vídeo** (`whatsapp/bubbles/VideoBubble.tsx`, 2026-10-22): a bolha mostra SÓ o 1º quadro + play +
+  duração (alvo de toque, sem `controls`), e o toque abre o player em **tela cheia** (mesma casca escura
+  do `ImageViewer`: safe-area, X, baixar; `autoPlay playsInline controls`, montado só aberto). `<video
+  controls>` dentro da bolha de 240px é PROIBIDO: no celular fica minúsculo e a tela cheia some no ⋮
+  (relato do usuário). Quadro no iOS: `src` + `#t=0.1` (só `preload="metadata"` pinta preto); retrato
+  cortado em 3:4 na bolha.
 - **IA mandando fotos** (backend): preparar TODAS em paralelo (converter + `save_upload` + upload na
   Meta → `media_id`), depois enviar em rajada na ordem — só assim o WhatsApp do cliente agrupa em
   álbum; uma a uma (upload + envio por foto) chegava pingando. **Sem legenda nas fotos**: a ficha curta
