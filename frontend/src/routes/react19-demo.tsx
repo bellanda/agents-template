@@ -76,7 +76,7 @@ function CommentFormSeed() {
       <form action={action} className="flex flex-col gap-3">
         <textarea
           name="comment"
-          className="bg-background rounded-md border p-2 text-sm"
+          className="bg-background rounded-md border p-2 text-base md:text-sm"
           rows={3}
           placeholder="Deixe um comentário..."
         />
