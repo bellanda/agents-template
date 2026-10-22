@@ -125,6 +125,32 @@ toast.error(`Erro: ${err.message}`);
 - Auditoria: `rg -n "toast\.error\(" frontend/src` — só sobram validações locais com
   `{ description }`; todo erro de API passa por `notifyError`/`meta.errorTitle`.
 
+## 403 em leitura = gate esquecido (decisão do usuário 2026-10-22)
+
+Incidente (kailos/Promocar, 2026-10-22): o toast global de query passou a mostrar todo erro de
+leitura e o vendedor via "Acesso negado" ao abrir conversas. Eram dois bugs que já existiam calados:
+o `/chat` lia a lista de pessoas pelo endpoint do painel de admin (`member:read`) — a lista de
+"Transferir para pessoa" do vendedor vinha vazia em silêncio — e a ficha do veículo pedia a
+avaliação (`assessment:read`) para quem não podia vê-la.
+
+- **Não ter a permissão é estado normal**, não erro: o front sabe as permissões
+  (`useCurrentOrgRoles().can(...)`) e decide ANTES de pedir. Tem → mostra tudo; não tem → a tela
+  degrada (só "Minhas conversas", seção escondida), sem request e sem toast.
+- Query de endpoint com permissão: `enabled: base && can("x:read")`. Controle que depende dela:
+  renderiza só com `can(...)`.
+- **403 em leitura nunca é silenciado no handler global** (nem por `meta.silentError` genérico):
+  ele é o sinal de que um chamador esqueceu o gate. Conserte o chamador. O `POST /client-logs`
+  registra o 403 com a URL — procure por `status=403` no log do backend para achar os próximos.
+- Lista de referência usada por todo membro (pessoas, equipes ativas) vem do endpoint de MEMBRO
+  (`GET /organizations/{id}/members` → `useOrgMembers`); o de admin é só da tela de gestão.
+- Dado que só aparece dentro de um picker/popover carrega na 1ª abertura:
+
+```tsx
+const [wasOpened, setWasOpened] = useState(false);
+const members = useOrgMembers(orgId, { enabled: wasOpened || open === true });
+// <Picker onOpenChange={(next) => { if (next) setWasOpened(true); … }} />
+```
+
 ## Skeletons e loading
 
 - Primeira carga de uma região de forma conhecida → `Skeleton` (`ui/skeleton.tsx`) com a geometria do

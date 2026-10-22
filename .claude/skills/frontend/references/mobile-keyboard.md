@@ -79,6 +79,12 @@ Regra, em todo componente de `components/ui/` que renderize campo nativo (`input
 Campo que **herda** a fonte de um wrapper (`ComboboxChipsInput` dentro de um `ComboboxChips`
 `text-xs`) precisa da classe **no próprio input** — a herança traz o valor abaixo do limiar.
 
+Campo **fora** de `ui/` com fonte própria (`<Input className="h-8 text-xs">`, composer de chat
+`text-[15px]`, busca `text-[13px]`) cai no mesmo bug: no iOS o zoom fica depois de fechar o
+teclado e a tela de conversa "sai do layout" (Marcelo/Promocar, 2026-10-22). Mesmo conserto:
+`text-base … md:text-xs`. **Guarda em todo app**: copie `references/ios-input-zoom.test.ts` para
+`src/test/__tests__/` — ele varre os `.tsx` e falha com a lista de campos < 16px sem prefixo `md:`.
+
 **NUNCA** resolva isso com `maximum-scale=1`/`user-scalable=no` (mata o pinch-zoom, WCAG 1.4.4) nem
 com regra global `input { font-size: 16px !important }` (atropela campo intencionalmente maior).
 
