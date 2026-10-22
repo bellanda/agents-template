@@ -355,6 +355,44 @@ class AsyncpgCheckpointSaver(BaseCheckpointSaver[str]):
                     keep_through,
                 )
 
+    async def aprune_thread_history(self, thread_id: str) -> int:
+        """Keep only the latest checkpoint of the thread (root ns); returns checkpoints deleted.
+
+        Resuming reads just the latest checkpoint; older ones only matter to `arollback_thread`
+        of a turn still in flight, so callers run this BEFORE a turn starts (conversation lock
+        held, previous turn already sent). Blobs go when no remaining checkpoint cites their
+        (channel, version). Full chat history lives in `whatsapp_messages`, not here.
+        Added 2026-10-22 (prod: 94% of checkpoint rows were superseded)."""
+        async with self.pool.acquire() as conn, conn.transaction():
+            latest = await conn.fetchval(
+                "SELECT max(checkpoint_id) FROM checkpoints WHERE thread_id = $1"
+                " AND checkpoint_ns = ''",
+                str(thread_id),
+            )
+            if latest is None:
+                return 0
+            deleted = await conn.execute(
+                "DELETE FROM checkpoints WHERE thread_id = $1 AND checkpoint_ns = ''"
+                " AND checkpoint_id < $2",
+                str(thread_id),
+                latest,
+            )
+            await conn.execute(
+                "DELETE FROM checkpoint_writes WHERE thread_id = $1 AND checkpoint_ns = ''"
+                " AND checkpoint_id < $2",
+                str(thread_id),
+                latest,
+            )
+            await conn.execute(
+                "DELETE FROM checkpoint_blobs b WHERE b.thread_id = $1 AND b.checkpoint_ns = ''"
+                " AND NOT EXISTS (SELECT 1 FROM checkpoints c,"
+                " jsonb_each_text(c.checkpoint -> 'channel_versions') e"
+                " WHERE c.thread_id = b.thread_id AND c.checkpoint_ns = b.checkpoint_ns"
+                " AND e.key = b.channel AND e.value = b.version)",
+                str(thread_id),
+            )
+        return int(deleted.split()[-1])
+
     async def adelete_thread(self, thread_id: str) -> None:
         async with self.pool.acquire() as conn, conn.transaction():
             for table in ("checkpoints", "checkpoint_blobs", "checkpoint_writes"):
