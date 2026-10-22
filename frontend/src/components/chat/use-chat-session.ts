@@ -12,7 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { FileUIPart, UIMessage } from "ai";
 import { DefaultChatTransport } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { toast } from "sonner";
+import { notifyError } from "@/lib/api/notify";
 
 const STREAM_THROTTLE_MS = 32;
 
@@ -102,7 +102,7 @@ export function useChatSession({
       void queryClient.invalidateQueries({ queryKey: threadsQueryKey(userId) });
     },
     onError(err) {
-      toast.error(err.message ?? "Erro no assistente");
+      notifyError("Não foi possível obter a resposta do assistente", err);
     },
   });
 
@@ -210,10 +210,10 @@ export function useChatSession({
             if (onUploadError) {
               onUploadError(err);
             } else {
-              toast.error(err.message);
+              notifyError("Não foi possível anexar o arquivo", err);
             }
           } else {
-            toast.error(err instanceof Error ? err.message : "Failed to upload attachment.");
+            notifyError("Não foi possível anexar o arquivo", err);
           }
           return;
         }

@@ -80,13 +80,11 @@ export function AgentConfigScreen({
       { markdown, note },
       {
         onSuccess: () => toast.success("Nova versão salva."),
-        onError: (err) => toast.error(err.message),
       }
     );
   const handleActivate = (version: number) =>
     activate.mutate(version, {
       onSuccess: () => toast.success(`Versão ${version} restaurada como nova versão.`),
-      onError: (err) => toast.error(err.message),
     });
 
   const slotContext: AgentConfigSlotContext | null =

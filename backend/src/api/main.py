@@ -9,6 +9,7 @@ from api import agents_router, uploads_router
 from api.core.agents.checkpointer import close_checkpointer, init_checkpointer
 from api.core.logging import get_logger, setup_logging, shutdown_logging
 from api.middlewares.logging_middleware import LoggingMiddleware
+from api.routes.observability import client_logs_router
 from api.services.agents.registry import get_agents_registry, reload_agents_registry
 from api.services.cache import close_valkey, init_valkey
 from api.services.messaging import close_nats, connect_nats
@@ -96,6 +97,7 @@ async def health_check(agents_registry: dict = Depends(get_agents_registry)):
 
 
 api_router.include_router(agents_router)
+api_router.include_router(client_logs_router)
 api_router.include_router(uploads_router, prefix="/uploads", tags=["Uploads"])
 app.include_router(api_router)
 

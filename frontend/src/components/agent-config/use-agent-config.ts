@@ -58,11 +58,13 @@ export function useAgentConfigVersionsQuery(
 function useConfigMutation<TVars>(
   agentId: string,
   userId: string | undefined,
-  mutationFn: (vars: TVars) => Promise<AgentConfig>
+  mutationFn: (vars: TVars) => Promise<AgentConfig>,
+  errorTitle: string
 ) {
   const queryClient = useQueryClient();
   return useMutation({
     mutationFn,
+    meta: { errorTitle },
     onSuccess: (config) => {
       queryClient.setQueryData(agentConfigKey(agentId, userId), config);
       void queryClient.invalidateQueries({ queryKey: versionsKey(agentId, userId) });
@@ -77,11 +79,18 @@ export interface SaveAgentConfigVariables {
 }
 
 export const useSaveAgentConfigMutation = (agentId: string, userId: string | undefined) =>
-  useConfigMutation(agentId, userId, ({ markdown, note }: SaveAgentConfigVariables) =>
-    saveAgentConfig(agentId, { system_prompt_markdown: markdown, note }, userId)
+  useConfigMutation(
+    agentId,
+    userId,
+    ({ markdown, note }: SaveAgentConfigVariables) =>
+      saveAgentConfig(agentId, { system_prompt_markdown: markdown, note }, userId),
+    "Não foi possível salvar as instruções do agente"
   );
 
 export const useActivateVersionMutation = (agentId: string, userId: string | undefined) =>
-  useConfigMutation(agentId, userId, (version: number) =>
-    activateAgentConfigVersion(agentId, version, userId)
+  useConfigMutation(
+    agentId,
+    userId,
+    (version: number) => activateAgentConfigVersion(agentId, version, userId),
+    "Não foi possível restaurar a versão das instruções"
   );

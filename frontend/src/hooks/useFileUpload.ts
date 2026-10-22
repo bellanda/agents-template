@@ -25,7 +25,7 @@ function extOf(name: string): string {
 /**
  * Client-side upload validator. Returns a `ValidationResult` discriminated
  * union: `{ ok: true, file }` to pass to the upload mutation, or
- * `{ ok: false, error }` ready to feed `toast.error`.
+ * `{ ok: false, error }` ready to feed `notifyError` (lib/api/notify).
  *
  * Validator-only by design — the mutation (POST FormData) is the caller's
  * responsibility (see `uploadFile` in `lib/api.ts`). Server-side validation

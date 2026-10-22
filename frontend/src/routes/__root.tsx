@@ -1,19 +1,13 @@
 import { Outlet, createRootRoute } from "@tanstack/react-router";
-import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
-import { Toaster } from "sonner";
+import { QueryClientProvider } from "@tanstack/react-query";
 
 import { UpdateBanner } from "@/components/app-version/UpdateBanner";
 import { ThemeProvider } from "@/components/theme";
+import { Toaster } from "@/components/ui/sonner";
+import { createAppQueryClient } from "@/lib/api/query-client";
 import { useAppVersionWatcher } from "@/lib/app-version/use-app-version-watcher";
 
-const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 60_000,
-      refetchOnWindowFocus: false,
-    },
-  },
-});
+const queryClient = createAppQueryClient();
 
 export const Route = createRootRoute({
   component: RootComponent,
@@ -26,7 +20,7 @@ function RootComponent() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider defaultTheme="dark">
         <Outlet />
-        <Toaster position="top-right" />
+        <Toaster />
         {updatePending && <UpdateBanner secondsLeft={secondsLeft} onUpdate={reloadNow} />}
       </ThemeProvider>
     </QueryClientProvider>
