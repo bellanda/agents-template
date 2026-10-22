@@ -4,7 +4,7 @@ The problem is the same on every channel: the conversation runs on TEXT, and aud
 videos and PDFs arrive. This module turns bytes into sentences BEFORE the prompt, with a
 chain of steps and a floor:
 
-    audio  → Whisper (Groq) → multimodal model, IF it takes audio → None
+    audio  → Whisper (OpenRouter) → multimodal model, IF it takes audio → None
     image  → multimodal model                                       → None
     video  → multimodal model IF it takes video, else sampled frames
              sent as images IF it takes images                      → None
@@ -24,13 +24,17 @@ description. Coupling this to a channel is what kills reuse.
 Decisions worth carrying to any project (the first three are exactly where apps that copied
 this by hand went wrong):
 
-1. **Whisper first, multimodal second.** Transcription needs no reasoning and Whisper on
-   Groq is an order of magnitude cheaper. The expensive model is the fallback, not the route.
+1. **Whisper first, multimodal second.** Transcription needs no reasoning and Whisper is an
+   order of magnitude cheaper. The expensive model is the fallback, not the route. Whisper goes
+   through OpenRouter's STT endpoint too (user decision 2026-10-22): one key for all AI, the
+   cheapest upstream (DeepInfra, US$ 0.012/h vs Groq-direct 0.04/h) with Groq as automatic
+   fallback, and no per-account Groq rate limit (20 req/min, which 429'd Insights backfills).
 2. **Vision goes through LangChain** (`init_model` + `UsageContext.runnable_config()`), never
    the raw SDK. That is what makes `usage_recorder` write the cost row for free — the SDK
    shortcut makes media spend invisible to any cap.
-3. **Whisper cost is recorded by hand** (`record_transcription_cost`): a multipart POST does
-   not go through the callback, and it is billed per HOUR of audio.
+3. **Whisper cost is recorded by hand** (`record_transcription_cost`): the STT endpoint is
+   not a chat call, so it does not go through the callback, and it is billed per SECOND of
+   audio. The cost OpenRouter reports (`usage.cost`) wins over the static price.
 4. **Differentiated retry, fail-soft.** 429/5xx retry (exponential backoff, 2 attempts —
    someone is waiting on the other side); 401/400 do not. Every failure is logged WITH its
    `status_code`, because "no transcript" by 401 and by 429 are fixed in opposite ways.
@@ -44,7 +48,7 @@ from typing import Any, Final
 
 import anyio
 import cv2
-from curl_cffi import AsyncSession, CurlMime
+from curl_cffi import AsyncSession
 from langchain_core.messages import HumanMessage
 
 from api.core.agents.custom_providers import init_model
@@ -66,35 +70,42 @@ ENRICHMENT_AGENT_ID: Final = "media-enrichment"
 VISION_MODEL: Final = Models.OpenRouter.CLAUDE_HAIKU_5_5
 VISION_MAX_TOKENS: Final = 512
 
-GROQ_TRANSCRIPTION_URL: Final = "https://api.groq.com/openai/v1/audio/transcriptions"
+# OpenRouter's speech-to-text endpoint: JSON body with the audio base64-encoded, NOT the
+# OpenAI multipart shape. Routing picks the cheapest upstream of the slug (DeepInfra) and falls
+# back to Groq; both are US-based, so the jurisdiction answer given to Meta stays true.
+# `provider.order` is ignored by this endpoint (probed 2026-10-22: same upstream, same cost).
+TRANSCRIPTION_PATH: Final = "/audio/transcriptions"
+TRANSCRIPTION_MODEL: Final = Models.OpenRouter.WHISPER_LARGE_V3_TURBO
 TRANSCRIPTION_LANGUAGE: Final = "pt"
-# Groq validates the upload by the filename EXTENSION, not the bytes. WhatsApp audio arrives as
-# `audio/ogg; codecs=opus` with no name, and callers passed "arquivo"/"wa-audio-….bin" — Groq
-# answered 400 and every voice note fell back to "não consegui ouvir" (kailos + nexarena prod,
-# 2026-10-16). The name sent to Whisper is therefore always derived from the MIME.
-WHISPER_EXT_BY_MIME: Final[dict[str, str]] = {
-    "audio/ogg": ".ogg",
-    "audio/opus": ".opus",
-    "audio/mpeg": ".mp3",
-    "audio/mp3": ".mp3",
-    "audio/mp4": ".m4a",
-    "audio/x-m4a": ".m4a",
-    "audio/m4a": ".m4a",
-    "audio/wav": ".wav",
-    "audio/x-wav": ".wav",
-    "audio/webm": ".webm",
-    "audio/flac": ".flac",
-    "video/mp4": ".mp4",
-    "video/webm": ".webm",
+# The audio `format` is derived from the MIME, never from the stored name: WhatsApp audio
+# arrives as `audio/ogg; codecs=opus` saved as "wa-audio-….bin", and Whisper rejected the
+# ".bin" with 400 — every voice note fell back to "não consegui ouvir" (kailos + nexarena
+# prod, 2026-10-16).
+WHISPER_FORMAT_BY_MIME: Final[dict[str, str]] = {
+    "audio/ogg": "ogg",
+    "audio/opus": "ogg",
+    "audio/mpeg": "mp3",
+    "audio/mp3": "mp3",
+    "audio/mp4": "m4a",
+    "audio/x-m4a": "m4a",
+    "audio/m4a": "m4a",
+    "audio/aac": "aac",
+    "audio/wav": "wav",
+    "audio/x-wav": "wav",
+    "audio/webm": "webm",
+    "audio/flac": "flac",
+    "video/mp4": "mp4",
+    "video/webm": "webm",
 }
-WHISPER_ACCEPTED_EXTS: Final = frozenset(
-    {".flac", ".mp3", ".mp4", ".mpeg", ".mpga", ".m4a", ".ogg", ".opus", ".wav", ".webm"}
+WHISPER_ACCEPTED_FORMATS: Final = frozenset(
+    {"aac", "flac", "m4a", "mp3", "mp4", "ogg", "wav", "webm"}
 )
-WHISPER_DEFAULT_EXT: Final = ".ogg"
+WHISPER_DEFAULT_FORMAT: Final = "ogg"
 TRANSCRIPTION_TIMEOUT_SECONDS: Final = 60.0
 
-# Whisper bills per HOUR OF AUDIO, not per token — check groq.com/pricing when changing it.
-WHISPER_USD_PER_HOUR: Final = 0.04
+# Fallback only — the cost OpenRouter returns per call wins. US$ 0.00000333/s on DeepInfra
+# (= 0.012/h); check `GET /api/v1/models/openai/whisper-large-v3-turbo/endpoints` when changing.
+WHISPER_USD_PER_HOUR: Final = 0.012
 SECONDS_PER_HOUR: Final = 3600.0
 
 # Two attempts, not five: someone is waiting for a reply, and insisting on a provider that
@@ -190,74 +201,75 @@ def _data_url(content: bytes, mime_type: str) -> str:
 
 
 def transcription_cost_usd(duration_seconds: float) -> float:
-    """USD to transcribe `duration_seconds` of audio (Groq bills per hour)."""
+    """Estimated USD to transcribe `duration_seconds` of audio, when the provider reports none."""
     return round_cost_up(max(duration_seconds, 0.0) / SECONDS_PER_HOUR * WHISPER_USD_PER_HOUR)
 
 
-def whisper_upload_filename(filename: str, mime_type: str) -> str:
-    """A filename Groq accepts: the caller's when its extension is valid, else one from the MIME.
+def whisper_audio_format(filename: str, mime_type: str) -> str:
+    """The `input_audio.format` Whisper accepts: from the MIME first, else the name's extension.
 
-    >>> whisper_upload_filename("wa-audio-1.bin", "audio/ogg; codecs=opus")
-    'audio.ogg'
+    >>> whisper_audio_format("wa-audio-1.bin", "audio/ogg; codecs=opus")
+    'ogg'
     """
-    dot = filename.rfind(".")
-    if dot != -1 and filename[dot:].lower() in WHISPER_ACCEPTED_EXTS:
-        return filename
-    return "audio" + WHISPER_EXT_BY_MIME.get(_bare_mime(mime_type), WHISPER_DEFAULT_EXT)
+    by_mime = WHISPER_FORMAT_BY_MIME.get(_bare_mime(mime_type))
+    if by_mime:
+        return by_mime
+    ext = filename.rsplit(".", 1)[-1].lower() if "." in filename else ""
+    return ext if ext in WHISPER_ACCEPTED_FORMATS else WHISPER_DEFAULT_FORMAT
 
 
-def build_transcription_form(content: bytes, *, filename: str, mime_type: str) -> CurlMime:
-    """The multipart body Groq's transcription endpoint expects. Caller must `close()` it.
+def build_transcription_body(content: bytes, *, filename: str, mime_type: str) -> dict[str, Any]:
+    return {
+        "model": TRANSCRIPTION_MODEL.model_id,
+        "language": TRANSCRIPTION_LANGUAGE,
+        "input_audio": {
+            "data": base64.b64encode(content).decode("ascii"),
+            "format": whisper_audio_format(filename, mime_type),
+        },
+    }
 
-    `curl_cffi` has no requests-style `files=`: it raises `NotImplementedError` before any
-    network I/O. That is how every customer audio went untranscribed in prod (2026-10-16, Promocar
-    "não consegui ouvir seu áudio") while the mocked-HTTP tests stayed green.
-    """
-    form = CurlMime()
-    form.addpart(
-        name="file",
-        content_type=mime_type,
-        filename=whisper_upload_filename(filename, mime_type),
-        data=content,
+
+def transcription_result_from_body(body: dict[str, Any]) -> TranscriptionResult | None:
+    text = (body.get("text") or "").strip()
+    if not text:
+        return None
+    usage = body.get("usage") or {}
+    seconds = float(usage.get("seconds") or 0.0)
+    reported = usage.get("cost")
+    cost = round_cost_up(float(reported)) if reported is not None else None
+    return TranscriptionResult(
+        text=text,
+        duration_seconds=seconds,
+        cost_usd=cost if cost is not None else transcription_cost_usd(seconds),
     )
-    for name, value in (
-        ("model", Models.Groq.WHISPER_LARGE_V3_TURBO.model_id),
-        ("language", TRANSCRIPTION_LANGUAGE),
-        ("response_format", "verbose_json"),
-    ):
-        form.addpart(name=name, data=value.encode())
-    return form
 
 
 async def transcribe_audio(
     content: bytes, *, filename: str = "audio.ogg", mime_type: str = "audio/ogg"
 ) -> TranscriptionResult | None:
-    """Audio into text with Groq's Whisper. `None` when it fails — never raises.
+    """Audio into text with Whisper via OpenRouter. `None` when it fails — never raises.
 
-    `response_format=verbose_json` is what returns `duration`; without it there is no way to
-    compute the cost (billing is per hour of audio). `curl_cffi`, not the `groq` SDK: it is
-    the project's HTTP client, and the SDK would drag httpx in for a single call.
+    `curl_cffi`, not an SDK: it is the project's HTTP client, and OpenRouter's STT endpoint is
+    not OpenAI-SDK-compatible (JSON + base64, not multipart).
     """
-    api_key = integrations_config.GROQ_API_KEY
+    api_key = integrations_config.OPENROUTER_API_KEY
     if not api_key:
         log.warning("transcription_unconfigured")
         return None
     if not content:
         return None
 
+    body = build_transcription_body(content, filename=filename, mime_type=mime_type)
+    url = integrations_config.OPENROUTER_API_BASE.rstrip("/") + TRANSCRIPTION_PATH
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            form = build_transcription_form(content, filename=filename, mime_type=mime_type)
-            try:
-                async with AsyncSession() as session:
-                    response = await session.post(
-                        GROQ_TRANSCRIPTION_URL,
-                        headers={"Authorization": f"Bearer {api_key}"},
-                        multipart=form,
-                        timeout=TRANSCRIPTION_TIMEOUT_SECONDS,
-                    )
-            finally:
-                form.close()
+            async with AsyncSession() as session:
+                response = await session.post(
+                    url,
+                    headers={"Authorization": f"Bearer {api_key}"},
+                    json=body,
+                    timeout=TRANSCRIPTION_TIMEOUT_SECONDS,
+                )
             if response.status_code >= HTTP_CLIENT_ERROR_FLOOR:
                 log.warning(
                     "transcription_http_error", status_code=response.status_code, attempt=attempt
@@ -266,16 +278,16 @@ async def transcribe_audio(
                     await anyio.sleep(RETRY_BASE_DELAY_SECONDS * 2 ** (attempt - 1))
                     continue
                 return None
-
-            body = response.json()
-            text = (body.get("text") or "").strip()
-            if not text:
-                log.info("transcription_empty")
-                return None
-            duration = float(body.get("duration") or 0.0)
-            return TranscriptionResult(
-                text=text, duration_seconds=duration, cost_usd=transcription_cost_usd(duration)
-            )
+            result = transcription_result_from_body(response.json())
+            if result is not None:
+                return result
+            # An empty text is retried once: 1 of 107 real voice notes came back empty from the
+            # upstream and full on the next 3 calls (2026-10-22). A silent clip pays one extra
+            # call (fractions of a cent).
+            log.info("transcription_empty", attempt=attempt)
+            if attempt < MAX_ATTEMPTS:
+                continue
+            return None
         except Exception:
             log.exception("transcription_failed", attempt=attempt)
             if attempt < MAX_ATTEMPTS:
@@ -508,7 +520,7 @@ async def record_transcription_cost(
 ) -> None:
     """Record Whisper's cost by hand — it does not go through `usage_recorder`.
 
-    Tokens stay zero because billing is per hour of audio; `cost_usd` is what any spend cap
+    Tokens stay zero because billing is per second of audio; `cost_usd` is what any spend cap
     sums. Failing here must not break enrichment: the transcript exists and is worth more
     than the accounting row.
     """
@@ -522,8 +534,8 @@ async def record_transcription_cost(
         client_id=usage.client_id,
         tenant_id=usage.tenant_id,
         agent_id=usage.agent_id,
-        provider=Models.Groq.WHISPER_LARGE_V3_TURBO.provider,
-        model_id=Models.Groq.WHISPER_LARGE_V3_TURBO.model_id,
+        provider=TRANSCRIPTION_MODEL.provider,
+        model_id=TRANSCRIPTION_MODEL.model_id,
         cost_usd=result.cost_usd,
     )
     try:

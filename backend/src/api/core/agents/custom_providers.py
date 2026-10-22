@@ -168,9 +168,9 @@ def init_model(config: ModelConfig, **overrides: Any) -> BaseChatModel:
 
     Config defaults (reasoning, reasoning_effort, upstream routing, prompt_cache_control) apply unless overridden.
 
-    The whole stack talks to OpenRouter — the single chat gateway. `Models.Groq` exists in
-    the registry only as the price row for audio transcription, which is a multipart POST in
-    `core/agents/media.py` and never goes through here.
+    The whole stack talks to OpenRouter — the single gateway. `WHISPER_LARGE_V3_TURBO` is in
+    the registry only as the accounting row for audio transcription, a JSON POST to the STT
+    endpoint in `core/agents/media.py` that never goes through here.
 
     Example:
         init_model(Models.OpenRouter.CLAUDE_HAIKU_5_5)
@@ -180,6 +180,11 @@ def init_model(config: ModelConfig, **overrides: Any) -> BaseChatModel:
         raise ValueError(
             f"Provider {config.provider!r} is not instantiable: OpenRouter is the only chat "
             f"gateway. Model id: {config.model_id!r}"
+        )
+    if not config.is_chat_model:
+        raise ValueError(
+            f"Model {config.model_id!r} is not instantiable as a chat model: it is a "
+            "transcription model, called by `core/agents/media.py`"
         )
     reasoning = overrides.pop("reasoning", config.reasoning)
     reasoning_effort = overrides.pop("reasoning_effort", config.reasoning_effort)

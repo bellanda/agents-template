@@ -1,9 +1,9 @@
 """Model registry + price table: the ONLY place that knows which models exist.
 
-Two providers, and only these (central rule `ai-agents.md`): every chat call (text, image)
-goes through **OpenRouter** with Claude Haiku 5.5 (reasoning effort low), and **Groq** only
-serves Whisper for audio transcription. One more provider here is one more inference route to
-audit — `provider_order` below is what backs the "data stays in the US" answer given in privacy
+One provider, and only this one (central rule `ai-agents.md`): every call goes through
+**OpenRouter** — chat (text, image) with Claude Haiku 5.5 (reasoning effort low) and audio
+transcription with Whisper on its STT endpoint (Groq-direct dropped 2026-10-22, user decision).
+One more provider here is one more inference route to audit — `provider_order` below is what backs the "data stays in the US" answer given in privacy
 policies and in Meta App Review (Data Handling).
 
 Stack history: GLM 5.3 Flash until 2026-10-10, then Haiku 5.5 ("Haiku as the universal
@@ -64,6 +64,10 @@ class ModelConfig:
     # OpenRouter tries each one IN ORDER and fails if all fail — it never leaves this list.
     provider_order: tuple[str, ...] = ()
     allow_provider_fallbacks: bool = True
+    # False = not a chat model (Whisper): `init_model` refuses it. Until 2026-10-22 the guard was
+    # the provider ("groq" was never instantiable); with Whisper on OpenRouter the provider no
+    # longer tells them apart, and `init_model_by_id` would build a chat model on a STT slug.
+    is_chat_model: bool = True
 
 
 def model_capabilities_dict(cfg: "ModelConfig") -> dict[str, bool]:
@@ -117,7 +121,6 @@ PROVIDER_ALIASES: dict[str, str] = {
     "openai_responses": "openrouter",
     "chat_openai": "openrouter",
     "chat_openrouter": "openrouter",
-    "chat_groq": "groq",
 }
 
 
@@ -177,17 +180,17 @@ class Models:
             allow_provider_fallbacks=False,
         )
 
-    class Groq:
-        # NOT a chat model — audio transcription only, orders of magnitude cheaper than
-        # sending audio to a multimodal model. It lives here so cost accounting finds its
-        # provider/model_id; the call is a multipart POST in `media.py` (the transcription
-        # endpoint is not OpenAI-chat-compatible and does not fit `init_model`). Billed per
-        # HOUR of audio, not per token — token prices stay zero on purpose, see
-        # WHISPER_USD_PER_HOUR in media.py.
+        # NOT a chat model — audio transcription only, orders of magnitude cheaper than sending
+        # audio to a multimodal model. It lives here so cost accounting finds its provider/
+        # model_id; the call is a JSON POST to OpenRouter's STT endpoint in `media.py` (not
+        # OpenAI-chat-compatible, does not fit `init_model`). Billed per SECOND of audio and the
+        # response carries the real cost, so token prices stay zero on purpose. Upstreams
+        # (DeepInfra cheapest, Groq fallback) are both US-based.
         WHISPER_LARGE_V3_TURBO = ModelConfig(
-            "whisper-large-v3-turbo",
-            "groq",
+            "openai/whisper-large-v3-turbo",
+            "openrouter",
             supports_audio_input=True,
+            is_chat_model=False,
         )
 
 

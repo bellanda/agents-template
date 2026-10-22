@@ -13,9 +13,8 @@ def _opt_secret(value):
 
 
 class IntegrationsConfig:
-    """AI providers: OpenRouter (all chat) + Groq (audio transcription only)."""
+    """AI provider: OpenRouter (chat + Whisper audio transcription), one key."""
 
-    GROQ_API_KEY: str | None = _opt_secret(settings.groq_api_key)
     OPENROUTER_API_KEY: str | None = _opt_secret(settings.openrouter_api_key)
     OPENROUTER_API_BASE: str = settings.openrouter.api_base
     OPENROUTER_SITE_URL: str = settings.openrouter.site_url

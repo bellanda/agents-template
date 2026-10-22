@@ -151,12 +151,11 @@ class Settings(BaseModel):
     # local Valkey) is fine — the client sends AUTH only when set.
     valkey_password: SecretStr | None = Field(default_factory=lambda: _opt("VALKEY_PASSWORD"))
 
-    # AI providers — exactly two, and only these: OpenRouter is the gateway for ALL chat
-    # (text, image, video; default model is multimodal) and Groq only does audio transcription
-    # (Whisper). Optional so the app boots without them (chat then fails with a clear provider
-    # error; transcription degrades to "no transcript").
+    # AI provider — exactly one: OpenRouter is the gateway for ALL AI (chat, image, video
+    # frames and Whisper audio transcription; Groq-direct dropped 2026-10-22). Optional so the
+    # app boots without it (chat then fails with a clear provider error; transcription degrades
+    # to "no transcript").
     openrouter_api_key: SecretStr | None = Field(default_factory=lambda: _opt("OPENROUTER_API_KEY"))
-    groq_api_key: SecretStr | None = Field(default_factory=lambda: _opt("GROQ_API_KEY"))
 
 
 def _opt(key: str) -> SecretStr | None:

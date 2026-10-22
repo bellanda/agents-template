@@ -221,7 +221,7 @@ def print_post_install(target: Path) -> None:
     "langgraph-checkpoint-postgres>=3.0.4",
     "markitdown[all]>=0.1.5",
     "anyio>=4.13.0",                     # llm.py limiter/retry, ocr.py fan-out
-    "curl-cffi>=0.15.0",                 # media.py (Groq Whisper multipart)
+    "curl-cffi>=0.15.0",                 # media.py (Whisper via OpenRouter STT)
     "pypdfium2>=5.13.0",                # ocr.py (render PDF pages) — only if you use OCR
     "duckpy>=2.1.1",          # only if using web_search_agent
     "orjson>=3.11.7",
@@ -321,15 +321,13 @@ def print_post_install(target: Path) -> None:
       Settings: openrouter: OpenRouterSettings = OpenRouterSettings()
                 agents: AgentsSettings = AgentsSettings()
                 openrouter_api_key: SecretStr | None   # from .env OPENROUTER_API_KEY
-                groq_api_key: SecretStr | None         # from .env GROQ_API_KEY
 
-   c) config/integrations.py — expose GROQ_API_KEY, OPENROUTER_API_KEY, OPENROUTER_API_BASE,
+   c) config/integrations.py — expose OPENROUTER_API_KEY, OPENROUTER_API_BASE,
       OPENROUTER_SITE_URL, OPENROUTER_APP_TITLE (flattened from `settings`, as in this template).
 
    d) .env — secrets only (never in the yaml), and never the same key in both places:
 
-      OPENROUTER_API_KEY=   # gateway único de chat
-      GROQ_API_KEY=         # só transcrição (Whisper)
+      OPENROUTER_API_KEY=   # gateway único de IA (chat + Whisper)
 
    e) Auth seam — `get_auth_context` MUST return "tenant_id" (services/auth.py is
       skip-if-exists, so an existing app keeps its own): the organization id in multi-tenant

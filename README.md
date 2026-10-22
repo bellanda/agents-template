@@ -12,8 +12,8 @@ A modular agents layer that you can run standalone or drop into an existing Fast
 **This template is the CANONICAL AI layer for every app** (kailos, balizap, nexarena, optimuslar,
 akmeo — user decision 2026-09-30). Improvements are made here first and propagated with
 `backend/scripts/sync_agents_to_another_fastapi_project.py`. Fixed stack (rule
-`.claude/rules/ai-agents.md`): OpenRouter **Claude Haiku 5.5** (effort low) for text/image (video read as frames), Groq **Whisper**
-for audio — nothing else. Full spec for agents: [`AGENTS_SUBSYSTEM.md`](AGENTS_SUBSYSTEM.md).
+`.claude/rules/ai-agents.md`): OpenRouter **Claude Haiku 5.5** (effort low) for text/image (video read as frames), Whisper
+(`openai/whisper-large-v3-turbo`) for audio, also via OpenRouter (Groq-direct dropped 2026-10-22) — nothing else. Full spec for agents: [`AGENTS_SUBSYSTEM.md`](AGENTS_SUBSYSTEM.md).
 
 **Backend:** FastAPI + LangGraph + LangChain + asyncpg (PostgreSQL) + Granian
 **Frontend:** React 19 + TanStack Router + Vercel AI SDK + Shadcn/ui
@@ -41,7 +41,7 @@ Config = `config/app/{local,staging,prod}.yaml` (non-secret, versioned) + `.env`
 See [Configuration layout](#configuration-layout).
 
 ```bash
-cp .env.example .env         # set POSTGRES_PASSWORD, DATABASE_URL, OPENROUTER_API_KEY, GROQ_API_KEY
+cp .env.example .env         # set POSTGRES_PASSWORD, DATABASE_URL, OPENROUTER_API_KEY
 cd backend
 uv sync
 dbmate --env-file ../.env up   # dbmate only auto-reads ./.env; DATABASE_URL lives in the root .env
@@ -165,7 +165,7 @@ dependencies = [
     "langchain-community>=0.4.1",
     "langchain-core>=1.2.17",
     "langchain-openai>=1.1.10",           # ChatOpenRouter extends ChatOpenAI
-    "curl-cffi>=0.15.0",                  # Groq Whisper call (media.py)
+    "curl-cffi>=0.15.0",                  # Whisper call to OpenRouter STT (media.py)
     "pyyaml>=6.0.3",                      # config/settings.py
     "langgraph>=1.0.10",
     "langgraph-checkpoint-postgres>=3.0.4",
@@ -234,7 +234,6 @@ sub-models/fields in `config/settings.py`, and **secrets only** in `.env`:
 
 ```env
 OPENROUTER_API_KEY=   # single chat gateway
-GROQ_API_KEY=         # audio transcription (Whisper) only
 ```
 
 ---
@@ -316,10 +315,10 @@ Registry: `from api.core.agents.models import Models`. Instantiate with
 | Access                                 | Provider   | Notes                                                                 |
 | -------------------------------------- | ---------- | --------------------------------------------------------------------- |
 | `Models.OpenRouter.CLAUDE_HAIKU_5_5`    | openrouter | reasoning low; text + image (video via frames); explicit prompt cache; no inline PDF/audio; US upstreams pinned |
-| `Models.Groq.WHISPER_LARGE_V3_TURBO`   | groq       | transcription; **not a chat model**                                   |
+| `Models.OpenRouter.WHISPER_LARGE_V3_TURBO` | openrouter | transcription; **not a chat model**                                   |
 
-`WHISPER_LARGE_V3_TURBO` does not go through `init_model` (raises `ValueError`): it is a multipart POST in
-`core/agents/media.py`, billed per **audio hour**, not per token — the zeroed price fields are deliberate.
+`WHISPER_LARGE_V3_TURBO` does not go through `init_model` (raises `ValueError`): it is a JSON (base64) POST to
+`{OPENROUTER_API_BASE}/audio/transcriptions` in `core/agents/media.py`, billed per **audio hour**, not per token — the zeroed price fields are deliberate.
 **Every chat model in the registry needs a price**: without it cost reads zero silently and any spend cap stops working.
 
 Add a model: add a `ModelConfig` under `Models.OpenRouter` in `models.py`. Add a provider only by explicit decision
@@ -406,7 +405,7 @@ Same pattern as the product apps (kailos, balizap) — this template is the cent
 
 | What | Where | Notes |
 | --- | --- | --- |
-| Secrets + `ENVIRONMENT` + `INGRESS_MODE` | `.env` (root, gitignored; template in `.env.example`) | `POSTGRES_PASSWORD`, `DATABASE_URL`, `OPENROUTER_API_KEY`, `GROQ_API_KEY`, `VALKEY_PASSWORD`, `APP_UID`. **Only secrets + env selectors** |
+| Secrets + `ENVIRONMENT` + `INGRESS_MODE` | `.env` (root, gitignored; template in `.env.example`) | `POSTGRES_PASSWORD`, `DATABASE_URL`, `OPENROUTER_API_KEY`, `VALKEY_PASSWORD`, `APP_UID`. **Only secrets + env selectors** |
 | Non-secret config | `config/app/{local,staging,prod}.yaml` | `postgres.pool`, `valkey`, `nats`, `logging`, `cors`, `openrouter`, `agents`, `vite`. Keep the 3 files symmetric |
 | Runtime resolution | `backend/config/settings.py` | `APP_YAML_PATH` > `/app/app.yaml` (docker bind-mount of `config/app/${ENVIRONMENT}.yaml`) > `config/app/{ENVIRONMENT}.yaml` |
 | Test config | `backend/tests/app.test.yaml` | conftest must set `APP_YAML_PATH` before importing `api`/`config` |

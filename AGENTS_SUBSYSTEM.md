@@ -106,7 +106,7 @@ ver §14), rota `routes/agent-config.tsx`, `lib/api.ts` (fetchers + `MAX_PROMPT_
 
 ---
 
-## 2. Registro de modelos & stack única (OpenRouter Claude Haiku 5.5 / Groq Whisper)
+## 2. Registro de modelos & stack única (OpenRouter Claude Haiku 5.5 + Whisper)
 
 `ModelConfig` (frozen dataclass) em `core/agents/models.py`:
 
@@ -114,7 +114,7 @@ ver §14), rota `routes/agent-config.tsx`, `lib/api.ts` (fetchers + `MAX_PROMPT_
 @dataclass(frozen=True)
 class ModelConfig:
     model_id: str
-    provider: str                      # openrouter | groq
+    provider: str                      # openrouter (único provedor desde 2026-10-22)
     reasoning: bool = False            # emite reasoning_content no stream
     reasoning_effort: str | None = None  # low | medium | high | xhigh | max  (OpenRouter)
     input_price_per_1m: float = 0.0
@@ -143,9 +143,9 @@ reencaminha livremente. O pricing no `ModelConfig` é o do primeiro upstream e s
 | Uso | Modelo | input / cached / output | Notas |
 | --- | --- | --- | --- |
 | Texto e imagem (vídeo por quadros) | OpenRouter `anthropic/claude-haiku-5.5` (`Models.OpenRouter.CLAUDE_HAIKU_5_5`) | 0.10 / 0.01 (read) / 0.50; write 0.125 | `reasoning_effort="low"` (medium+ estoura a latência no WhatsApp). Cache só funciona com `cache_control` no body (`prompt_cache_control=True`). Aceita PDF inline mas fica desligado (`supports_pdf_input=False`, vai por MarkItDown/OCR). Sem vídeo nem áudio nativos. Tokenizer ~1.6x mais tokens que o GLM em pt-BR. |
-| Áudio → texto | Groq `whisper-large-v3-turbo` (`Models.Groq.WHISPER_LARGE_V3_TURBO`) | 0.04 **por hora de áudio** | Não é chat model; POST multipart em `media.py` (ver §8-B). |
+| Áudio → texto | OpenRouter `openai/whisper-large-v3-turbo` (`Models.OpenRouter.WHISPER_LARGE_V3_TURBO`) | 0.012 **por hora de áudio** (fallback; vale o `usage.cost` da resposta) | Não é chat model; POST JSON base64 em `/audio/transcriptions` em `media.py` (ver §8-B). Upstream DeepInfra, Groq como fallback interno (ambos EUA). |
 
-**Regra:** atendente padrão = Claude Haiku 5.5 (effort low) via OpenRouter (decisão 2026-10-10, bake-off: metade do custo do GLM high, mesma latência, 6-9x menos fatos inventados); áudio passa antes pelo Whisper (Groq) em
+**Regra:** atendente padrão = Claude Haiku 5.5 (effort low) via OpenRouter (decisão 2026-10-10, bake-off: metade do custo do GLM high, mesma latência, 6-9x menos fatos inventados); áudio passa antes pelo Whisper (OpenRouter) em
 `media.py`. Trocar de modelo = trocar 1 `ModelConfig` (as flags `supports_*` religam/desligam cada
 ramo de mídia); o resto (custo, streaming, capabilities) acompanha automático.
 
@@ -324,7 +324,7 @@ sem alteração; quem chama decide o que fazer com o `None` (no WhatsApp, um pla
 anexo sem descrição).
 
 ```
-áudio  → Whisper (Groq)        --falhou-->  None
+áudio  → Whisper (OpenRouter)   --falhou-->  None
 imagem → Claude Haiku 5.5 (OpenRouter)  --falhou-->  None
 vídeo  → 6 quadros (cv2, lado ≤1024px) como imagens, até 20 MB (modelo com vídeo nativo usa `video_url`); áudio do vídeo se perde  --falhou-->  None
 PDF    → não enriquecido inline (flag `supports_pdf_input=False`) → use `ocr.ocr_document` (página→imagem)
@@ -354,9 +354,10 @@ copiaram esse padrão à mão erraram:
    `callbacks=[usage_recorder]`), e não pelo SDK cru. É o que faz a linha cair em
    `agent_message_usage` **de graça** — pelo atalho do SDK o custo da mídia simplesmente não existe
    para nenhum teto de gasto.
-3. **O custo do Whisper é lançado à mão** (`record_transcription_cost`): ele é um POST multipart,
-   não passa pelo callback, e é cobrado por **hora de áudio**. Tokens ficam em zero; o que importa
-   é o `cost_usd`.
+3. **O custo do Whisper é lançado à mão** (`record_transcription_cost`): a chamada (POST JSON em
+   `/audio/transcriptions`) não passa pelo callback, e é cobrada por **hora de áudio**. Tokens ficam em
+   zero; o que importa é o `cost_usd` = `usage.cost` devolvido pelo OpenRouter (`WHISPER_USD_PER_HOUR = 0.012`
+   só como fallback).
 4. **Retry diferenciado e fail-soft.** 429/5xx tentam de novo (backoff exponencial, 2 tentativas);
    401/400 não — repetir credencial errada é queimar tempo numa falha que não muda de resposta.
    Cada falha sai no log **com o `status_code`**, porque "sem transcrição" por 401 e por 429 se
@@ -374,10 +375,12 @@ depois do enriquecimento — **inclusive quando ele falha**, porque silêncio é
 vira texto — **e são o que `media.py` consulta** para saber qual modelo cobre qual modalidade.
 Exposto em `GET /agents` via `model_capabilities_dict`.
 
-**Modelo sem preço no registro lê custo ZERO em silêncio.** Foi o caso do `Groq.LLAMA_4_SCOUT`,
-registrado sem preço e nunca referenciado; ele saiu, e o lugar dele é o
-`Groq.WHISPER_LARGE_V3_TURBO` — que tem preço zerado **de propósito** (cobra por hora de áudio) e
-não passa por `init_model`, então ninguém o roteia pelo caminho cobrado por token.
+**Modelo sem preço no registro lê custo ZERO em silêncio.** Foi o caso do antigo `Groq.LLAMA_4_SCOUT`,
+registrado sem preço e nunca referenciado; ele saiu (e a classe `Models.Groq` inteira, 2026-10-22), e o lugar dele é o
+`OpenRouter.WHISPER_LARGE_V3_TURBO` — que tem preço zerado **de propósito** (cobra por hora de áudio) e
+não passa por `init_model`: o `is_chat_model=False` faz o `init_model` recusá-lo (antes o provedor
+"groq" bastava; no OpenRouter só a flag separa STT de chat), então ninguém o roteia pelo caminho
+cobrado por token.
 
 ### Alinhamento com o padrão universal de uploads (`uploads.md`) ✓
 O template está **alinhado**: `config/uploads.py` (core idêntico entre projetos) + tabela
@@ -539,7 +542,7 @@ runtime.
 3. `DATABASE_URL` no `.env` → `dbmate up`. Config: chaves yaml `openrouter:`/`agents:` (incl.
    `max_concurrent_llm`, `llm_max_retries`, `tenant_config_ttl_seconds`) nos 3 `config/app/*.yaml` +
    campos em `Settings` + secrets no `.env` (o script imprime o passo a passo).
-4. Wiring do §12 (logging + middleware + lifespan + routers + StaticFiles). Provider keys (`OPENROUTER_API_KEY`, `GROQ_API_KEY`) só no `.env`.
+4. Wiring do §12 (logging + middleware + lifespan + routers + StaticFiles). Provider keys (`OPENROUTER_API_KEY`, única chave de IA) só no `.env`.
 5. **Auth:** substitua `resolve_identity` em `services/auth.py` por verificação JWT real e devolva
    `tenant_id` (org do usuário) no contexto (§4).
 6. **Uploads org-owned:** se o projeto é org-owned, crie também `org_uploads` + `OrgUpload`/repo
