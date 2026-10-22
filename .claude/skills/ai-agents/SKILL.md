@@ -1,6 +1,6 @@
 ---
 name: ai-agents
-description: PORTÃO obrigatório de TUDO que é IA dentro de um app (stack única, decisão 2026-09-30; modelo Claude Haiku 5.5 desde 2026-10-10, fonte canônica `~/code/github-templates/agents-template`). INVOCAR ANTES de QUALQUER trabalho com LLM — chamada one-shot (`llm.complete`), saída estruturada (`complete_structured`, extração/roteamento/score), agente com tools (`create_agent`, `agents/<name>/`, `@tool`), subagente/delegação (`run_subagent`, supervisor), chat com streaming SSE (`/agents/chat/completions`, `stream_agent`, threads, interrupção), frontend de IA (`ai-elements`, `use-chat-session`/`useChat`, cards de tool result/`tool_envelope`, anexos, reasoning, custo/contexto, sugestões), mídia (imagem/vídeo via Haiku 5.5, áudio via Groq Whisper, OCR de PDF escaneado, `media.py`/`ocr.py`), custo/uso por tenant (`UsageContext`, `agent_message_usage`, teto de gasto), history window, prompt cache, checkpointer, config/instruções de agente por tenant (Markdown, versões, botão ChatGPT, `agent_configs`), catálogo de modelos, handoff humano, segurança de chatbot público (flood/mensagem gigante, teto de gasto, prompt injection/manipulação → `report_manipulation_attempt`), adicionar agente/tool novo e propagar o template (`sync_agents_to_another_fastapi_project.py`). Checklist de invariantes + tabela "qual ferramenta usar" + roteia pras references. NUNCA provedor fora de OpenRouter Claude Haiku 5.5 effort low (texto/imagem/vídeo por quadros) e Groq Whisper (áudio); NUNCA chamar LLM sem `UsageContext`; NUNCA SDK cru de provedor (sempre `init_model`); NUNCA reimplementar `core/agents/` num app (nasce no template e propaga); NUNCA agente quando `complete`/`complete_structured` resolve.
+description: PORTÃO obrigatório de TUDO que é IA dentro de um app (stack única, decisão 2026-09-30; modelo Claude Haiku 5.5 desde 2026-10-10, fonte canônica `~/code/github-templates/agents-template`). INVOCAR ANTES de QUALQUER trabalho com LLM — chamada one-shot (`llm.complete`), saída estruturada (`complete_structured`, extração/roteamento/score), agente com tools (`create_agent`, `agents/<name>/`, `@tool`), subagente/delegação (`run_subagent`, supervisor), chat com streaming SSE (`/agents/chat/completions`, `stream_agent`, threads, interrupção), frontend de IA (`ai-elements`, `use-chat-session`/`useChat`, cards de tool result/`tool_envelope`, anexos, reasoning, custo/contexto, sugestões), mídia (imagem/vídeo via Haiku 5.5, áudio via Whisper no OpenRouter, OCR de PDF escaneado, `media.py`/`ocr.py`), custo/uso por tenant (`UsageContext`, `agent_message_usage`, teto de gasto), history window, prompt cache, checkpointer, config/instruções de agente por tenant (Markdown, versões, botão ChatGPT, `agent_configs`), catálogo de modelos, handoff humano, segurança de chatbot público (flood/mensagem gigante, teto de gasto, prompt injection/manipulação → `report_manipulation_attempt`), adicionar agente/tool novo e propagar o template (`sync_agents_to_another_fastapi_project.py`). Checklist de invariantes + tabela "qual ferramenta usar" + roteia pras references. NUNCA provedor fora de OpenRouter Claude Haiku 5.5 effort low (texto/imagem/vídeo por quadros) e Whisper no OpenRouter (áudio); NUNCA chamar LLM sem `UsageContext`; NUNCA SDK cru de provedor (sempre `init_model`); NUNCA reimplementar `core/agents/` num app (nasce no template e propaga); NUNCA agente quando `complete`/`complete_structured` resolve.
 ---
 
 # AI Agents — O Portão
@@ -21,9 +21,9 @@ pro template primeiro (ver `references/propagation.md`).
 | --- | --- | --- |
 | Texto, tools, extração, imagem | OpenRouter | Claude Haiku 5.5, effort `low` — `Models.OpenRouter.CLAUDE_HAIKU_5_5` (`anthropic/claude-haiku-5.5`) |
 | Vídeo | OpenRouter | mesmo modelo, lendo 6 QUADROS (OpenCV em `media.py`; sem o áudio do vídeo) |
-| Áudio → texto | Groq | `whisper-large-v3-turbo` (só se o app recebe áudio) |
+| Áudio → texto | OpenRouter | `Models.OpenRouter.WHISPER_LARGE_V3_TURBO` = `openai/whisper-large-v3-turbo` via `/audio/transcriptions` (só se o app recebe áudio) |
 
-Secrets: só `OPENROUTER_API_KEY` e `GROQ_API_KEY`. Proibido DeepSeek/Gemini/OpenAI/Anthropic DIRETO/GLM/etc. (Claude só via OpenRouter).
+Secrets: só `OPENROUTER_API_KEY` (Groq-direto saiu da stack em 2026-10-22; `GROQ_API_KEY` não existe). Proibido DeepSeek/Gemini/OpenAI/Anthropic DIRETO/GLM/etc. (Claude só via OpenRouter).
 PDF escaneado = `ocr.py` (Haiku aceita PDF inline, mas `supports_pdf_input=False` até decisão testada), vídeo = quadros, áudio = Whisper.
 
 ## Qual ferramenta usar (escolha a MENOR que resolve)
@@ -80,7 +80,7 @@ e quantas vezes. Se código decide a sequência, use `complete*` (mais barato, t
 
 ## Invariantes não negociáveis (sempre)
 
-- Só OpenRouter + Claude Haiku 5.5 (effort low) e Groq Whisper; nada de provedor novo no registry/`Settings`/`.env.example`/deps.
+- Só OpenRouter: Claude Haiku 5.5 (effort low) + Whisper (`openai/whisper-large-v3-turbo`); nada de provedor novo no registry/`Settings`/`.env.example`/deps.
 - Toda chamada de modelo passa por `init_model*` (callback de custo `usage_recorder` vem junto); toda
   chamada de produto leva `UsageContext`. Mídia por SDK cru = custo invisível = bug.
 - `complete_structured` usa `function_calling` (não `json_schema`) e reasoning OFF por default; erro de
@@ -94,7 +94,7 @@ e quantas vezes. Se código decide a sequência, use `complete*` (mais barato, t
 - Instrução do tenant é enriquecimento: falha/ausência → prompt base puro, nunca quebra o turno.
 - Schema de agentes via dbmate (gate `database`), nunca `checkpointer.setup()` em runtime.
 - Logs: structlog (`log.info("snake_case_event", k=v)`), nunca `print()`; nunca logar conteúdo de mensagem/PII.
-- Não use sem uso: app sem áudio não carrega `media.py`/Groq; sem OCR não carrega `ocr.py`/pypdfium2.
+- Não use sem uso: app sem áudio não carrega `media.py`/Whisper; sem OCR não carrega `ocr.py`/pypdfium2.
 - Sem testes a menos que o usuário peça (regra global).
 
 ## References

@@ -75,6 +75,15 @@ WhatsApp: `thread_id = conversation.agent_thread_id or conversation.id` (1 threa
 `checkpoints/checkpoint_writes/checkpoint_blobs` vêm da migration dbmate — nunca `setup()` em runtime.
 `chat_history` = transcript renderizável na UI; checkpoint = estado do grafo; `agent_message_usage` = custo.
 
+**Retenção de checkpoints (2026-10-22):** o LangGraph grava um checkpoint por passo, mas só o MAIS RECENTE
+da thread é lido (kailos prod: 94% das linhas eram lixo). `AsyncpgCheckpointSaver.aprune_thread_history(thread_id)`
+(template, `core/agents/asyncpg_saver.py`) mantém só o último + apaga writes/blobs órfãos. Chame no INÍCIO de
+cada turno descartável de WhatsApp (`run_discardable_agent_turn`, ANTES de `alatest_checkpoint_id`: o turno
+anterior já commitou e o ponto de rollback do atual fica intacto), em try/except que só loga
+`checkpoint_prune_failed` (higiene nunca custa a resposta). App com cron worker: job diário
+`checkpoint_retention.py` (SQL inline, só threads ociosas >24h). A conversa completa vive na tabela de
+mensagens, não no checkpoint. Teste: `tests/agents/test_checkpoint_prune.py` (grafo real, retoma com histórico).
+
 ## Não-chat
 
 Agente executado sem stream (job, webhook): `call_agent_async`/`execute_agent`

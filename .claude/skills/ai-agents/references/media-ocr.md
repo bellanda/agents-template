@@ -8,7 +8,7 @@
 
 | Entrada | Como | Modelo | Falhou |
 | --- | --- | --- | --- |
-| Áudio | `transcribe_audio` (POST multipart Groq) | Whisper `whisper-large-v3-turbo`, pt | `None` |
+| Áudio | `transcribe_audio` (POST JSON base64 em `{OPENROUTER_API_BASE}/audio/transcriptions`) | `Models.OpenRouter.WHISPER_LARGE_V3_TURBO` (`openai/whisper-large-v3-turbo`), pt | `None` |
 | Imagem | `describe_media`/`describe_images` via LangChain | Claude Haiku 5.5 | `None` |
 | Vídeo | 6 quadros amostrados com OpenCV, enviados como imagens (Haiku não aceita vídeo; o áudio do vídeo se perde) | Claude Haiku 5.5 | `None` |
 | PDF com texto digital | MarkItDown (chat) ou `ocr` (texto nativo curto-circuita a rede) | — | — |
@@ -33,15 +33,26 @@ Quatro decisões (onde apps que copiaram à mão erraram):
 1. **Whisper ou nada** para áudio (sem degrau multimodal de queda com Haiku).
 2. **Visão via LangChain** (`init_model` + `usage.runnable_config()`), nunca SDK cru → custo cai em
    `agent_message_usage` de graça; pelo SDK a mídia é invisível a qualquer teto.
-3. **Custo do Whisper lançado à mão** (`record_transcription_cost`): multipart não passa pelo callback e é
-   cobrado por HORA de áudio (tokens 0, `cost_usd` = duração × 0.04/h).
+3. **Custo do Whisper lançado à mão** (`record_transcription_cost`): a chamada não passa pelo callback e é
+   cobrada por HORA de áudio (tokens 0). `cost_usd` = `usage.cost` devolvido pelo OpenRouter na resposta
+   (`{text, usage:{seconds, cost}}`); `WHISPER_USD_PER_HOUR = 0.012` só como fallback.
 4. **Retry diferenciado, fail-soft:** 429/5xx 2 tentativas com backoff; 401/400 não. Log SEMPRE com
    `status_code`. Nada levanta.
-5. **Nome do arquivo do Whisper vem do MIME** (`whisper_upload_filename`, dentro de
-   `transcribe_audio`): a Groq valida pela EXTENSÃO do nome, não pelos bytes. Áudio do WhatsApp chega
-   como `audio/ogg; codecs=opus` sem nome; o caller passava `"arquivo"` ou a chave salva `wa-audio-….bin`
-   e a Groq respondia 400 → toda nota de voz caía no "não consegui ouvir" (kailos + nexarena prod,
-   2026-10-16). Caller passa o nome que tiver; o `media.py` corrige.
+5. **O `format` do Whisper vem do MIME** (`media.whisper_audio_format`, dentro de `transcribe_audio`;
+   substituiu `whisper_upload_filename`): o Whisper valida pelo formato/extensão, não pelos bytes. Áudio do
+   WhatsApp chega como `audio/ogg; codecs=opus` sem nome; o caller passava `"arquivo"` ou a chave salva
+   `wa-audio-….bin` e o Whisper respondia 400 → toda nota de voz caía no "não consegui ouvir" (kailos +
+   nexarena prod, 2026-10-16). Caller passa o nome que tiver; o `media.py` deriva `ogg`/`mp3`/… do MIME.
+6. **Transcrição vazia → 1 retry** (1 de 107 notas reais voltou vazia e ok na repetição).
+7. **Provedor/endpoint (decisão do usuário 2026-10-22):** Whisper saiu do Groq-direto para o endpoint de
+   speech-to-text do OpenRouter — uma chave só (`OPENROUTER_API_KEY`), 3,3x mais barato (US$ 0,012/h vs
+   0,04/h; upstream DeepInfra, Groq só como fallback interno, ambos EUA → declaração de jurisdição à Meta
+   segue verdadeira) e sem o 429 da conta Groq (82 de 107 áudios em rajada; OpenRouter: 107 áudios reais a
+   concorrência 4 em 52 s, zero 429 — calibração kailos 2026-10-22). Qualidade equivalente (104 notas reais
+   lado a lado). `provider.order` é ignorado neste endpoint. Corpo é JSON, NÃO multipart e NÃO compatível
+   com o SDK OpenAI.
+8. **Transcrição em lote (ex.: Insights) limita concorrência POR PROCESSO**, não por vendedor/item: os
+   itens disparam em paralelo e um limite local por item multiplica.
 
 ### Ler a mídia de volta: SEMPRE pelo `StorageBackend`, nunca pelo disco
 

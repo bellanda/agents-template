@@ -102,7 +102,7 @@ standalone e são linkados no roteamento (fim do arquivo).
   (cliente, veículo, fornecedor, produto, membro…) → **`EntityPicker`** (`ui/entity-picker.tsx`:
   Popover+Command `shouldFilter={false}`, busca **server-side** `?search=`, páginas de 10 **anexadas**
   (`useInfiniteList`/`useInfinitePages`, shape `EntityPickerSource`; nunca `limit` crescente na
-  query key), `<Popover modal>`, `enabled` só com popover aberto, rodapé fixo fora do scroll com
+  query key), `<Popover modal>`, popover sempre abaixo (`side="bottom"`, sem flip, encolhe no espaço livre), `enabled` só com popover aberto, rodapé fixo fora do scroll com
   "+ Novo…" à esquerda (abre o `*FormDialog` e auto-seleciona no `onSaved`) e "X de Y" à direita). **Um wrapper por entidade**
   (`CustomerPicker`, `VehiclePicker`…) que fixa `useList`/rótulo/`FormDialog`, e o form usa o wrapper
   + **`usePickerLabel`** (guarda o rótulo da seleção para o campo não mostrar UUID/"…" enquanto a
@@ -171,7 +171,10 @@ standalone e são linkados no roteamento (fim do arquivo).
   ≠ vazio** (`ErrorState` + "Tentar novamente"; `RouteErrorFallback` p/ rota); sem rede →
   `NetworkStatusBanner` (+ `useOnlineStatus`) montado UMA vez no shell — faixa, nunca toast, nunca
   desloga; confirmação destrutiva → **`ConfirmDialog` único** (`AlertDialog` cru PROIBIDO fora de
-  `ui/`); resultado de ação → toast sonner; primeira carga → `Skeleton` com a forma do conteúdo.
+  `ui/`); resultado de ação → toast sonner (`richColors`); **erro na tela = `notifyError(título,
+  err)` ou `meta.errorTitle` na mutation** — título "Não foi possível …" + motivo do backend na
+  descrição, um toast por falha (id por erro), e o erro vai para o log do backend; nunca
+  `toast.error` no `catch`; primeira carga → `Skeleton` com a forma do conteúdo.
   *deep: `references/feedback-states.md`.*
 - [ ] **8j. Impressão / PDF — `PrintSheet` + `Doc*`.** Documento imprimível (OS, orçamento,
   contrato, termo, check-list, rota pública por token com "Imprimir") → **`window.print()` sobre uma

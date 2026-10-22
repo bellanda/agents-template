@@ -88,6 +88,7 @@ Refs sem prefixo = `skills/frontend/references/`.
 - Lists → `PagedResponse<T>`: `{ items, total, skip, limit, hasMore }` (`total` exato em TODA página; `hasMore` vem da sentinela).
 - Adapter (baseURL+headers) → ApiClient (fetch+key rename) → Query function (extrai `res.data`) → `useCrud` (paged pattern).
 - **`fetch` cru SÓ para API externa** (BrasilAPI, IBGE, ViaCEP). Endpoint próprio passa pelo `ApiClient` — inclusive `getBlob`/`getRaw` — senão não há refresh em 401.
+- **Erro na tela = `notifyError(título, err)` ou `meta.errorTitle`** (`lib/api/notify.ts`): título "Não foi possível <ação>" + motivo do backend na descrição, `richColors` no Toaster, UM toast por falha (id por objeto de erro — o global da `MutationCache` e a tela nunca empilham). PROIBIDO `toast.error` no `catch`/`onError` de mutation e título genérico. Todo erro mostrado, não tratado (`error`/`unhandledrejection`) ou de render vai para `POST /client-logs` (`lib/observability/client-logger.ts`, buffer offline). Refs `feedback-states.md`, `rules/logs.md`.
 - **Falha de rede = UMA mensagem pt-BR** (`lib/api/network-error.ts`) aplicada no adapter E no `ApiClient`; detecção `error instanceof TypeError`, NUNCA por texto ("Load failed" no iOS). Ref `api-and-csp.md`.
 
 ## Naming

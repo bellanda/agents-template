@@ -62,7 +62,7 @@ em `model_catalog.py` + migration reescrevendo slugs legados. Atualize a rule, a
   `media_to_text(..., usage=UsageContext, message_id=...)`; `tenant_id` na seam; middlewares `sliding_window` +
   `tenant_instructions`.
 - **kailos/emporion:** `organization_id` ≈ `tenant_id` (mapear no callback ou migrar); `media.py` do template
-  (retry + custo do Whisper); `org_agent_configs` fica no app até convergir; sugestões ganham `action`.
+  (retry + custo do Whisper via OpenRouter); `org_agent_configs` fica no app até convergir; sugestões ganham `action`.
 - **nexarena:** usar `insert_agent_message_usage` do template; `conversation_id` como `thread_id`; sem
   `streaming=False` fixo em `custom_providers`.
 - **optimuslar:** `tool_envelope` → template (discriminadores `appraisal_*` no app); `ocr_service` →

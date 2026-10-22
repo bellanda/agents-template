@@ -262,6 +262,12 @@ migration).
 
 ## Gotchas
 
+- **Popover SEMPRE abaixo do campo, sem flip (2026-10-22):** `PopoverContent` com `side="bottom"`,
+  `avoidCollisions={false}` e `max-h-(--radix-popover-content-available-height)`; o `CommandList`
+  usa `max-h-[min(18rem,calc(var(--radix-popover-content-available-height,18rem)-6.5rem))]`. Sem
+  isso o Radix decide o flip pela altura natural da lista (~22rem) e, em Dialog pequeno ou com o
+  teclado do celular aberto, abre para CIMA cobrindo o título. Agora encolhe e a lista rola por
+  dentro; busca e rodapé fixo ficam à vista. Não remova ao adaptar.
 - **Foco Popover × Dialog aninhado:** `creatingRef` + `onCloseAutoFocus` com `preventDefault` no
   `PopoverContent` — sem isso o focus-restore do Popover briga com o `onOpenAutoFocus` do Dialog
   do quick-create. Já resolvido no canônico; não remova ao adaptar.

@@ -246,6 +246,22 @@ Quando o user pede "verifica se o logging do projeto X está OK", checar nesta o
 
 Se algum item falhar, aplicar o passo correspondente do runbook. Não refatorar código não relacionado.
 
+## Logs do frontend no backend (padrão da frota, 2026-10-22)
+
+Todo app da frota recebe os erros do navegador no mesmo log (regra completa: `rules/logs.md` →
+"Logs do frontend"). Passos ao aplicar num app:
+
+1. Backend: copiar `references/client_logs_route.py` (3 arquivos: `schemas/`, `services/`,
+   `routes/observability/`), registrar `client_logs_router` no `routes/centralizer.py` e testar
+   (`tests/observability/test_client_logs.py` do kailos: auth opcional, 422 por limite, descarte
+   acima do teto). O `log` do serviço é trocado por um gravador no teste — `capture_logs` não pega
+   logger cacheado (`cache_logger_on_first_use=True`).
+2. `X-Request-ID` em `cors.expose_headers` dos `config/app/*.yaml`.
+3. Front: `ApiError.requestId` lido do header no `ApiClient` (fetch e XHR); copiar
+   `references/client-logger.ts` para `lib/observability/` e `references/notify.ts` para
+   `lib/api/`; `installClientErrorCapture()` no `main.tsx`; `reportClientError({ kind: "render" })`
+   no `RouteErrorFallback`.
+
 ## Anti-patterns a flagar
 
 - `logging.basicConfig(...)` em código de produção → trocar por `setup_logging()`.
@@ -264,5 +280,8 @@ Se algum item falhar, aplicar o passo correspondente do runbook. Não refatorar 
 
 - `references/logging.py` — módulo central canônico (copiar literal).
 - `references/logging_middleware.py` — middleware ASGI canônico.
+- `references/client_logs_route.py` — rota `POST /client-logs` (schema + serviço + rota).
+- `references/client-logger.ts` — fila/lote/buffer offline do navegador.
+- `references/notify.ts` — `notifyError` (toast único por erro + log).
 
 Atualizar esses references **toda vez** que `core/logging.py` ou `logging_middleware.py` do projeto de referência mudar — é fonte de verdade.

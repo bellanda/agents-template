@@ -81,15 +81,49 @@ useSyncExternalStore(subscribe /* window online|offline */, () => navigator.onLi
   `Dialog`/`FormDialog`, não `AlertDialog`.
 - Tira inline, accordion, button-swap, `window.confirm`: proibidos (ver `overlays.md`).
 
-## Toasts — sonner
+## Toasts — sonner (padrão da frota, decisão do usuário 2026-10-22)
 
-- `import { toast } from "sonner"`; um `<Toaster/>` na raiz (com `offset` p/ safe-area — ver
-  `mobile-keyboard.md`). `toast.success` ao salvar, `toast.error(err.message)` no `onError` da
-  mutation, `toast.promise` para operação longa (upload, geração).
-- Texto pt-BR curto, no pretérito ("Equipe atualizada"); erro mostra a mensagem do `ApiError`/
-  `UploadError`, nunca o objeto cru.
+Canônico: kailos `lib/api/notify.ts` + `lib/api/query-client.ts` + `components/ui/sonner.tsx`.
+
+**Formato único de erro**: título com a AÇÃO que falhou + descrição com o MOTIVO do backend.
+
+```ts
+// ✅ título "Não foi possível <verbo> <objeto concreto>" + motivo via errorMessage()
+notifyError("Não foi possível iniciar a autorização", err);
+// ❌ genérico, sem motivo, ou o motivo no título
+toast.error("Erro ao salvar");
+toast.error(errorMessage(err));
+toast.error(`Erro: ${err.message}`);
+```
+
+- **Um caminho só para erro na tela: `notifyError(title, error)`** (`lib/api/notify.ts`). Ele mostra
+  `toast.error(title, { description: errorMessage(error) })`, cala 401 (fluxo de sessão), acrescenta
+  `(código xxxxxxxx)` do `request_id` em 5xx e manda o erro para o log do backend (`rules/logs.md`
+  → "Logs do frontend"). `error` pode ser uma frase pronta para validação local sem erro de API.
+- **Mutation declara o título em `meta.errorTitle`** no `useMutation`; o handler global da
+  `MutationCache` mostra o toast. A tela NÃO mostra toast no `catch`/`onError` — fica só a lógica
+  de UI (fechar dialog, reverter otimista). Quer um título com dado da tela (nome do portal)?
+  `notifyError(título, err)` no `catch`: o id de toast é POR OBJETO DE ERRO, então o toast do
+  global é SUBSTITUÍDO, nunca duplicado. Bug que originou isso: o global rodava antes do `catch` e
+  saíam dois toasts (kailos, Portais → "Autorizar", 2026-10-22). O guard antigo
+  `if (mutation.options.onError) return` não enxerga `mutate(v, { onError })` nem `mutateAsync` +
+  `catch` — não use.
+- Query: o global usa `meta.errorTitle ?? "Não foi possível carregar os dados"` com id
+  `query-error:<hash>` (polling que falha = um toast). `meta.silentError` = a tela mostra o erro
+  inline (`ErrorState`, erro de login no form) ou ele é esperado. `meta` é tipado via `Register`.
+- **Cores**: `<Sonner richColors>` no `components/ui/sonner.tsx` — erro vermelho, sucesso verde,
+  aviso amarelo, info azul, com variante escura pelo `theme`. O toast neutro fica nas `--normal-*`
+  (popover). Tom por app (tokens `--success-*`/`--error-*`/`--warning-*`/`--info-*` no `style` do
+  Toaster) é identidade, não padrão.
+- `notifySuccess(title, description?)` / `toast.success` ao concluir; `notifyWarning` para resultado
+  parcial (amarelo, também vai para o log como `warning`); `toast.promise` para operação longa.
+- Texto pt-BR curto. Sucesso no pretérito ("Equipe atualizada"). Título de erro SEMPRE
+  "Não foi possível …" com objeto concreto ("o veículo", "a meta de vendas") — nunca "Erro ao …",
+  "Algo deu errado", "Ocorreu um erro".
 - Erro de **validação de campo** vai no campo; toast é para o resultado da ação.
 - Proibido `alert()`, e `<p className="text-destructive">` como único retorno de uma mutation.
+- Auditoria: `rg -n "toast\.error\(" frontend/src` — só sobram validações locais com
+  `{ description }`; todo erro de API passa por `notifyError`/`meta.errorTitle`.
 
 ## Skeletons e loading
 
@@ -107,3 +141,5 @@ useSyncExternalStore(subscribe /* window online|offline */, () => navigator.onLi
 - **NUNCA** deslogar nem redirecionar por evento `offline`.
 - **NUNCA** toast para estado persistente (offline) nem faixa para resultado pontual de ação.
 - **NUNCA** texto de erro cru do browser/`Error.message` técnico na tela.
+- **NUNCA** `toast.error` no `catch`/`onError` de mutation — `meta.errorTitle` ou `notifyError`.
+- **NUNCA** título genérico ("Erro ao salvar", "Algo deu errado") nem o motivo no lugar do título.

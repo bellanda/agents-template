@@ -34,7 +34,7 @@ o trigger do agente. Defaults (`config/app/*.yaml` → `whatsapp.abuse_*`):
 | Limite | Default | Por quê |
 | --- | --- | --- |
 | texto por mensagem | 5.000 chars | textão = prompt injection/custo; cliente real não manda |
-| áudio | 300 s | Whisper cobra por minuto (onde a Meta não manda duração, só o teto de bytes vale) |
+| áudio | 300 s | Whisper (OpenRouter) cobra por minuto (onde a Meta não manda duração, só o teto de bytes vale) |
 | documento | 5 MB | |
 | qualquer mídia | 4× o documento | vídeo gigante |
 | mensagens | 20 / 60 s (janela fixa) | flood/robô |

@@ -131,8 +131,15 @@ export function EntityPicker<T>({
           </Button>
         </PopoverTrigger>
         <PopoverContent
-          className="w-(--radix-popover-trigger-width) p-0"
+          // Sempre ABAIXO do campo, sem flip: o Radix decidia o flip pela altura natural da
+          // lista (~22rem) e, num Dialog pequeno ou com o teclado aberto, abria para CIMA,
+          // sobre o título/fora da tela (relato 2026-10-22, "Fotos de um veículo"). Sem
+          // flip, o conteúdo encolhe até o espaço disponível (`max-h` + lista abaixo) e a
+          // lista rola dentro dele; o rodapé e o campo de busca continuam à vista.
+          className="max-h-(--radix-popover-content-available-height) w-(--radix-popover-trigger-width) p-0"
+          side="bottom"
           align="start"
+          avoidCollisions={false}
           onCloseAutoFocus={(event) => {
             if (creatingRef.current) {
               event.preventDefault();
@@ -142,7 +149,7 @@ export function EntityPicker<T>({
         >
           <Command shouldFilter={false}>
             <CommandInput placeholder={searchPlaceholder} value={query} onValueChange={setQuery} />
-            <CommandList>
+            <CommandList className="max-h-[min(18rem,calc(var(--radix-popover-content-available-height,18rem)-6.5rem))]">
               {/* shouldFilter=false: o vazio é decidido pelo servidor (items.length),
                   nunca pelo auto-hide do CommandEmpty. */}
               {items.length === 0 && (
