@@ -193,6 +193,20 @@ class Models:
             is_chat_model=False,
         )
 
+        # NOT a chat model — text-to-speech only (`core/agents/speech.py`, POST `/audio/speech`,
+        # mp3 out, voice cloning by `input_references`). Chosen 2026-10-23 by a blind listening
+        # test against Gemini Flash TTS, Fish S2.1, HeyGen and Seed. `input_price_per_1m` is per
+        # 1M CHARACTERS of `input` + `instructions` (OpenRouter pricing "prompt" 0.000002, checked
+        # against 4 real generations: the voice-reference transcript is NOT billed). This price IS
+        # what gets billed: the reported cost (`GET /generation`) only shows up ~11 s after the
+        # audio, too late for callers with someone waiting — see `speech.py`.
+        FISH_AUDIO_DRAMA_3 = ModelConfig(
+            "fish-audio/drama-3",
+            "openrouter",
+            input_price_per_1m=2.0,
+            is_chat_model=False,
+        )
+
 
 def iter_model_configs() -> Iterator[ModelConfig]:
     """Every `ModelConfig` declared in the `Models` namespaces."""

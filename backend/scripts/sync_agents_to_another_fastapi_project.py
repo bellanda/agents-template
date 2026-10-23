@@ -5,7 +5,7 @@ the same config/src/api architecture (config/, src/api/, db/ with dbmate).
 
 Usage:
     uv run scripts/sync_agents_to_another_fastapi_project.py --target /path/to/other/backend
-        [--add-module ocr --add-module media] [--optional] [--examples]
+        [--add-module ocr --add-module media --add-module speech] [--optional] [--examples]
 
 What gets overwritten (per FILE, template-owned files only — the CANONICAL layer; local edits to
 a file the template owns are lost, so improvements must be made here first). Target files the
@@ -221,7 +221,7 @@ def print_post_install(target: Path) -> None:
     "langgraph-checkpoint-postgres>=3.0.4",
     "markitdown[all]>=0.1.5",
     "anyio>=4.13.0",                     # llm.py limiter/retry, ocr.py fan-out
-    "curl-cffi>=0.15.0",                 # media.py (Whisper via OpenRouter STT)
+    "curl-cffi>=0.15.0",                 # media.py (Whisper STT) + speech.py (TTS), OpenRouter
     "pypdfium2>=5.13.0",                # ocr.py (render PDF pages) — only if you use OCR
     "duckpy>=2.1.1",          # only if using web_search_agent
     "orjson>=3.11.7",
@@ -373,7 +373,7 @@ def main() -> None:
         action="append",
         default=[],
         metavar="NAME",
-        help="Add a core/agents module the target does not have yet (e.g. ocr, media). "
+        help="Add a core/agents module the target does not have yet (e.g. ocr, media, speech). "
         "Repeatable. Without it only modules already present in the target are overwritten.",
     )
     args = parser.parse_args()

@@ -29,6 +29,7 @@ Covers:
 - One-shot helpers: `complete()` / `complete_structured()` with limiter, retry and real cost (`core/agents/llm.py`)
 - Subagent delegation (`core/agents/subagents.py`, example `agents/research_supervisor_agent`)
 - Media → text: Whisper audio, Haiku image + video-as-frames, multi-image calls (`media.py`), scanned-PDF OCR (`ocr.py`)
+- Text → speech (optional, apps that speak): Fish Audio drama-3 with voice cloning, billed per character (`speech.py`)
 - Cost per call in `agent_message_usage` (real upstream cost when OpenRouter reports it), per-tenant monthly totals
 - Tenant agent instructions: versioned Markdown per tenant+agent, built in ChatGPT, appended at runtime (`/agent-config` screen)
 - Tool results rendered as cards via a `{type, data}` envelope (`tool_envelope.py`)
@@ -165,7 +166,7 @@ dependencies = [
     "langchain-community>=0.4.1",
     "langchain-core>=1.2.17",
     "langchain-openai>=1.1.10",           # ChatOpenRouter extends ChatOpenAI
-    "curl-cffi>=0.15.0",                  # Whisper call to OpenRouter STT (media.py)
+    "curl-cffi>=0.15.0",                  # OpenRouter STT (media.py) and TTS (speech.py)
     "pyyaml>=6.0.3",                      # config/settings.py
     "langgraph>=1.0.10",
     "langgraph-checkpoint-postgres>=3.0.4",
@@ -316,6 +317,7 @@ Registry: `from api.core.agents.models import Models`. Instantiate with
 | -------------------------------------- | ---------- | --------------------------------------------------------------------- |
 | `Models.OpenRouter.CLAUDE_HAIKU_5_5`    | openrouter | reasoning low; text + image (video via frames); explicit prompt cache; no inline PDF/audio; US upstreams pinned |
 | `Models.OpenRouter.WHISPER_LARGE_V3_TURBO` | openrouter | transcription; **not a chat model**                                   |
+| `Models.OpenRouter.FISH_AUDIO_DRAMA_3`  | openrouter | text-to-speech (`speech.py`, optional module); **not a chat model**; priced per 1M characters |
 
 `WHISPER_LARGE_V3_TURBO` does not go through `init_model` (raises `ValueError`): it is a JSON (base64) POST to
 `{OPENROUTER_API_BASE}/audio/transcriptions` in `core/agents/media.py`, billed per **audio hour**, not per token — the zeroed price fields are deliberate.
