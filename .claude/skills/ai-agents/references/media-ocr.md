@@ -123,3 +123,11 @@ doc.markdown, doc.page_count, doc.ocr_page_count, doc.warnings   # warnings: "pa
 MIME, quotas e dedup SHA-256; grava via `save_upload` (imagem→AVIF, documento por whitelist, nome
 `{slug}-{uuid4}.{ext}`) + linha em `user_uploads`. Na mensagem: imagem → `image_url` inline; resto →
 MarkItDown vira texto. App org-owned cria também `org_uploads` (skill `uploads-storage`).
+
+## TTS — texto → fala (kailos, Modo TV, 2026-10-23)
+
+- `POST {OPENROUTER_API_BASE}/audio/speech` com `{"model":"fish-audio/drama-3","input":<texto>,"response_format":"mp3","instructions":"Fale em português do Brasil, em tom <tom>."}`. Sem `voice`. Fish injeta `instructions` como direção entre colchetes no texto (e cobra esses caracteres).
+- **Clonagem stateless:** `input_references: [{"type":"input_audio","input_audio":{"data":"data:audio/wav;base64,…"}}, {"type":"text","text":<transcrição>}]`. Referência que funcionou: clipes concatenados do maior para o menor, `ffmpeg -af highpass=f=80,afftdn=nf=-25,silenceremove=stop_periods=-1:stop_duration=0.6:stop_threshold=-40dB,loudnorm=I=-18 -t 60 -ar 24000 -ac 1` + transcrição via Whisper. Áudio casual de WhatsApp clona o timbre mas não a entonação de anúncio — peça 30–60 s gravados em silêncio no tom desejado.
+- Só alguns endpoints clonam: confira `supports_voice_cloning` em `GET /api/v1/models/<id>/endpoints`. ElevenLabs no OpenRouter NÃO clona; HeyGen só devolve `pcm` e saiu bugado; Seed Audio leva ~30 s/frase; Gemini TTS não clona (vozes prontas, sai só PCM 24 kHz).
+- Custo ≈ US$ 0,0003/frase, 2–4,5 s. **Cacheie por sha256(modelo, gravação, tom, texto)** e arredonde números variáveis em faixas (minutos 5/10/15/20/30/45/60) para o cache pegar. Custo real via `GET /api/v1/generation?id=<X-Generation-Id>` (pode demorar a aparecer → estimativa como fallback) em `agent_message_usage`.
+- Se o áudio é parte do evento (ex.: alerta que não pode aparecer antes da voz), gere num consumer JetStream e publique o evento só depois; teto duro (~8 s) e fallback sem áudio. Canônico: kailos `services/tv/voice_service.py`, `docs/tv-mode.md`.
