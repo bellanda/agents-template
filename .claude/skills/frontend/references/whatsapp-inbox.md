@@ -50,6 +50,10 @@
   Só dispara quando o dia AVANÇA (a timeline mistura por id, não estritamente por hora). Bug
   2026-10-23: evento (SLA, transferência, "Conversa iniciada") não ganhava separador mas contava
   como "dia anterior", e o "Hoje" sumia quando o dia começava com um alerta de SLA.
+  A timeline é renderizada em UMA `<section>` por dia (`groupRowsIntoDaySections`) com o
+  `DaySeparator` `sticky top-0` dentro dela (decisão do usuário 2026-10-23, como no WhatsApp): o dia
+  atual fica fixo no topo ao rolar e o separador do dia seguinte o empurra para fora. Separador fora
+  da seção (dentro do wrapper de cada bolha) não fica fixo — o sticky não sai do próprio pai.
 - **Papéis de leitura** (`accessRole`: `read_all | assigned | historic`): `read_all`/`historic` leem e
   **não escrevem**; cada botão pergunta pela permissão que o backend cobra (`whatsapp:read_all`,
   `whatsapp:manage`), não por "é gestor".
@@ -155,6 +159,10 @@ route-guards precisa passar `search` ao `beforeLoad`.
   nunca na lista. `SlaCountdownChip` = folha memoizada com intervalo de 1s ("Passa para o próximo em
   03:12" / "Prazo pausado até 14:00" / "Transferindo…"; texto curto no celular). Lógica pura em
   `lib/whatsapp/sla-countdown.ts` (+ teste).
+- **Chip `ai_wait_dismissed`** (2026-10-23, espera do cliente → `integrations` → `human-handoff-queues.md`):
+  quando a IA decide que o cliente não espera resposta, o `EventCard` mostra "IA: sem resposta pendente —
+  avisos pausados até o cliente escrever" + o motivo (`detail` no serializer). O contador do rodízio
+  segue a MESMA definição de espera (janela 24h, `wait_dismissed_through`).
 - **Chip do `EventCard` quebra linha** (`min-w-0 max-w-[calc(100%-1rem)] whitespace-normal
   break-words text-center`, divisores `min-w-4 flex-1`): `whitespace-nowrap` com "Transferido → nome
   (rodízio) (equipe) · data" saía da tela no celular (kailos, 2026-10-10).
@@ -262,6 +270,12 @@ atrás de `ConfirmDialog` (a IA volta a responder o cliente). Invalida conversa 
   mostra o meta). Depois que tocou, o avatar vira a pílula de **velocidade 1× → 1,5× → 2×**
   (`AUDIO_PLAYBACK_RATES`, rótulo pt-BR "1,5×"), reaplicada no `onPlay`. Usuário: "visualmente é estranho o
   horário e tick estarem fora do resto do conteúdo". Apps com player: kailos (canônico) e emporion.
+- **Transcrição do áudio na bolha** (2026-10-23, kailos canônico, emporion e nexarena): todo áudio que
+  chega ou sai vira tarefa `whatsapp.tasks.audio_transcribe` (Whisper via OpenRouter, single-flight por
+  mensagem no Valkey — IA, tarefa e Insights nunca pagam duas vezes) e `whatsapp_messages.transcript_status`
+  (`pending|done|failed`). `AudioTranscript.tsx` sob o player: `pending` = "Transcrevendo áudio…"
+  (skeleton), `done` = texto sem o prefixo `(áudio transcrito)`, longo recolhe com "ver mais", `failed` =
+  nada. O fim publica `message.updated` (SSE que o inbox já trata) — sem polling.
 
 ## Tema — vars `--wa-*` (exceção deliberada a "sem cor crua")
 

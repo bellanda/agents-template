@@ -262,6 +262,21 @@ Todo app da frota recebe os erros do navegador no mesmo log (regra completa: `ru
    `lib/api/`; `installClientErrorCapture()` no `main.tsx`; `reportClientError({ kind: "render" })`
    no `RouteErrorFallback`.
 
+## Cron worker: duração por job + heartbeat (padrão da frota, 2026-10-23)
+
+Todo `backend/cron/worker.py` (laço que roda `JOBS` e dorme `CRON_INTERVAL_SECONDS`) executa cada job
+por `cron/job_runner.py::run_job(name, fn, pool, js)` (canônico: akmeo/promoservice/kailos/emporion):
+
+- `cron_job_finished` com `job` + `duration_ms` em TODO job, inclusive o que falhou
+  (`cron_job_raised` via `log.exception`) — é como se acha o job lento que segura a volta.
+- `touch_heartbeat()` DEPOIS de cada job, não só no início da volta: o healthcheck do container
+  olha a idade de `/tmp/cron_heartbeat` (< 90 s) e um job lento marcava o worker unhealthy.
+- Falha do job é contida (próximo tick tenta de novo; os outros jobs seguem).
+- Fica num módulo próprio porque o `worker.py` chama `setup_logging` e lê `.env`/`app.yaml` no
+  import — o teste carrega só o `job_runner.py` por caminho (`tests/observability/test_cron_job_runner.py`).
+- App sem `backend/cron/` (nexarena roda workers em `api/workers/`, optimuslar/agents-template sem
+  cron) não se aplica.
+
 ## Anti-patterns a flagar
 
 - `logging.basicConfig(...)` em código de produção → trocar por `setup_logging()`.

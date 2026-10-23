@@ -83,18 +83,48 @@ fila, talvez três) — mandar para fila desligada é o mesmo que não transferi
 volátil (dados do negócio → filas → contexto atual com data/hora e "Loja agora"), que é o que o cache
 de prompt aproveita.
 
-## SLA e rodízio
+## SLA e rodízio — "espera do cliente" (padrão desde 2026-10-23, kailos `services/queues/customer_wait/`)
 
-- Cron conta o prazo **em segundos de expediente** (avaliador único de `business_hours`, fuso da loja).
-- Estourou → próximo da escala (round-robin); deu a volta inteira sem resposta → volta ao primeiro,
-  zera o ponteiro, grava `sla_escalated` **uma vez por inbound** e avisa a gestão.
-- O cron publica no JetStream (`CRON_JOBS`, declarado igual nos dois lados); o consumer da API cria as
-  notificações `sla_reassigned`/`sla_escalated` (CHECK de `notifications.type` no mesmo PR) e o
-  realtime — sem isso a conversa repassada só aparece no F5. **Toda** mudança de dono feita pelo
-  cron (rodízio, volta ao primeiro) publica o SSE `conversation.assigned` para o dono antigo, o novo e
-  quem vê a caixa inteira (kailos `cron_events_consumer.py`, 2026-10-09).
-- O inbox mostra o contador até o próximo rodízio (`sla_deadline_at`/`sla_paused_until`, ver
-  `frontend` → `whatsapp-inbox.md`); o cálculo espelha o cron — mudou a regra num, muda no outro.
+O prazo conta **em segundos de expediente** (avaliador único de `business_hours`, fuso da loja). Mora
+na API, não no cron. A varredura de 60 s do cron atrasava o aviso de 0 a 60 s e crescia com todas as
+conversas abertas.
+
+- **Quem conta:** só `human_handling` com a **janela de 24h da Meta aberta** (`last_inbound_at > now() − 24h`),
+  em todos os passos. Janela fechada vai para o CRM, porque o vendedor só fala por template.
+- **Dono que NUNCA respondeu** (rodízio / 1º contato): estourou o prazo da fila, passa ao próximo da
+  escala (round-robin). Deu a volta inteira, volta ao primeiro, zera o ponteiro e grava `sla_escalated`
+  uma vez por inbound. **Sem IA**: o cliente espera o 1º contato por definição, e um "ok, aguardo" logo
+  após o handoff não pode matar o lead.
+- **Dono que já respondeu** (lembrete): nunca é passado adiante (decisão 2026-10-09). A escada única
+  dispara no prazo da fila, 20 min, 30 min, 1 h, 2 h, 4 h, 6 h e 8 h (`ladder.py`), sempre avisando o
+  dono e a gestão. Depois de um downtime sai **um** aviso, o do maior passo vencido.
+  - No passo em que há mensagem nova do cliente, a **IA responde só True/False**: "o cliente está
+    esperando resposta?" (`ai_review.py`, `complete_structured`, `UsageContext`, teto de gasto).
+  - True: avisa, e a escada segue sem perguntar de novo enquanto não houver movimento.
+  - False: sem aviso, sem TV, sem rodízio. Grava `wait_dismissed_through` e um evento `ai_wait_dismissed`
+    (chip na timeline), e a próxima mensagem do cliente abre uma espera nova, com relógio novo.
+  - **Não existe timer de compromisso**: "vou fazer a simulação" seguido de "aguardo" é False.
+  - Erro, timeout ou teto de gasto contam como True (fail-open).
+- **Agenda por prazo:**
+  - ZSET Valkey `customer_wait:due` (score = epoch do próximo passo), **só como despertador**.
+  - Um ticker de 1 s no lifespan da API reivindica os vencidos (Lua + lease, seguro com N workers) e
+    publica `queues.wait.check` (JetStream, `Nats-Msg-Id` = conversa:lease).
+  - O consumer relê o Postgres sob trava por conversa e relê de novo depois da IA, antes de agir.
+  - Ganchos: mensagem do cliente faz ZADD, resposta humana faz ZREM, transferência e handoff fazem ZADD.
+  - Uma reconciliação de 5 min (um worker só) repõe o que faltar no ZSET.
+- **Preparo 15 s antes do prazo:** veredito da IA e, onde há TV, clipe de voz. TV e celular saem no
+  mesmo segundo, com a cor pelo nº do aviso (1º azul, 2º amarelo, 3º+ vermelho).
+- Notificações `sla_reassigned`/`sla_escalated`/`sla_lead_owner_idle` (CHECK de `notifications.type`
+  no mesmo PR). Toda mudança de dono publica o SSE `conversation.assigned` para o dono antigo, o novo e
+  quem vê a caixa inteira; sem isso a conversa repassada só aparece no F5.
+- **Mesma definição de espera em todo lugar:**
+  - mensagem esperando = `created_at > GREATEST(last_outbound_at, wait_dismissed_through)`;
+  - o relógio desconta `sla_owner_idle`/`ai_wait_dismissed` como troca de dono;
+  - vale para o contador do inbox (`sla_deadline.py`, ver `frontend` → `whatsapp-inbox.md`), a tela
+    "Quem está esperando" da TV e os ganchos. Mudou num lugar, muda nos outros.
+- **Antes de ligar num app com volume:** rode um replay de alguns dias de prod pela regra nova e pelo
+  prompt real (só leitura, export local, PII apagado). No kailos foram 5 dias: 90 perguntas, US$ 0,02,
+  18 esperas caladas, todas corretas.
 
 ## Para quem vai o handoff (kailos, 2026-10-09)
 
@@ -126,17 +156,13 @@ plataforma (prompt-base), não do gatilho da equipe.
   cliente que manda 25 fotos do carro que vende parece robô), escolhe dono por `pick_assignee`, transiciona
   para `human_handling` (evento `abuse_<motivo>`), deixa nota interna com o motivo e notifica o dono. O
   agente NÃO é acionado. Desbloqueio é ação humana (`whatsapp:manage`) → `whatsapp-inbox.md`.
-- **Rodízio por prazo** (`cron/sla_redistribution.py`, commit `5741fec`, 2026-10-09): o prazo de cada dono
-  conta da CHEGADA da conversa nele (`sla_started_at` = último inbound ou última mudança de dono depois
-  dele). Contar sempre do inbound fazia o recém-atribuído herdar prazo já estourado: três vendedores em
-  três minutos em prod. O rodízio NUNCA passa adiante quem já respondeu na conversa (decisão do usuário
-  2026-10-09): estourou o prazo → grava `sla_owner_idle` + evento `cron.lead.owner_idle` para a gestão,
-  uma vez por inbound. Piso da varredura 1 min (mínimo da fila). Mudança de dono pelo cron publica
-  `conversation.assigned` (SSE) — sem F5.
-- **Contador e motivo na UI** (`4e024cc`, 2026-10-09): `services/portals/whatsapp/sla_deadline.py` PREVÊ o
-  próximo rodízio espelhando as regras do cron (só `human_handling` com inbound sem resposta; dono que já
-  respondeu = sem contador; relógio recomeça a cada troca de dono; após a volta inteira `sla_escalated` =
-  sem contador). Muda o cron, muda o arquivo — `tests/whatsapp/test_sla_deadline.py` prende os dois.
+- **Rodízio por prazo** (desde 2026-10-23 em `customer_wait/rotation.py` + `decision.py`; antes
+  `cron/sla_redistribution.py`, `5741fec`): o prazo de cada dono conta da CHEGADA da conversa nele
+  (`sla_started_at` = último inbound ou a última troca de dono depois dele). Contar sempre do inbound
+  fazia o recém-atribuído herdar um prazo já estourado: três vendedores em três minutos em prod.
+- **Contador na UI** (`4e024cc`): `services/portals/whatsapp/sla_deadline.py` PREVÊ o próximo rodízio
+  com as mesmas regras do avaliador. Dono que já respondeu, ou depois de `sla_escalated`, fica sem
+  contador. `tests/whatsapp/test_sla_deadline.py` prende os dois.
 
 ## Assinatura do atendente humano (decisão do usuário 2026-10-16)
 
@@ -220,4 +246,7 @@ Canônico: kailos `services/portals/whatsapp/{agent_followup*,seller_reengage}.p
 - **NUNCA** `assigned_queue` como texto na conversa.
 - **NUNCA** tool que falha com nome de fila desconhecido.
 - **NUNCA** SLA em segundos corridos — expediente da loja.
+- **NUNCA** varredura periódica de todas as conversas para disparar prazo: use a agenda por prazo (ZSET despertador + releitura do Postgres).
+- **NUNCA** IA decidindo o 1º contato/rodízio do dono que nunca respondeu, nem silenciando por erro (fail-open = avisa).
+- **NUNCA** escadas diferentes para TV e celular — mesmo passo, mesmo instante.
 - **NUNCA** "fila" em texto visível — é "equipe" (a palavra técnica fica no código).

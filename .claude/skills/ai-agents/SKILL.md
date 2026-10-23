@@ -22,7 +22,7 @@ pro template primeiro (ver `references/propagation.md`).
 | Texto, tools, extração, imagem | OpenRouter | Claude Haiku 5.5, effort `low` — `Models.OpenRouter.CLAUDE_HAIKU_5_5` (`anthropic/claude-haiku-5.5`) |
 | Vídeo | OpenRouter | mesmo modelo, lendo 6 QUADROS (OpenCV em `media.py`; sem o áudio do vídeo) |
 | Áudio → texto | OpenRouter | `Models.OpenRouter.WHISPER_LARGE_V3_TURBO` = `openai/whisper-large-v3-turbo` via `/audio/transcriptions` (só se o app recebe áudio) |
-| Texto → fala | OpenRouter | `fish-audio/drama-3` via `/audio/speech` (mp3; clonagem com `input_references`) — só se o app fala; cache por frase (ref `media-ocr.md` §TTS) |
+| Texto → fala | OpenRouter | `fish-audio/drama-3` via `core/agents/speech.py` (módulo opcional; mp3; clonagem com `input_references`) — só se o app fala; cache por frase, custo por caractere na hora, teto antes de gerar (ref `media-ocr.md` §TTS) |
 
 Secrets: só `OPENROUTER_API_KEY` (Groq-direto saiu da stack em 2026-10-22; `GROQ_API_KEY` não existe). Proibido DeepSeek/Gemini/OpenAI/Anthropic DIRETO/GLM/etc. (Claude só via OpenRouter).
 PDF escaneado = `ocr.py` (Haiku aceita PDF inline, mas `supports_pdf_input=False` até decisão testada), vídeo = quadros, áudio = Whisper.

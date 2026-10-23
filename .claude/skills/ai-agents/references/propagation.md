@@ -14,7 +14,7 @@ agendamento) fica no app.
 
 ```bash
 cd ~/code/github-templates/agents-template/backend
-uv run scripts/sync_agents_to_another_fastapi_project.py --target /caminho/app/backend [--add-module ocr]... [--examples] [--optional]
+uv run scripts/sync_agents_to_another_fastapi_project.py --target /caminho/app/backend [--add-module ocr|media|speech]... [--examples] [--optional]
 ```
 
 - **Overwrite por ARQUIVO** (só o que o template possui; NUNCA apaga arquivo do alvo — adaptadores e
