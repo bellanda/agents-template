@@ -45,6 +45,11 @@
   template), timeline (`DaySeparator`, `EventCard` = divisor de transição de estado entre as bolhas,
   não item de auditoria), `Composer` (texto, anexo com prévia, áudio por `MediaRecorder`; **anexo sem
   texto é mensagem válida**, ver `file-upload.md`).
+- **Separador de dia** ("Hoje"/"Ontem"/data) vem de `lib/whatsapp/day-dividers.ts`
+  (`computeDayDividerFlags`) e vale para TODA linha da timeline — mensagem, álbum E `EventCard`.
+  Só dispara quando o dia AVANÇA (a timeline mistura por id, não estritamente por hora). Bug
+  2026-10-23: evento (SLA, transferência, "Conversa iniciada") não ganhava separador mas contava
+  como "dia anterior", e o "Hoje" sumia quando o dia começava com um alerta de SLA.
 - **Papéis de leitura** (`accessRole`: `read_all | assigned | historic`): `read_all`/`historic` leem e
   **não escrevem**; cada botão pergunta pela permissão que o backend cobra (`whatsapp:read_all`,
   `whatsapp:manage`), não por "é gestor".
