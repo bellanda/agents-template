@@ -6,6 +6,7 @@
 #   now                 run one backup immediately into predeploy/, exit 0/1 (manual + "backup before deploy")
 #   healthcheck         exit 1 if the last success is older than 26h (container-start grace, see below)
 #   select-expired N    stdin: names, one per line -> stdout: what retention deletes (testable)
+#   monthly-due YYYY-MM stdin: monthly/ names -> exit 0 if that month has no copy yet (testable)
 #
 # Env (everything app-specific comes from compose):
 #   BACKUP_APP            app slug, prefix of the object names           (required)
@@ -19,12 +20,15 @@
 #   BACKUP_DRY_RUN=1      dump + validate, skip every B2 call
 #   BACKUP_DIR            default /backup (volume: dump temp file + state)
 #
-# Retention (user decisions 2026-10-14): 7 days + 4 weekly, logical dump until it no longer fits the
-# night window. Started as "1 daily + 4 weekly"; the user widened it the same day so a corruption noticed
-# days later can still be restored from the day before it (not only from last Sunday).
+# Retention (user decision 2026-10-26): 3 days + 2 weekly + 1 monthly + the last pre-deploy = at most 7
+# dumps per app, forever, so the bucket stops growing with time. History: 2026-10-14 started as
+# "1 daily + 4 weekly", widened the same day to "7 days + 4 weekly"; 2026-10-26 the user cut it to this
+# (asked for "6 in total"; the parts add up to 7, confirmed as listed). Logical dump until it no longer
+# fits the night window.
 # Layout at the bucket ROOT, outside prod/ and staging/:
-#   backups/postgres/daily/<app>-<YYYY-MM-DDTHHMM>.dump       scheduled run, 1 per day, 7 most recent days
-#   backups/postgres/weekly/<app>-<YYYY-MM-DD>.dump           Sunday copy, 4 most recent
+#   backups/postgres/daily/<app>-<YYYY-MM-DDTHHMM>.dump       scheduled run, 1 per day, 3 most recent days
+#   backups/postgres/weekly/<app>-<YYYY-MM-DD>.dump           Sunday copy, 2 most recent
+#   backups/postgres/monthly/<app>-<YYYY-MM-DD>.dump          first scheduled run of the month, ONLY the newest
 #   backups/postgres/predeploy/<app>-<YYYY-MM-DDTHHMM>.dump   `now` (before a deploy), ONLY the newest one
 # Pre-deploy dumps live apart (user decision 2026-10-16): they used to land in daily/, and a day with 9
 # deploys kept 9 files. A new deploy makes the previous pre-deploy dump useless, so only the last is kept.
@@ -40,9 +44,11 @@ RETRY_BACKOFF_SECONDS=900
 HEALTHY_MAX_AGE_SECONDS=$((26 * 3600))
 DAILY_PREFIX="backups/postgres/daily"
 WEEKLY_PREFIX="backups/postgres/weekly"
+MONTHLY_PREFIX="backups/postgres/monthly"
 PREDEPLOY_PREFIX="backups/postgres/predeploy"
-KEEP_DAILY=7
-KEEP_WEEKLY=4
+KEEP_DAILY=3
+KEEP_WEEKLY=2
+KEEP_MONTHLY=1
 KEEP_PREDEPLOY=1
 STATE_DIR="$BACKUP_DIR/state"
 DUMP_DIR="$BACKUP_DIR/dump"
@@ -61,7 +67,7 @@ log_step() { # event status [file] [bytes] [seconds] [message]
 
 # Keep the NEWEST name of each of the N most recent distinct days (names embed an ISO timestamp, so they
 # sort chronologically), print the rest. One survivor per day also sweeps the pre-deploy dumps that
-# landed in daily/ before 2026-10-16; for predeploy/ with N=1 it keeps exactly the last file.
+# landed in daily/ before 2026-10-16; for predeploy/ and monthly/ with N=1 it keeps exactly the last file.
 select_expired() {
   local keep="$1"
   [[ "$keep" =~ ^[0-9]+$ ]] || { echo "select-expired: N must be a non-negative integer, received '$keep'" >&2; return 2; }
@@ -74,6 +80,12 @@ select_expired() {
       seen[day] = 1; days++
       if (days > keep) print
     }' || true
+}
+
+# Exit 0 when no name on stdin (a listing of this app's monthly/) is a copy taken in MONTH (YYYY-MM).
+monthly_due() { # month
+  [[ "$1" =~ ^[0-9]{4}-[0-9]{2}$ ]] || { echo "monthly-due: month must be YYYY-MM, received '$1'" >&2; return 2; }
+  ! grep -q -e "-$1-[0-9][0-9][.]dump\$"
 }
 
 require_env() {
@@ -187,12 +199,26 @@ do_backup() { # kind: scheduled | predeploy
     log_step upload_weekly ok "$weekly_key" "$bytes" "$(($(date +%s) - t0))"
     retain_prefix "$WEEKLY_PREFIX" "$KEEP_WEEKLY" "$weekly_key"
   fi
+  upload_monthly_if_due "$dump_file" "$day" "$bytes"
   # Daily retention only after the new object is uploaded AND confirmed: never ends up with zero backups.
   retain_prefix "$DAILY_PREFIX" "$KEEP_DAILY" "$daily_key"
 
   date +%s >"$HEARTBEAT_FILE"
   echo "$day" >"$LAST_DATE_FILE"
   log_step "done" ok "$daily_key" "$bytes" "$(($(date +%s) - started))"
+}
+
+# Monthly copy = first successful scheduled run of the month, not "only on the 1st": a container that was
+# down on the 1st still gets that month's copy, and the first run after this shipped seeds monthly/.
+upload_monthly_if_due() { # dump_file day bytes
+  local key="$MONTHLY_PREFIX/$BACKUP_APP-$2.dump" names t0
+  names=$(b2 ls --json -r "b2://$B2_PRIVATE_BUCKET/$MONTHLY_PREFIX/" | jq -r '.[].fileName')
+  monthly_due "${2:0:7}" <<<"$names" || return 0
+  t0=$(date +%s)
+  b2_upload "$1" "$key"
+  b2_confirm_size "$key" "$3"
+  log_step upload_monthly ok "$key" "$3" "$(($(date +%s) - t0))"
+  retain_prefix "$MONTHLY_PREFIX" "$KEEP_MONTHLY" "$key"
 }
 
 # Pre-deploy dump: no heartbeat / last-date update on purpose — it must not stand in for the scheduled
@@ -258,6 +284,7 @@ main() {
   local cmd="${1:-run}"
   case "$cmd" in
     select-expired) select_expired "${2:?usage: select-expired N}" ;;
+    monthly-due) monthly_due "${2:?usage: monthly-due YYYY-MM}" ;;
     healthcheck) check_health ;;
     __backup) require_env BACKUP_APP POSTGRES_USER POSTGRES_DB; do_backup "${2:?usage: __backup scheduled|predeploy}" ;;
     run | now)
@@ -265,7 +292,7 @@ main() {
       [[ "$BACKUP_DRY_RUN" == "1" ]] || require_env B2_PRIVATE_BUCKET B2_PRIVATE_KEY_ID B2_PRIVATE_APP_KEY
       if [[ "$cmd" == "now" ]]; then run_once predeploy; else run_loop; fi
       ;;
-    *) echo "unknown command '$cmd' (run | now | healthcheck | select-expired N)" >&2; exit 2 ;;
+    *) echo "unknown command '$cmd' (run | now | healthcheck | select-expired N | monthly-due YYYY-MM)" >&2; exit 2 ;;
   esac
 }
 

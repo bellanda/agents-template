@@ -427,8 +427,11 @@ Serviço `pg-backup`, **só** em `config/docker/compose.prod.yaml`:
 
 - Todo dia às 03:00 (America/Sao_Paulo) faz `pg_dump -Fc --compress=zstd` direto no serviço `postgres` via TCP (`PGHOST=postgres`; o template não tem socket nem pgbouncer). Depois valida com `pg_restore --list` e sobe com o `b2` CLI no bucket privado `agents-template-private`, com a
   mesma chave privada da app (`B2_PRIVATE_APP_KEY` do `.env`).
-- Layout na raiz do bucket, fora de `prod/`: `backups/postgres/daily/` (o backup das 03:00, 1 por dia, 7 dias), `backups/postgres/predeploy/` (o `now` antes do deploy; só o último fica — decisão 2026-10-16) e `backups/postgres/weekly/`
-  (cópia de domingo, mantém 4). A retenção só apaga depois que o arquivo novo subiu e foi conferido.
+- Layout na raiz do bucket, fora de `prod/`: `backups/postgres/daily/` (o backup das 03:00, 1 por dia, 3 dias),
+  `backups/postgres/weekly/` (cópia de domingo, mantém 2), `backups/postgres/monthly/` (1º backup agendado do mês,
+  só o último) e `backups/postgres/predeploy/` (o `now` antes do deploy, só o último — decisão 2026-10-16). No
+  máximo 7 dumps por app (decisão do usuário 2026-10-26). A retenção só apaga depois que o arquivo novo subiu e foi
+  conferido.
 - Healthcheck: unhealthy se o último sucesso tiver mais de 26h.
 - **Antes de todo deploy:** `docker compose run --rm pg-backup now`. Se falhar, não faça o deploy.
 - Dump lógico enquanto couber na janela ociosa das 22h às 06h. Só depois disso vale backup físico + WAL (decisão do
