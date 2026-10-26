@@ -1,7 +1,10 @@
 # Backup diário do Postgres no Backblaze B2 — serviço `pg-backup`
 
 Padrão da frota desde 2026-10-14. O código está no Git e no OneDrive, e mídia/documentos estão no B2. Na VPS,
-o único dado que não se regenera é o **Postgres**, e este serviço cobre esse buraco.
+o único dado que não se regenera é o **Postgres**, e este serviço cobre esse buraco. O `.env` NÃO vai para o B2 (decisão
+2026-10-26, depois de cogitar subi-lo cifrado junto dos dumps): o local é copiado de hora em hora para
+`OneDrive/Data (Git Ignored)/<app>/.env` pelo `~/scripts/backup.py`, e o de prod tem cópia manual em
+`.../<app>/.env.prod` sempre que muda (ver `global/agent-behavior.md` → Deploy).
 Canônico: `~/code/kailos/config/backup/{Dockerfile,pg_backup.sh}` + serviço `pg-backup` em
 `config/docker/compose.prod.yaml`. Todo app copia os mesmos dois arquivos **sem alteração**; o que muda por
 app vive no compose.
@@ -13,9 +16,11 @@ app vive no compose.
   mesmo `.env` das outras.
 - **Pasta na RAIZ do bucket**, fora do `b2_key_prefix` (`prod/` / `staging/`): `backups/postgres/`. O código da
   app nunca grava nem apaga em `backups/`.
-- **Retenção: 7 dias + 4 semanais.** Começou como "1 diário + 4 semanais", e o usuário ampliou no mesmo dia: com 1
-  diário, uma corrupção percebida dias depois só voltava até o domingo. O objetivo é conter danos (servidor perdido, migration que
-  corrompeu, invasão), não recuperar algo que o usuário apagou semanas atrás.
+- **Retenção: 3 dias + 2 semanais + 1 mensal + o último pré-deploy = no máximo 7 dumps por app** (decisão do
+  usuário 2026-10-26: "nunca fica mais que isso", para o bucket não crescer com o tempo; ele pediu "6 no total", a
+  soma das partes dá 7 e ele confirmou as partes). Histórico: 2026-10-14 começou "1 diário + 4 semanais", ampliado
+  no mesmo dia para "7 dias + 4 semanais". O objetivo é conter danos (servidor perdido, migration que corrompeu,
+  invasão), não recuperar algo que o usuário apagou semanas atrás.
 - **Backup antes de todo deploy** (`docker compose run --rm pg-backup now`). O deploy roda migrations, e esse backup é a
   cópia imediatamente anterior a elas. Ver `global/agent-behavior.md` → Deploy.
 - **Dump lógico (`pg_dump -Fc`) até a casa dos TB.** Os apps ficam ociosos das 22h às 06h. Migrar para
@@ -27,14 +32,17 @@ app vive no compose.
 ```
 <app>-private/
   prod/…                                        ← uploads da app (b2_key_prefix)
-  backups/postgres/daily/<app>-<YYYY-MM-DDTHHMM>.dump      ← backup das 03:00, 1 por dia, 7 dias
-  backups/postgres/weekly/<app>-<YYYY-MM-DD>.dump          ← cópia de domingo, mantém 4
+  backups/postgres/daily/<app>-<YYYY-MM-DDTHHMM>.dump      ← backup das 03:00, 1 por dia, 3 dias
+  backups/postgres/weekly/<app>-<YYYY-MM-DD>.dump          ← cópia de domingo, mantém 2
+  backups/postgres/monthly/<app>-<YYYY-MM-DD>.dump         ← 1º backup agendado do mês, SÓ o último
   backups/postgres/predeploy/<app>-<YYYY-MM-DDTHHMM>.dump  ← `now` antes do deploy, SÓ o último
 ```
 
 Os nomes embutem um timestamp ISO, então a ordem alfabética é a ordem cronológica, e a retenção depende disso.
-A retenção guarda **o arquivo mais novo de cada um dos N dias mais recentes** (`daily/` N=7, `weekly/` N=4,
-`predeploy/` N=1 → só o último). Decisão do usuário 2026-10-16: o `now` do deploy caía em `daily/`, e um dia
+A retenção guarda **o arquivo mais novo de cada um dos N dias mais recentes** (`daily/` N=3, `weekly/` N=2,
+`monthly/` e `predeploy/` N=1 → só o último). A cópia mensal sai no **primeiro backup agendado de cada mês** em
+que `monthly/` ainda não tem arquivo daquele mês (não "só no dia 1º"): container parado no dia 1º ainda gera a
+cópia do mês, e o primeiro run depois do deploy de 2026-10-26 semeia a pasta. Decisão do usuário 2026-10-16: o `now` do deploy caía em `daily/`, e um dia
 com 9 deploys guardava 9 dumps; um deploy novo torna inútil o backup do deploy anterior, então `predeploy/`
 fica com 1 só. O `now` não grava heartbeat nem a data do último sucesso: um deploy às 02h não pode pular o
 backup das 03h daquele dia.
@@ -47,6 +55,7 @@ backup das 03h daquele dia.
 | `now` | Faz 1 backup imediato em `predeploy/` e sai com 0/1. É o modo manual e o do "backup antes do deploy". Não toca `daily/`/`weekly/`. |
 | `healthcheck` | Fica unhealthy se o último **sucesso** tiver mais de 26h. Há tolerância de 26h desde o start do container, para o deploy recém-feito não aparecer unhealthy. |
 | `select-expired N` | Recebe nomes no stdin e devolve o que a retenção apaga (tudo menos o mais novo de cada um dos N dias mais recentes). Testado em `backend/tests/scripts/test_pg_backup_retention.py`. |
+| `monthly-due YYYY-MM` | Recebe a listagem de `monthly/` no stdin; sai 0 se aquele mês ainda não tem cópia. Mesmo teste. |
 
 Passos de cada backup (1 linha JSON de log por passo):
 1. `pg_dump -Fc --compress=zstd` pelo **socket direto** (`pgsocket`, nunca pgbouncer em transaction mode),
@@ -55,7 +64,8 @@ Passos de cada backup (1 linha JSON de log por passo):
 3. Cancela upload grande inacabado sob `backups/` (sobra de execução que caiu; parte guardada é cobrada).
 4. `b2 file upload` em `daily/`. O CLI faz o large file/multipart sozinho acima do limite e confere o SHA1.
    Depois, `b2 file info` confirma o tamanho exato.
-5. Domingo: a mesma coisa em `weekly/`, seguida da retenção semanal.
+5. Domingo: a mesma coisa em `weekly/`, seguida da retenção semanal. Mês sem cópia em `monthly/`: idem em
+   `monthly/`, seguida da retenção mensal.
 6. Retenção diária, **só depois** do upload confirmado, e só se o arquivo novo aparece na listagem. O bucket é
    versionado, então ela usa `b2 rm --versions` (todas as versões; senão o arquivo continua guardado e cobrado).
 7. Grava o heartbeat e a data do último sucesso. Qualquer falha antes disso faz não apagar nada.
@@ -111,7 +121,7 @@ Rode na VPS, com o stack no ar, **sem tocar no banco de produção** até a conf
 
 ```bash
 cd /opt/<app>
-# 1. Escolher o arquivo (daily/ ou weekly/)
+# 1. Escolher o arquivo (daily/, weekly/, monthly/ ou predeploy/)
 docker compose run --rm --entrypoint b2 pg-backup ls --long -r "b2://<app>-private/backups/postgres/"
 # 2. Baixar para o volume do backup
 docker compose run --rm --entrypoint b2 pg-backup file download \
