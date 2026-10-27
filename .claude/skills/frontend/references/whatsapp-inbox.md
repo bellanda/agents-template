@@ -277,6 +277,26 @@ atrás de `ConfirmDialog` (a IA volta a responder o cliente). Invalida conversa 
   (skeleton), `done` = texto sem o prefixo `(áudio transcrito)`, longo recolhe com "ver mais", `failed` =
   nada. O fim publica `message.updated` (SSE que o inbox já trata) — sem polling.
 
+## Ligações de voz no inbox (kailos, 2026-10-27)
+
+Fluxo, backend, push "tocando" e requisitos da Meta → gate `integrations` → `whatsapp-calling.md`.
+Aqui só o que aparece dentro do inbox:
+
+- **Marcador na timeline** (`calls/CallEventCard.tsx`): as ligações encerradas do contato
+  (`GET .../whatsapp/calls/by-contact/{id}`, paginado) entram na timeline intercaladas por horário,
+  no mesmo formato de chip do `EventCard`: "Ligação recebida · atendida por Fulano · 3:24" /
+  "Ligação perdida" / "Ligação recusada". Ícone por status (`LuPhone`/`LuPhoneMissed`/`LuPhoneOff`).
+- **Selo no cabeçalho da conversa** (`calls/ActiveCallBadge.tsx`): "Em ligação · Fulano · 01:23"
+  enquanto a ligação daquele contato está em curso (vem do `active-call-store`, alimentado pelo SSE de
+  ligações, não pelo do chat). O cronômetro é uma folha com intervalo próprio.
+- **"Botão de ligação" no `AttachMenu`** (`CallButtonDialog.tsx`): manda `interactive.voice_call`
+  (texto + rótulo do botão). Só com a janela de 24h aberta, como qualquer interactive. Serve para o
+  vendedor pedir "me liga" (custa como mensagem de serviço; o ícone de ligar já está sempre visível). A bolha
+  enviada é o `CallButtonCard` (texto + botão "Ligar" desenhado, sem ação no lado da loja).
+- **Diálogo da ligação NÃO é do inbox**: o `CallProvider` fica montado no `SidebarShell` (toca em
+  qualquer tela). O `IncomingCallDialog` é portal, então o `DialogContent` leva `whatsapp-theme` para
+  as vars `--wa-*` existirem lá (sem a classe, o botão "Atender" ficava sem fundo).
+
 ## Tema — vars `--wa-*` (exceção deliberada a "sem cor crua")
 
 O inbox imita a identidade do canal. As cores vivem **escopadas** em `.whatsapp-theme` (+ variante

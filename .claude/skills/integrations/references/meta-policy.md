@@ -75,8 +75,10 @@ some por reimportação de lista.
 
 - **Quality rating** por número (verde/amarelo/vermelho) alimentado por bloqueio e denúncia. Vermelho
   derruba o teto e pode restringir o número.
-- **Messaging limit tier**: 250 → 1K → 10K → 100K → ilimitado contatos únicos por 24h. Lista grande
-  sai em rampa, não num dia.
+- **Messaging limit tier**: desde 2025-10-08 é do **portfólio** (todos os números da empresa
+  dividem o teto): 250 → 2K → 10K → 100K → ilimitado contatos únicos por 24h. Campo
+  `whatsapp_business_manager_messaging_limit`. Lista grande sai em rampa, não num dia. Ligações de
+  voz exigem ≥ 2K (`whatsapp-calling.md`).
 - Produto que dispara em massa **precisa** de: ritmo respeitando o tier, leitura da nota antes e
   durante, pausa automática na queda, e kill switch manual.
 - Num SaaS multi-tenant onde cada cliente tem WABA própria, o estrago começa no número do cliente —

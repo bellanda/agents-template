@@ -244,7 +244,9 @@ Padronizadas em 2026-10-01 (código canônico = kailos, salvo onde indicado). N�
 | Hub de configurações `?settings=` (empresa, membros, equipes, IA…)  | `references/settings-dialog.md`                   |
 | Módulo com muitas áreas → 1 item na sidebar + hub de cards          | `references/module-hub.md`                        |
 | Equipes (filas humanas do atendente de IA): grid de cards + editor  | `references/queues-editor.md`                     |
+| Horário de funcionamento semanal (grupos de dias com o mesmo horário) | `references/business-hours-editor.md` (+ `business-hours-groups.ts`) |
 | Inbox WhatsApp `/chat` (conversas, janela, envio otimista, SSE)     | `references/whatsapp-inbox.md`                    |
+| Ligação recebida do WhatsApp (diálogo, push tocando, seção Ligações) | skill `integrations` → `whatsapp-calling.md`      |
 | Config do agente de IA do tenant (Markdown + ChatGPT + versões; tools como permissões) | `references/agent-instructions.md` (template `agent-config/`) |
 | Chat de IA streaming (`ai-elements/`) — o `chat/` de app é só ref.  | skill `ai-agents` → `frontend-chat.md`            |
 | Documento imprimível / PDF                                          | `references/printing.md`                          |
@@ -287,6 +289,9 @@ Confirme cada item do Modo 1 satisfeito + `tsgo --noEmit` e build do projeto ver
   permissão no akmeo; template canônico `agent-config/`).
 - `references/queues-editor.md` — Equipes: grid de cards + editor one-page (`FormDialog xl`, dados |
   membros com dnd-kit, rodapé Excluir/Salvar); kailos canônico, emporion alinha.
+- `references/business-hours-editor.md` + `references/business-hours-groups.ts` — editor semanal agrupado
+  (define o horário uma vez e aplica a vários dias; chips + presets + faixas; dado por dia inalterado,
+  grupos derivados por helpers puros; validação pt-BR; emporion canônico, kailos portado).
 - `references/whatsapp-inbox.md` — inbox `/chat` do kailos (layout lista/janela, SSE keyed por ORG e
   nunca pelo contato ativo, envio otimista, tema `--wa-*`); nexarena adota sem equipes.
 - `references/feedback-states.md` — `EmptyState`, erro≠vazio (`ErrorState`), `NetworkStatusBanner`,

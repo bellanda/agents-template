@@ -104,8 +104,11 @@ export function getVisibleSections(can: (p: Permission) => boolean, isAdminLevel
   "IA" abria em branco. `org-tab` = a casca carrega a org (`useGet(orgId)`) e entrega ao
   `OrgTabSection`; `standalone` = seção que busca o próprio dado (`NonOrgSection`).
 - A ordem do array = ordem da nav = ordem do tour de onboarding ("passo N de M"). Primeiros passos
-  no kailos: Empresa → Membros → Equipes → Atendente de IA → WhatsApp (a IA precisa das equipes
-  para transferir; o número só liga depois de haver quem atenda).
+  no kailos: Empresa → Membros → Equipes → Atendente de IA → Templates do WhatsApp → **Ligações**
+  → WhatsApp Business (a IA precisa das equipes para transferir; o número só liga depois de haver
+  quem atenda). App com WhatsApp tem as 4 seções do canal nessa ordem — Atendente de IA,
+  Templates, Ligações (`?settings=calls`, skill `integrations` → `whatsapp-calling.md`), WhatsApp
+  Business (decisão do usuário 2026-10-27).
 - Cada app mantém **suas** seções/gates (emporion/nexarena/akmeo/promoservice têm conjuntos
   diferentes); o que é padrão é o **mecanismo** (`id/label/group/icon/gate/render` +
   `getVisibleSections`) e a casca.

@@ -1,6 +1,6 @@
 ---
 name: integrations
-description: PORTÃO obrigatório de integrações com plataformas externas de terceiros (hoje Meta — Facebook Login for Business, WhatsApp Business Cloud API, Instagram Graph; cresce com Stripe/Mercado Pago/etc no futuro). INVOCAR ANTES de criar/alterar QUALQUER integração — novo endpoint `/webhooks/meta/{deauthorize,data-deletion}` ou `/webhooks/whatsapp`, `FB.login`/Embedded Signup no frontend, exchange de `code` do Embedded Signup, validação HMAC de webhook (`signed_request`, `X-Hub-Signature-256`), gravação de `facebook_user_id` em `portal_connections`, popular `META_APP_SECRET`/`WHATSAPP_WEBHOOK_VERIFY_TOKEN` (.env) ou `meta_app_id`/`meta_es_config_id` (yaml). INVOCAR TAMBÉM para qualquer ENVIO de mensagem e política de plataforma — janela de serviço de 24h, template (criar/submeter/acompanhar aprovação/enviar), campanha ou disparo em massa, opt-in/opt-out de contato, quality rating e teto do número, preparar submissão ao App Review, ou mexer em prompt de agente de IA que fala com cliente final (disclosure). Checklist de invariantes (1 Meta App por SaaS, HMAC com `compare_digest`, webhook 200 em <10s, opt-in e janela de 24h, nada de segredo/assinatura em log) + roteia pras references profundas. NÃO confundir com o gate `auth` (login do usuário no SaaS) — aqui é integração SaaS↔plataforma externa.
+description: PORTÃO obrigatório de integrações com plataformas externas de terceiros (hoje Meta — Facebook Login for Business, WhatsApp Business Cloud API, Instagram Graph; cresce com Stripe/Mercado Pago/etc no futuro). INVOCAR ANTES de criar/alterar QUALQUER integração — novo endpoint `/webhooks/meta/{deauthorize,data-deletion}` ou `/webhooks/whatsapp`, `FB.login`/Embedded Signup no frontend, exchange de `code` do Embedded Signup, validação HMAC de webhook (`signed_request`, `X-Hub-Signature-256`), gravação de `facebook_user_id` em `portal_connections`, popular `META_APP_SECRET`/`WHATSAPP_WEBHOOK_VERIFY_TOKEN` (.env) ou `meta_app_id`/`meta_es_config_id` (yaml). INVOCAR TAMBÉM para qualquer ENVIO de mensagem e política de plataforma — janela de serviço de 24h, template (criar/submeter/acompanhar aprovação/enviar), campanha ou disparo em massa, opt-in/opt-out de contato, quality rating e teto do número (agora do portfólio, `whatsapp_business_manager_messaging_limit`), LIGAÇÕES DE VOZ do WhatsApp (Calling API, webhook `calls`, WebRTC no navegador, `pre_accept`/`accept`, quem atende, push tocando, botão de ligação, seção "Ligações"), preparar submissão ao App Review, ou mexer em prompt de agente de IA que fala com cliente final (disclosure). Checklist de invariantes (1 Meta App por SaaS, HMAC com `compare_digest`, webhook 200 em <10s, opt-in e janela de 24h, nada de segredo/assinatura em log) + roteia pras references profundas. NÃO confundir com o gate `auth` (login do usuário no SaaS) — aqui é integração SaaS↔plataforma externa.
 ---
 
 # Integrations — O Portão (plataformas externas)
@@ -31,6 +31,10 @@ também.
   Transferências de SEGURANÇA (flood/mensagem gigante `abuse_*`, teto de gasto, manipulação
   `manipulation_suspected`) usam o mesmo caminho de handoff, com nota interna e rótulo próprio no
   inbox → skill `ai-agents` → `references/chatbot-security.md`.
+- [ ] **5. Ligações de voz do WhatsApp** — webhook `calls`, SDP só no Valkey, WebRTC no navegador
+  (`pre_accept`+`accept` com o MESMO SDP), lista de quem atende, push tocando, `GET /active`,
+  ajustes do número (`calling.status`, `call_icon_visibility`), botão de ligação, seção
+  "Ligações" → **`references/whatsapp-calling.md`**.
 
 ## Invariantes não negociáveis (sempre)
 
@@ -89,4 +93,5 @@ também.
 - `references/meta-app-setup.md` — runbook técnico completo (código backend + frontend, HMAC, troubleshooting).
 - `references/meta-policy.md` — política de plataforma: janela 24h, categorias, opt-in/opt-out, qualidade do número, disclosure de IA, App Review.
 - `references/whatsapp-campaigns.md` — template automático na chegada do lead + campanha em massa (declaração de opt-in da lista, ritmo pelo tier, pausa por qualidade, kill switch), criação/envio de template, classificação de erros da Meta. Canônico kailos.
+- `references/whatsapp-calling.md` — ligações de voz do WhatsApp (Calling API) atendidas no app via WebRTC: requisitos da Meta (teto ≥2K do portfólio, campo `calls` no webhook, sem coexistência), ajustes do número (só liga/desliga, ícone sempre `DEFAULT`), botão de ligação, fluxo connect→answer→terminate, lista de quem atende, push tocando (Android × iOS), seção "Ligações". Canônico kailos (v1 emporion).
 - `references/human-handoff-queues.md` — equipes (filas humanas) e handoff do agente de IA (schema, tool, bloco de prompt, SLA/rodízio, API, UI; "Equipes" na tela, `queue` no código).

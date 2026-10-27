@@ -47,7 +47,11 @@ envio → nunca reenvia, mesmo após crash), `whatsapp_campaign_imports`.
 - Cron de 1 min publica `cron.whatsapp.campaign_tick`; consumer serial por org (trava Valkey).
 - Lote = min(orçamento diário do tier − contatos únicos com template nas últimas 24h, teto por
   minuto). Tier + qualidade lidos da Graph (`GET /{phone_number_id}?fields=quality_rating,
-  messaging_limit_tier`), cache 1h; sem leitura → assume **250/dia**.
+  whatsapp_business_manager_messaging_limit,messaging_limit_tier`), cache 1h; sem leitura →
+  assume **250/dia**. **O teto é do portfólio desde 2025-10-08**: o número devolve
+  `whatsapp_business_manager_messaging_limit` (ex.: `TIER_2K`) e NÃO devolve mais
+  `messaging_limit_tier` — ler só o campo antigo trava a campanha em 250/dia (kailos/Promocar,
+  achado 2026-10-27). Prefira o campo novo, com o antigo de fallback.
 - **Pausa automática:** qualidade RED (`quality_red`) ou rebaixamento/FLAGGED (`quality_yellow`),
   erro `131048` (limite de spam), >20% de falhas nos últimos 50 envios (mín. 10). Retomar dá 409
   com qualidade ≠ GREEN.
@@ -167,5 +171,5 @@ duplicar"). O que existe é **devolver a vez** (`release_claim`, o destinatário
 - `whatsapp_business_management` na Configuration do Embedded Signup.
 - Webhook assinando `message_template_status_update`, `template_category_update`,
   `message_template_quality_update` e `phone_number_quality_update`.
-- Confirmar contra a doc atual os campos `quality_rating`/`messaging_limit_tier` (alternativa:
-  `whatsapp_business_manager_messaging_limit`).
+- Teto: `whatsapp_business_manager_messaging_limit` (portfólio, confirmado em prod 2026-10-27);
+  `messaging_limit_tier` ficou só como fallback de leitura.
