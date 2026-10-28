@@ -353,6 +353,11 @@ export function FormDialog({
 
   const handleSubmit = (event: React.FormEvent<HTMLFormElement>) => {
     event.preventDefault();
+    // The dialog is portaled out of the DOM, but React synthetic events bubble along the
+    // REACT tree: a FormDialog opened from inside another <form> (e.g. "Solicitar alteração"
+    // inside the event editor, nexarena 2026-10-28) would also fire the outer form's onSubmit
+    // and save it. The dialog's submit is always its own.
+    event.stopPropagation();
     blurActiveElement();
     onSubmit?.(event);
   };

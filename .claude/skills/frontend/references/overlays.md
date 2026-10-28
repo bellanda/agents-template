@@ -63,6 +63,12 @@ Salvar/Cancelar. Fonte: `references/form-dialog.tsx`. Fundamentação e verifica
 | `lg`   | `sm:max-w-lg lg:max-w-2xl`           | **default** — form médio                 |
 | `xl`   | `sm:max-w-lg lg:max-w-3xl xl:max-w-4xl` | snippet/code/table-heavy, quick-create |
 
+**O submit do `FormDialog` é só dele** (`stopPropagation` no `handleSubmit`, 2026-10-28): o dialog vai
+para um portal, mas o evento sintético do React borbulha pela ÁRVORE DO REACT. Um `FormDialog` aberto de
+dentro de outro `<form>` (o "Solicitar alteração" dentro do editor de evento do Nexarena) disparava
+também o `onSubmit` do form de fora e salvava o evento inteiro. Teste de regressão em
+`form-dialog.test.tsx` ("does not submit an enclosing form through the portal").
+
 **Cada degrau recrava o `sm:` de propósito.** A base do `DialogContent` traz um `sm:max-w-*` próprio e
 `cn`/tailwind-merge **não** deduplica variantes diferentes — um `lg:max-w-2xl` solto perde toda a faixa
 de 640 a 1024px pro `sm:` da base. Foi bug real desta reference antes do `FormDialog` existir.
