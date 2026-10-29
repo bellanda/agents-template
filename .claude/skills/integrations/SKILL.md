@@ -35,6 +35,10 @@ também.
   (`pre_accept`+`accept` com o MESMO SDP), lista de quem atende, push tocando, `GET /active`,
   ajustes do número (`calling.status`, `call_icon_visibility`), botão de ligação, seção
   "Ligações" → **`references/whatsapp-calling.md`**.
+- [ ] **6. Telefone (com ou sem WhatsApp)** — canônico único da frota (só dígitos com DDI, celular
+  BR sempre com o 9), `core/phones.py` + `lib/utils/phone.ts` + `PhoneInput` copiados do kailos,
+  webhook = `canonical_phone("+" + wa_id)`, busca por `phone_lookup_variants`, migration de
+  normalização por app → **`references/phone-numbers.md`**.
 
 ## Invariantes não negociáveis (sempre)
 
@@ -60,6 +64,10 @@ também.
   - Sem isso a mensagem do cliente some: sem janela reaberta, sem IA/vendedor, e o opt-out por botão
     não registra (Kailos 2026-10-15).
   - Detalhe em `meta-invariants.md`.
+- **Telefone de pessoa = canônico de `core/phones.py`** em toda entrada (schema `PhoneNumber`,
+  webhook `canonical_phone("+" + wa_id)`, planilha/lead) e busca por `phone_lookup_variants`. O
+  `wa_id` de celular antigo vem SEM o 9 e a planilha COM: comparar o cru duplicou contato e tirou o
+  template do contexto da IA (Kailos 2026-10-29). Detalhe em `phone-numbers.md`.
 - **Origin de `postMessage`** (Embedded Signup): `new URL(origin).hostname` igual a `facebook.com`
   ou terminando em **`.facebook.com`** (com o ponto), `https:` — NUNCA `origin.endsWith("facebook.com")`
   cru (casa `evil-facebook.com`) e NUNCA lista fixa de 3 subdomínios (descartou o FINISH em prod,
@@ -93,5 +101,6 @@ também.
 - `references/meta-app-setup.md` — runbook técnico completo (código backend + frontend, HMAC, troubleshooting).
 - `references/meta-policy.md` — política de plataforma: janela 24h, categorias, opt-in/opt-out, qualidade do número, disclosure de IA, App Review.
 - `references/whatsapp-campaigns.md` — template automático na chegada do lead + campanha em massa (declaração de opt-in da lista, ritmo pelo tier, pausa por qualidade, kill switch), criação/envio de template, classificação de erros da Meta. Canônico kailos.
+- `references/phone-numbers.md` — telefone canônico da frota (com ou sem WhatsApp): regra, arquivos copiados do kailos (Python/TS/`PhoneInput`), entrada/busca/exibição, migration SQL de normalização do legado. Canônico kailos.
 - `references/whatsapp-calling.md` — ligações de voz do WhatsApp (Calling API) atendidas no app via WebRTC: requisitos da Meta (teto ≥2K do portfólio, campo `calls` no webhook, sem coexistência), ajustes do número (só liga/desliga, ícone sempre `DEFAULT`), botão de ligação, fluxo connect→answer→terminate, lista de quem atende, push tocando (Android × iOS), seção "Ligações". Canônico kailos (v1 emporion).
 - `references/human-handoff-queues.md` — equipes (filas humanas) e handoff do agente de IA (schema, tool, bloco de prompt, SLA/rodízio, API, UI; "Equipes" na tela, `queue` no código).

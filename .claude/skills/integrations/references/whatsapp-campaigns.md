@@ -17,7 +17,8 @@ exigido/sem preço). Nenhum caminho novo monta payload de template na mão.
 - Config por org em `organizations.settings.lead_auto_template = {enabled, template_id}`; UI = card
   "Envio automático para novos leads" na seção `whatsapp-templates` do hub (ToggleCard + Select só
   com templates APPROVED; aviso quando o template pede carro).
-- Os dois caminhos de ingestão (`leads_poller.poll` da Loja Conectada e `site_leads.create_site_lead`)
+- Os dois caminhos de ingestão (webhook da Loja Conectada `leads_webhook.ingest_lojaconectada_lead`,
+  único desde 2026-10-29 — sem coleta periódica —, e `site_leads.create_site_lead`)
   publicam no NATS `whatsapp.tasks.lead_auto_template` **depois do commit**, por lead novo com
   contato. Falha de envio nunca derruba a ingestão.
 - Envio "na hora, qualquer horário" (decisão do usuário).
@@ -60,6 +61,52 @@ envio → nunca reenvia, mesmo após crash), `whatsapp_campaign_imports`.
 - **Parar** = `cancelled` (kill switch). Prévia (`/preview`) mostra "X serão enviados / Y pulados
   (motivo)" antes de iniciar.
 - Permissão `whatsapp:campaign` (só admin por default).
+
+**Lotes programados + janela de envio + sugestão da IA** (decisão do usuário 2026-10-29; kailos
+migration `20261029120000_whatsapp_campaign_pacing`; módulos `campaigns/pacing.py` (puro),
+`batch_runner.py`, `pacing_suggestion.py`, `schedule_view.py`). Lista grande numa campanha só, em
+vez de micro-campanhas à mão: menos risco de bloqueio e respostas espaçadas para o atendimento humano.
+- **Sem scheduler novo.** O mesmo tick de 1 min; o "quando" é `whatsapp_campaigns.next_batch_at`
+  no Postgres (sobrevive a deploy/restart do Valkey, aparece na tela). O cron só publica se há
+  campanha `running` **vencida** (`next_batch_at IS NULL OR <= now()`); entre lotes custa zero.
+- **Ritmo** = `batch_size` (1–1000; lote de 1 vale para teste, o mínimo 5 travou o 1º uso real
+  em 2026-10-29) + `batch_interval_minutes` (5–1440), nulos juntos = modo
+  contínuo (o de antes; campanhas antigas seguem nele). Lote conta ENVIOS (pulado não consome);
+  teto diário do tier e pausas automáticas continuam por cima.
+- **Janela própria da campanha** (`send_window_days VARCHAR(3)[]`, `send_window_start/end TIME`,
+  nulas juntas = qualquer horário): fora dela nada sai e retoma no próximo dia marcado às `start`.
+  Pré-preenchida do horário da loja (botão "Usar horário da loja"); a avaliação converte a janela no
+  dict de `business_hours.py` e reusa `current_slot_end`/`next_business_opening`.
+- **Grade:** próximo = `scheduled_at` do lote anterior + intervalo; se já passou (travou por
+  teto/janela), agora + intervalo — dois lotes nunca colados. Depois alinha à janela. Retomar com a
+  grade já vencida sai na hora. Início agendado = `running` + `next_batch_at` futuro + 0 lotes (sem
+  status novo; até 30 dias).
+- **Histórico:** `whatsapp_campaign_batches` (no máx. 1 aberto por UNIQUE parcial; contadores por
+  GROUP BY nos destinatários, `recipients.batch_id` carimbado no claim) e `whatsapp_campaign_events`
+  (`created|started|scheduled|paused|resumed|pacing_changed|completed|cancelled`, ator NULL =
+  automático) gravado na MESMA instrução da transição (CTE) — estado e história nunca divergem.
+- **IA sugere, código garante:** `POST /pacing-suggestion` junta fatos (teto e quanto resta hoje,
+  qualidade, fila de outras campanhas, horário da loja, atendentes ativos, taxa de resposta 90 d —
+  <50 envios = estimativa 15%) → Haiku `complete_structured` (prompt estático neutro, fatos em
+  `<fatos>`) → código limita às faixas e calcula a projeção (a IA nunca calcula datas). Falha,
+  timeout 20 s ou teto de gasto → heurística determinística (`source: "calculated"`). A rota usa
+  `Depends(get_conn_scope)` (escopo por fase), nunca `get_conn` segurando conexão durante o LLM.
+- **Pedido livre do lojista** (`notes` ≤1000, campo "O que a IA deve saber sobre o envio?" já na
+  etapa dos dados e reeditável no passo Ritmo/"Alterar ritmo"; pedido do usuário 2026-10-29): vai
+  delimitado em `<pedido_da_empresa>` no FIM do prompt e **vence os critérios de conforto** (teste
+  "5 a cada 10 min agora", "fechar o mês até sábado"), nunca o teto diário nem as faixas. Os fatos
+  levam `agora` (dia da semana + data/hora no fuso da loja) para prazos. Intervalo da IA = múltiplo
+  de 5 em 5–1440 (os atalhos da tela são só atalhos). Sem IA, a sugestão calculada avisa na
+  explicação que o pedido não entrou. O pedido entra na query key do front (texto novo = sugestão nova).
+- **Projeção** (`POST /pacing-projection`, puro, front chama com debounce 300 ms): lotes previstos,
+  término, `daily_limit_warning` quando o acumulado de 24 h (ou um lote sozinho) passa do teto.
+  O `enabled` da query entra NO MESMO debounce do input: ligado na hora com input atrasado, o
+  front postava o valor inválido anterior (422 + toast; kailos 2026-10-29). Erro fica inline
+  (`meta.silentError`).
+- **Tela:** criação em passos no mesmo `FormDialog` (… → Ritmo com carregamento + checklist dos fatos
+  → sugestão editável → Prévia com "Iniciar agora"/"Agendar início"); detalhe com linha de estado
+  viva + UMA linha do tempo com divisor "Agora" (ocorreu: eventos + lotes; em andamento; vai ocorrer:
+  próximos lotes esmaecidos), lote clicável filtra os destinatários (`?batch=n`), "Alterar ritmo".
 
 **"Enviar para todos"** (decisão do usuário 2026-10-15; migration `20261015121000_whatsapp_campaign_send_all_and_fallback`, colunas `ignore_recent_activity` e `fallback_template_id`, mais `whatsapp_campaign_recipients.template_id` e novos `skip_reason`):
 - Caixa opcional, desmarcada por padrão. Fica persistida em `whatsapp_campaigns.ignore_recent_activity`.

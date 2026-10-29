@@ -166,6 +166,10 @@ standalone e são linkados no roteamento (fim do arquivo).
   `lib/utils/masks.ts` (+ `formatX`, `isValidCNPJ`, `isValidPlate`, `unmaskPlate`), nunca regex solta
   no call site. Canônico = kailos (`lib/utils/masks.ts` + `ui/masked-input.tsx`); os outros apps
   sincronizam com ele (placa entra em todos). Dinheiro **não** é máscara compartilhada (por projeto).
+  **Telefone tem módulo próprio** (padrão 2026-10-29): digitar = `PhoneInput` (`ui/phone-input.tsx`),
+  exibir = `formatPhone` de `lib/utils/phone.ts` em TODA tela (nunca o valor cru; o `formatPhone`
+  antigo de `masks.ts` saiu), validar = `phoneFieldError`, link = `whatsAppUrl`/`telUrl`. A API
+  devolve o canônico ("5535991107807") → skill `integrations` → `references/phone-numbers.md`.
 - [ ] **8i. Estados de feedback — um componente por situação.** Vazio → **`EmptyState`**
   (`ui/empty-state.tsx`; o mesmo do `DataList`; nunca "Nenhum…" em `<p>` solto); **query que falhou
   ≠ vazio** (`ErrorState` + "Tentar novamente"; `RouteErrorFallback` p/ rota); sem rede →

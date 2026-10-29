@@ -47,6 +47,11 @@ paths:
   `type:"button"` da resposta a template no WhatsApp apagou as mensagens dos clientes no Kailos
   (2026-10-15). Valor novo que a app trata de verdade entra no CHECK e na constante Python, os dois
   na mesma migration. Gate `integrations` → `meta-invariants.md`.
+- **Telefone**: canônico único da frota (só dígitos com DDI, sem `+`; celular BR SEMPRE com o 9)
+  via `core/phones.py` copiado do kailos — schema de entrada `PhoneNumber`/`OptionalPhoneNumber`,
+  webhook `canonical_phone("+" + wa_id)`, planilha/lead `canonical_phone`, busca
+  `phone_lookup_variants` + `ORDER BY array_position`. PROIBIDO normalizador local e match por
+  sufixo. Gate `integrations` → `phone-numbers.md`.
 - **JSONB**: orjson pool codec resolve. Pass `dict`/`list` direto; NUNCA `orjson.loads/dumps` manual. Gate `database`.
 - **Concurrency**: fan-out, timeout, file I/O em handler async, capacity limiter, memory stream, cancel shield → SEMPRE skill `anyio-concurrency`.
 - **Cache + messaging**: TTL/contador/sliding window/invalidation (Valkey) e Pub/Sub/Queue/JetStream/KV (NATS) → gate `infra`. Valkey UDS only (`unix:///run/valkey/valkey.sock`), `decode_responses=False`, AOF everysec.

@@ -72,6 +72,9 @@ Refs sem prefixo = `skills/frontend/references/`.
 - **Valor de KPI nunca corta** (2026-10-09): `Card` tem `overflow-hidden`, então valor é `whitespace-nowrap tabular-nums` com tamanho pelo container do PRÓPRIO card (`@container` + `text-lg @[14rem]:text-xl @[18rem]:text-2xl @[24rem]:text-3xl`) e grade `repeat(auto-fill,minmax(Nrem,1fr))` — o card desce de linha em vez de espremer. Rótulo pode truncar; valor não.
 - **Code blocks**: `<pre>`/`<code>` com `whitespace-pre-wrap break-all`, NUNCA `overflow-x-auto` (vertical ok).
 - **CSP**: todo host externo novo = linha em `config/nginx/snippets/security-headers-base.conf` **no MESMO commit**, na diretiva certa (`fetch`→`connect-src` · `<script>`→`script-src` · `<iframe>`→`frame-src` · `<audio>/<video>`→`media-src` · `<img>`→`img-src`). SDK de terceiro costuma pedir 2–3 diretivas; diretiva declarada NÃO herda de `default-src` (inclua `'self'`). `fetch` de URL da própria página (`blob:` do `createObjectURL`, data URL montada no submit) também passa por `connect-src` — `blob:` em `img-src` cobre o preview, não o envio. Sintoma de esquecer: a tela não quebra, só não salva — o erro fica no console do usuário. Ref `api-and-csp.md`.
+- **Telefone**: exibir SEMPRE `formatPhone` (`lib/utils/phone.ts`), digitar `PhoneInput`, validar
+  `phoneFieldError`, link `whatsAppUrl`/`telUrl`. A API devolve o canônico ("5535991107807");
+  valor cru na tela ou `wa.me`/`tel:` montado à mão = PROIBIDO. Gate `integrations` → `phone-numbers.md`.
 - **DateTime**: API entrega ISO 8601 com `Z`. NUNCA offset math manual. Display via `Intl.DateTimeFormat` em utility module (`formatDateTime`, `formatDate`). Null/invalid → `"—"`.
 
 ## TanStack Router
