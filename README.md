@@ -99,6 +99,7 @@ backend/
     │                          # tenant instructions, tool envelope, checkpointer
     ├── core/logging.py        # structlog stack (NDJSON prod / console dev)
     ├── core/exceptions.py     # BadRequestError etc (HTTPException subclasses)
+    ├── core/phones.py         # canonical phone (E.164 digits, BR 9th digit): PhoneNumber, canonical_phone, phone_lookup_variants
     ├── middlewares/           # LoggingMiddleware (request_id + http_request line)
     ├── models/agents/         # Pydantic models: chat_history, usage, checkpoint, agent_config(+version)
     ├── schemas/agents/        # DTOs of /agents/{id}/config
