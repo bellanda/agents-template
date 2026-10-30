@@ -147,6 +147,17 @@ O escopo/atendente escolhido (`scope`, `userId`) é salvo em localStorage **por 
 só preenche o vazio). Canônico: `lib/whatsapp/chat-filter-preference.ts`. O helper de teste de
 route-guards precisa passar `search` ao `beforeLoad`.
 
+## Filtro por campanha e por resposta (kailos 33f6758 + emporion, 2026-10-30)
+
+Pedido do usuário: navegar as conversas de uma campanha. `ConversationCampaignFilter` no topo da
+lista, só para quem tem a permissão de campanha (o backend devolve 403 sem ela): "Campanha" (todas +
+as 100 mais recentes) e, com uma escolhida, "Resposta" (cada botão do template / "Sem resposta" =
+`__none__`). Mora na URL (`campaign`, `reply`) para o "Ver conversas" do detalhe da campanha abrir a
+caixa já filtrada; trocar a campanha zera a resposta. Duas colunas numa linha só, celular incluído.
+Backend: `GET /whatsapp/conversations?campaign_id=&campaign_reply=` (`campaign_reply` sem
+`campaign_id` = 400; campanha de outra org = lista vazia). Comportamento por botão: gate
+`integrations` → `whatsapp-campaigns.md` §3b.
+
 ## EventCard e contador do rodízio (kailos, 2026-10-09)
 
 - Hora do `EventCard` **com segundos** (transições no mesmo minuto ficavam ambíguas).

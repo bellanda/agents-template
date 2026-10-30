@@ -96,7 +96,10 @@ ligação"), salvo como `message_type="interactive"` + `metadata.send_kind="call
   `duration_seconds`, `metadata` = payload cru SEM SDP). `whatsapp_call_answerers(organization_id,
   user_id)` PK composta; efetivos = JOIN com os membros ativos da org.
 - Rotas `/organizations/{org_id}/whatsapp/calls`: `GET /stream` (SSE só `call.*`), `GET /active`
-  (a ligação tocando para mim — usado ao abrir pelo push e ao reconectar, SSE não tem replay),
+  (**lista** `{calls: [...]}`: TODAS as que tocam para mim e não recusei + a que EU atendi com
+  `status` `in_progress`; usado ao abrir pelo push e ao reconectar, SSE não tem replay),
+  `GET ""` (tela "Ligações": `PagedResponse`, `scope=live|history`, `status=`, `search=` por
+  nome/telefone, permissão `whatsapp:read`, índice `ix_whatsapp_calls_org_created`),
   `GET /{id}/offer`, `POST /{id}/answer|decline|terminate`, `GET /by-contact/{contact_id}`
   (marcadores da conversa), `GET|POST /settings`, `GET|PUT /answerers`.
 - SSE por usuário (NATS): `call.incoming`, `call.answered` (com `answered_by_name`),
@@ -112,7 +115,7 @@ ligação"), salvo como `message_type="interactive"` + `metadata.send_kind="call
 - `sw.js`: cada push = notificação **NOVA** (tag `call:<id>:<Date.now()>`) depois de fechar as do
   mesmo group (`closeGroup`); `requireInteraction`, `vibrate`, ações "Atender"/"Recusar" (viram
   `&intent=answer|decline` na URL — o SW não tem token para chamar a API). Aba visível = não mostra
-  (o diálogo já está na tela).
+  (o painel já está na tela).
 - **Android/desktop (FCM):** re-push a cada **~4 s** (abaixo dos ~5 s que o Android deixa o banner
   heads-up na tela). Só notificação NOVA faz o banner descer de novo + vibrar + tocar; a 1ª versão
   (tag FIXA + `renotify`) só atualizava a da bandeja e o banner recolhia — o usuário pediu "estilo
@@ -123,17 +126,31 @@ ligação"), salvo como `message_type="interactive"` + `metadata.send_kind="call
   bloqueado — não prometa. Para atender, o app precisa estar aberto (o toque na notificação abre).
 - Ao resolver: push `whatsapp_call_settled` silencioso no mesmo group ("Fulano atendeu"/"Encerrada"),
   que fecha a que tocava (`closeGroup`) — no Chrome todo push precisa mostrar algo.
-- Abrir pelo push: o provider global lê `?call=`, consulta `GET /active` e abre o diálogo; limpa os
+- Abrir pelo push: o provider global lê `?call=`, consulta `GET /active` (a do `?call=` vence; as demais tocam também) e mostra o painel; limpa os
   params com `replace`.
 
 ## Frontend
 
+- **Várias ligações ao mesmo tempo** (2026-10-30; o backend sempre aceitou, tudo é por `call_id` e
+  `claim_for_answer` dá a vitória ao primeiro): `useCallSession` guarda `ringing[]` (um card por
+  ligação) + `engaged` (a UMA que este aparelho atende — um microfone só). Durante uma ligação as
+  novas continuam tocando com Atender desabilitado ("Você já está em uma ligação") para outro colega
+  pegar; `answer()` é no-op com `engaged`. `call.answered` de outro / `call.ended` / `call.declined`
+  remove SÓ aquela ligação e sai um toast curto (sonner); estourou 65 s sem `ended` → some como perdida.
 - `CallProvider` montado no shell autenticado (stream PRÓPRIO; o stream do chat só existe na tela de
-  chat). `useCallSession` = máquina `idle → ringing → connecting → active → ended`, mais
-  `answered_elsewhere` ("Fulano atendeu e está falando", cronômetro, fecha em ~5 s).
-- `IncomingCallDialog`: Dialog (tela cheia no celular), anel pulsando no avatar
-  (`prefers-reduced-motion` desliga), Atender/Recusar grandes, mudo, cronômetro, desligar; toque via
-  Web Audio (sem arquivo); autoplay bloqueado → "Toque na tela para ativar o som".
+  chat); ressincroniza com `GET /active` de forma aditiva (só soma, nunca remove) e invalida a lista
+  da tela "Ligações" a cada `call.*`.
+- **`CallDock`: painel flutuante NÃO modal** (substituiu o `IncomingCallDialog`, que era um Dialog
+  aberto na conversa inteira e travava a tela de TODOS os atendentes). Sem overlay, sem focus trap:
+  canto inferior direito no PC, faixa no topo no celular (`env(safe-area-inset-top)`). Card por
+  ligação tocando (nome/telefone, Atender, Recusar; anel `call-ring` motion-safe) e barra compacta
+  da ativa (cronômetro, mudo, desligar, "abrir conversa" → `/chat?contact=`). Toque via Web Audio
+  (sem arquivo); autoplay bloqueado → "Toque na tela para ativar o som". `ActiveCallBadge`/
+  `activeCallStore` seguem com a ativa deste aparelho.
+- Tela **"Ligações"** (`/organizations/$id/ligacoes`, item no menu: `whatsapp:read` + loja com
+  ligações ligadas ou já com ligação registrada): bloco "Em andamento agora" (leaf memoizado,
+  `refetchInterval` 5 s + invalidação pelos `call.*`) e Histórico com `ListToolbar` + `DataList`
+  (busca e status na URL, modo por tela); clicar abre a conversa.
 - Seção **"Ligações"** (`?settings=calls`) em "Primeiros passos", **entre "Templates do WhatsApp" e
   "WhatsApp Business"**: requisitos ✓/✗, "Receber ligações" (só liga/desliga), "Quem atende" (multi-seleção de membros, padrão `QueueMembersPanel`), "Neste aparelho"
   (tocar aqui — localStorage `<app>:…`; push; testar microfone; testar toque).

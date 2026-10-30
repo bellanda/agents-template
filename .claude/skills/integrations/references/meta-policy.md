@@ -67,9 +67,23 @@ contestar. Default do flag é **`false`** — assumir aceite de quem nunca foi p
 
 ## Opt-out é obrigatório
 
-Inbound com palavra de saída (`PARAR`, `SAIR`, `CANCELAR`, `STOP`) marca opt-out **permanente** para
-marketing. Ignorar isso derruba a nota do número mais rápido que qualquer outra coisa. Opt-out nunca
-some por reimportação de lista.
+Inbound com palavra de saída (`PARAR`, `SAIR`, `CANCELAR`, `STOP`) ou o botão "Parar promoções" marca
+opt-out para marketing **na hora**. Ignorar isso derruba a nota do número mais rápido que qualquer
+outra coisa.
+
+**Reversível, mas só pela pessoa** (decisão do usuário 2026-10-30: "não deve ser definitivo… se passe
+um ano, a pessoa volta"). Desfazem o opt-out SÓ:
+- o novo consentimento explícito vindo do **próprio WhatsApp** da pessoa (frase do link/QR, "sim" em
+  resposta à pergunta de opt-in da loja);
+- a **reativação manual** da equipe ("Voltar a receber promoções" no contato) com **evidência
+  obrigatória** (400 sem ela) de quando e como o cliente pediu para voltar.
+
+Em ambos a evidência gravada anexa `(reativado; tinha pedido para parar em dd/mm/aaaa)`: a coluna
+da saída volta a NULL, e essa nota é a trilha que sobra para a Meta. **Nunca desfazem**: reimportação
+de planilha (mesmo com a declaração de opt-in), lead novo, "Enviar para todos", lote, página pública
+sem verificação do telefone (um terceiro reinscreveria quem saiu). Canônico: kailos
+`services/contacts/marketing_consent.py`; emporion `opt_in_service.reactivation_evidence` +
+`contact_repository.clear_opt_out`.
 
 ## Qualidade e teto do número
 
@@ -122,7 +136,8 @@ genérica; a segunda é gravação que não mostra o app.
 - **NUNCA** mensagem business-initiated sem opt-in registrado com origem e evidência.
 - **NUNCA** disparo frio pedindo permissão — é a violação pedindo licença para si mesma.
 - **NUNCA** default `true` em flag de opt-in.
-- **NUNCA** marketing para quem deu opt-out, mesmo que reapareça numa lista nova.
+- **NUNCA** marketing para quem deu opt-out, mesmo que reapareça numa lista nova — só volta pela
+  própria pessoa ou reativação manual com evidência.
 - **NUNCA** guardrail de identidade do agente antes do texto configurável do tenant.
 - **NUNCA** declarar no App Review capacidade sem call site.
 - **NUNCA** campanha sem rampa, sem leitura de qualidade e sem kill switch.

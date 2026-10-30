@@ -100,7 +100,8 @@ Tudo abaixo é texto montado SEM LLM, no dispatcher/serviço (não no prompt do 
   22 h contados da última resposta da IA. Passo 1 só se a resposta está `read` (e o cliente quieto
   >= 20 min) ou `delivered` há > 2 h; 1 ciclo por dia local por conversa (inbound novo reinicia o
   relógio mas não o passo 1 se já houve follow-up hoje); sem menu/lista; guard de estilo no texto
-  gerado com 1 regeneração; só em horário da loja (adia, ou pula se a janela de 24 h fecharia); tick
+  gerado com 1 regeneração (limite por passo, 2026-10-30: passos 2–3 entregam oferta + diferencial
+  da config da loja + pergunta de escolha, ver `integrations` → `human-handoff-queues.md`); só em horário da loja (adia, ou pula se a janela de 24 h fecharia); tick
   deduplicado por minuto entre workers (`SET NX` do minuto, fail-open).
 - **SLA pós-handoff da IA:** conversa entregue pela IA sem fala de vendedor desde o handoff entra no
   rodízio; o relógio começa no EVENTO de handoff (a despedida da IA outbound escondia cliente

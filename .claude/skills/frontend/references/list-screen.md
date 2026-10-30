@@ -294,7 +294,9 @@ foi **apagada** (2026-10-01) — é o menu `Ações`, nunca barra.
 Ação em lote (publicar, arquivar, exportar os marcados) é um `DropdownMenu` **"Ações" com badge da
 contagem** no slot `actions` do `ListToolbar`, antes do "Novo…" (`BulkActionsMenu`). O estado mora
 na TELA (`useListSelection`); o `DataList` só desenha o checkbox (`selection={{ selectedIds,
-onToggle }}`, no canto do card).
+onToggle }}`, no canto do card). **No desktop (`variant="table"`) a tabela ganha uma 1ª coluna de
+checkbox**, com "selecionar a página" no cabeçalho (indeterminado quando parcial); marcar não abre a
+linha (2026-10-30). Não passe `variant="stack"` só para ter checkbox: tabela no PC, card no celular.
 
 ```
 [ busca ][ Todo o estoque · 169 ][ ordenação ]         [ Ações 3 ▾ ][ Importar ][ Novo ]

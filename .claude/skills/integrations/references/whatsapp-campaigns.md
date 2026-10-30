@@ -60,6 +60,13 @@ envio → nunca reenvia, mesmo após crash), `whatsapp_campaign_imports`.
   contato, sem pausar.
 - **Parar** = `cancelled` (kill switch). Prévia (`/preview`) mostra "X serão enviados / Y pulados
   (motivo)" antes de iniciar.
+- **Pulados em três blocos** na prévia (`skip-groups.ts` + `CampaignSkipBreakdown`, kailos e
+  emporion, 2026-10-30): "Pediram para parar as promoções" (`opted_out`, com a garantia escrita:
+  nunca recebem, nem com "Enviar para todos"), "Contato recente" (`recently_contacted` +
+  `window_open`, que o "Enviar para todos" inclui) e "Outros motivos". O bloqueio é do backend em 3
+  pontos (classificação na criação, `_blocking_reason` na prévia/envio avulso e re-leitura do contato
+  no tick antes de cada lote); a tela só deixa visível. Reativação do opt-out → `meta-policy.md`
+  §"Opt-out é obrigatório".
 - Permissão `whatsapp:campaign` (só admin por default).
 
 **Lotes programados + janela de envio + sugestão da IA** (decisão do usuário 2026-10-29; kailos
@@ -138,6 +145,12 @@ vez de micro-campanhas à mão: menos risco de bloqueio e respostas espaçadas p
 - A IA usa o template **respondido**: `replied_to_wa_id` do `button` → template enviado, mais o carro
   do payload `tpl_interest:<template>:<carro>`. Só se não achar, usa o último template enviado.
 - O roteamento não muda: conversa ativa com vendedor vai para ele; senão, IA.
+- O que a resposta SIGNIFICA vem do template, nunca de nota fixa no código: ver §3b.
+
+**O que a IA de atendimento deve saber** (`whatsapp_campaigns.attendant_brief`, ≤1000, editável
+depois de criada): contexto da campanha escrito pela loja (data/horário do evento, condição). Vai
+truncado e entre aspas no bloco "MENSAGEM ATIVA". NÃO confundir com o "pedido livre" do ritmo, que só
+orienta a sugestão de lotes.
 
 ## 3. Templates — criar, sincronizar e enviar (kailos `services/portals/whatsapp/`)
 
@@ -181,11 +194,46 @@ Template criado fora do app só é logado; o próximo `sync` o traz. Os três ca
 Subscribe no painel da Meta (commit `1def2ad`).
 
 **Envio** (`evaluate_template` → `_blocking_reason` → `dispatch_evaluated_template`; `send_template` é o
-wrapper do envio avulso). Travas, nesta ordem: `not_approved`, `opted_out`, `no_opt_in`, `vehicle_required`,
+wrapper do envio avulso). Travas, nesta ordem: `not_approved`, `reply_actions_missing` (§3b), `opted_out`, `no_opt_in`, `vehicle_required`,
 `vehicle_without_price`, `missing_value` (variável vazia ou header sem foto). `dispatch_evaluated_template`
 deixa `MetaGraphError` subir CRU: o envio avulso traduz para o usuário, a campanha precisa do `code` para
 decidir entre pular o contato e pausar. `sender_kind` ≠ `human` para envio de sistema não contar como
 resposta de vendedor nas métricas.
+
+## 3b. Comportamento por resposta rápida (`reply_actions`, kailos 33f6758 + emporion, 2026-10-30)
+
+Incidente que originou (kailos prod 2026-10-29): todo quick reply virava `tpl_interest` + uma nota
+fixa "aceitou conversar, qualifique", e "Já comprei meu veículo" foi atendido como pós-venda, com
+follow-up no dia seguinte. Decisão do usuário: a LOJA define, por botão, o que acontece.
+
+- **Onde mora:** `whatsapp_templates.reply_actions` JSONB, uma entrada por quick reply
+  `{button_text, action, instruction, message, queue_id}`; nunca vai à Meta, editável após aprovado
+  (`PATCH /whatsapp/templates/{id}/reply-actions`, valida texto do botão, campos por ação e equipe da org).
+- **Ações:** `ai` (IA atende; `instruction` opcional da loja), `close` (manda `message` fixa em texto
+  livre, sem IA e sem follow-up), `record` (só registra), `handoff` (transfere para `queue_id` pelo
+  mesmo caminho do `handoff_to_human`), `opt_out` (derivado sozinho para "Parar promoções", texto
+  normalizado `parar promocoes`).
+- **Trava de envio:** quick reply sem entrada = `missing_reply_actions` → `_blocking_reason`
+  devolve `reply_actions_missing` logo depois de `not_approved` (avulso 409, criar campanha 409,
+  destinatário pulado, lead automático bloqueado). O front mostra o editor INLINE no próprio diálogo
+  de envio/campanha (`MissingReplyActionsGate`) — template criado direto na Meta e trazido pelo sync
+  cai aqui. Migration faz backfill: opt-out → `opt_out`; kinds de sistema → `ai`; `custom` fica só
+  com o opt-out (a loja preenche o resto).
+- **Registro:** `whatsapp_template_replies` (uma linha por resposta, `UNIQUE(inbound_message_id)` =
+  redelivery não reaplica; `source` tap | text | ai; liga ao destinatário pela `wa_message_id` do
+  template respondido). Casamento: toque (`context.id`) ou texto igual ao botão nos últimos 7 dias.
+- **Webhook** (`template_reply.process_inbound_reply`, ANTES do opt-out): `handled=True` = não
+  dispara a IA. `opt_out` NUNCA é `handled` (o descadastro segue no fluxo, inclusive com humano na
+  conversa — bug pego na revisão de 2026-10-30). Conversa com humano: só registra.
+- **IA:** o bloco "MENSAGEM ATIVA" lista cada botão e o comportamento (+ `attendant_brief`); se o
+  cliente ESCREVE o equivalente, a tool `record_template_reply(button_text)` registra e devolve o que
+  fazer (opt_out escrito descadastra de verdade).
+- **Follow-up:** gate `template_reply_closed` quando a última mensagem recebida foi resposta
+  `close`/`record`/`opt_out`; mensagem nova do cliente libera sozinho.
+- **Leitura:** `reply_summary` no detalhe da campanha (contagem por botão + sem resposta), filtro
+  `reply=<texto|__none__>` nos destinatários e filtro do inbox por campanha/resposta
+  (`GET /whatsapp/conversations?campaign_id=&campaign_reply=`, exige permissão de campanha; ref
+  `frontend` → `whatsapp-inbox.md`).
 
 ## 4. Erros da Meta → motivo em pt-BR (`meta_errors.py`, folha sem imports de serviço)
 

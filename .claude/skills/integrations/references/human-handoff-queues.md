@@ -182,7 +182,7 @@ relógio injetado, sem I/O):
 
 | Quem falou por último | Quem age | Etapas (após a última msg real) |
 | --- | --- | --- |
-| IA (`ai_handling`) | IA escreve ao cliente | 5 min (mensagem completa: tudo em que ajuda, só o que é verdade) · 1 h (gancho concreto) · 22 h (despedida leve antes da janela fechar) |
+| IA (`ai_handling`) | IA escreve ao cliente | 20 min após `read` (retoma o assunto + responde o que ficou pendente) · 3 h (ENTREGA algo: até 2 itens que cabem no que o cliente disse + 1 diferencial da config + pergunta de escolha) · 22 h ("peak-end": melhor opção + condição da loja + convite, nunca só "estamos à disposição") |
 | Vendedor (`human_handling` + atribuído) | NOTIFICA o vendedor (sino + push), nunca o cliente | 1 h · 6 h · 21 h ("a janela fecha em 3h — depois só template") |
 
 Invariantes (o bug clássico deste recurso é timer órfão / loop):
@@ -204,6 +204,18 @@ Invariantes (o bug clássico deste recurso é timer órfão / loop):
   automática) e responder só `NAO_ENVIAR`; aí nada sai e um marcador no Valkey (25 h,
   `mark/is_agent_followup_declined`) encerra TODAS as etapas daquela conversa. Carro do estoque que
   não apareceu na conversa é sugestão nova — nunca "passei pra lembrar do X".
+- **Follow-up que entrega valor (2026-10-30, kailos → emporion/nexarena):** "no follow up já entregar
+  uns filés". As regras de neuromarketing da régua do Insights viram o bloco `_VALUE_PLAYBOOK` do
+  prompt: dar antes de pedir, palavras do próprio cliente, número em vez de adjetivo, UM diferencial
+  por mensagem, pergunta de escolha, escassez só se for fato e nunca como ameaça. **Todo fato da loja
+  (diferencial, ressalva da garantia, quem negocia, horário) vem SÓ da configuração daquela loja**
+  (o prompt do atendente ao qual a tarefa é anexada); nada de loja fica fixo no código. Limite por
+  passo: 2 linhas no passo 1, 4 nos passos 2–3 (guard 3/5). Transcript junta rajada de fotos numa
+  linha ("(14 fotos)"). Kailos: passos 2–3 veem o estoque inteiro e terminam com `FOTOS: <ids>`; o
+  CÓDIGO filtra (estoque mostrado, com foto, ainda não visto na conversa via
+  `metadata.photo_vehicle_id`, teto 2/1) e manda 1 foto de capa com legenda por carro, com
+  `followup_step` (não move a âncora). Trailer em vez de `complete_structured`: tool forçada não
+  convive com reasoning na Anthropic.
 
 ## Bom senso: quando a IA NÃO responde (decisão do usuário 2026-10-16)
 

@@ -61,10 +61,12 @@ export interface DataListAction<T> {
   disabledReason?: (item: T) => string | undefined;
 }
 
-export interface DataListSelection {
+export interface DataListSelection<T = unknown> {
   selectedIds: ReadonlySet<string>;
   /** Recebe o `getRowId` da linha — a tela é dona do Set (ver `useListSelection`). */
   onToggle: (id: string) => void;
+  /** Nome acessível do checkbox da linha/card: "Selecionar {label}" (sem ele, um nome genérico). */
+  label?: (item: T) => string;
 }
 
 export interface DataListProps<T> {
@@ -120,13 +122,13 @@ export interface DataListProps<T> {
    * Seleção múltipla — opcional, e todo o comportamento novo fica atrás dela: as
    * telas que não passam `selection` renderizam exatamente como antes.
    *
-   * O checkbox é absoluto sobre o CARD, o que cobre `grid`, `stack` e o mobile de
-   * `table` de uma vez, sem tocar em nenhum `renderCard` de tela. A tabela do
-   * desktop fica de fora desta rodada: uma coluna a mais mexeria no header das
-   * ~15 telas que usam o default, e o consumidor real (estoque de veículos) é
-   * `variant="grid"`, que não tem tabela.
+   * Nos cards o checkbox é absoluto sobre o CARD, o que cobre `grid`, `stack` e o mobile
+   * de `table` sem tocar em nenhum `renderCard` de tela. Na tabela do desktop (só no
+   * `variant="table"`) vira a 1ª coluna, com "selecionar a página" no cabeçalho
+   * (indeterminado quando parcial) — 2026-10-30, quando a tela Leads de portal passou a
+   * ser tabela no PC. Telas sem `selection` seguem sem coluna extra.
    */
-  selection?: DataListSelection;
+  selection?: DataListSelection<T>;
   /** Query falhou: mostra o bloco de erro NO LUGAR do estado vazio.
    *  Com `{...usePagedList(...)}` os três chegam de graça pelo spread. */
   isError?: boolean;
@@ -247,6 +249,45 @@ function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }
 }
 
 /**
+ * Checkbox do cabeçalho: marca/desmarca a página visível. A seleção é da tela e só expõe
+ * `onToggle(id)`, então alterna apenas os ids que mudam de estado (todos marcados → desmarca
+ * todos; senão marca os que faltam).
+ */
+function PageSelectionBox<T>({
+  items,
+  getRowId,
+  selection,
+}: {
+  items: T[];
+  getRowId: (item: T) => string;
+  selection: DataListSelection<T>;
+}) {
+  const ids = items.map(getRowId);
+  const selectedCount = ids.filter((id) => selection.selectedIds.has(id)).length;
+  const allSelected = ids.length > 0 && selectedCount === ids.length;
+  const partial = selectedCount > 0 && !allSelected;
+
+  const togglePage = () => {
+    for (const id of ids) {
+      if (allSelected || !selection.selectedIds.has(id)) selection.onToggle(id);
+    }
+  };
+
+  return (
+    <label
+      aria-label="Selecionar a página"
+      className="flex size-8 cursor-pointer items-center justify-center"
+    >
+      <Checkbox
+        checked={partial ? "indeterminate" : allSelected}
+        onCheckedChange={togglePage}
+        className="data-[state=indeterminate]:border-primary data-[state=indeterminate]:bg-primary/40"
+      />
+    </label>
+  );
+}
+
+/**
  * Corpo compartilhado por `DataList` e `StaticDataList`: a tabela do desktop e a
  * pilha de cards do mobile, a partir da MESMA definição de coluna.
  *
@@ -274,7 +315,7 @@ function ResponsiveRows<T>({
   renderCard?: (item: T, context: { actions: ReactNode }) => ReactNode;
   variant: "table" | "grid" | "stack";
   tableFooter?: ReactNode;
-  selection?: DataListSelection;
+  selection?: DataListSelection<T>;
 }) {
   const cardsOnly = variant !== "table";
   const cardsClassName = cardsClassNameFor(variant);
@@ -306,10 +347,16 @@ function ResponsiveRows<T>({
    * Marcar NÃO dispara `onRowClick`: `isInteractiveClick` já fecha em `label` e
    * em `button`, e o Radix Checkbox é um `<button role="checkbox">`.
    */
-  const selectionBox = (id: string) =>
-    selection ? (
+  // Without `label`, card and table keep distinct generic names ("Selecionar" / "Selecionar
+  // linha"); with it both say "Selecionar <item>" — only one of them is visible per breakpoint.
+  const selectionLabel = (item: T, fallback: string) =>
+    selection?.label ? `Selecionar ${selection.label(item)}` : fallback;
+
+  const selectionBox = (item: T) => {
+    const id = getRowId(item);
+    return selection ? (
       <label
-        aria-label="Selecionar"
+        aria-label={selectionLabel(item, "Selecionar")}
         className="absolute top-1 left-1 z-10 flex size-11 cursor-pointer items-center justify-center"
       >
         <Checkbox
@@ -319,6 +366,7 @@ function ResponsiveRows<T>({
         />
       </label>
     ) : null;
+  };
 
   return (
     <>
@@ -328,6 +376,11 @@ function ResponsiveRows<T>({
           <Table>
             <TableHeader>
               <TableRow>
+                {selection && (
+                  <TableHead className="w-10">
+                    <PageSelectionBox items={items} getRowId={getRowId} selection={selection} />
+                  </TableHead>
+                )}
                 {desktopColumns.map((column) => (
                   <TableHead key={column.id} className={column.headClassName ?? column.className}>
                     {column.header}
@@ -342,7 +395,22 @@ function ResponsiveRows<T>({
                   key={getRowId(item)}
                   className={cn(onRowClick && "cursor-pointer")}
                   onClick={rowClick(item)}
+                  data-state={selection?.selectedIds.has(getRowId(item)) ? "selected" : undefined}
                 >
+                  {selection && (
+                    <TableCell className="w-10">
+                      {/* `label` + `button` estão em `isInteractiveClick`: marcar não abre a linha. */}
+                      <label
+                        aria-label={selectionLabel(item, "Selecionar linha")}
+                        className="flex size-8 cursor-pointer items-center justify-center"
+                      >
+                        <Checkbox
+                          checked={selection.selectedIds.has(getRowId(item))}
+                          onCheckedChange={() => selection.onToggle(getRowId(item))}
+                        />
+                      </label>
+                    </TableCell>
+                  )}
                   {desktopColumns.map((column) => (
                     <TableCell key={column.id} className={column.className}>
                       {column.cell(item)}
@@ -379,7 +447,7 @@ function ResponsiveRows<T>({
                 onClick={rowClick(item)}
                 className={cn(selection && "relative")}
               >
-                {selectionBox(getRowId(item))}
+                {selectionBox(item)}
                 {renderCard(item, { actions: actionsNode })}
               </div>
             );
@@ -399,7 +467,7 @@ function ResponsiveRows<T>({
                 selection && "relative pl-14"
               )}
             >
-              {selectionBox(getRowId(item))}
+              {selectionBox(item)}
               <div className="flex items-start justify-between gap-3">
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{cardContent(primary, item)}</div>
