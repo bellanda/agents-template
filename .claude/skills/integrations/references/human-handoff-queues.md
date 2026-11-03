@@ -66,6 +66,13 @@ async def handoff_to_human(queue_name: str, reason: str, summary: str, config: R
   trava de manipulação e transferências forçadas por código não passam pela trava. Origem: kailos
   2026-10-16, "opa" do dono virou lead porque o gatilho da equipe ("transfira sempre… rapidamente")
   venceu o método no Haiku `low` — regra só em prompt já tinha falhado duas vezes.
+- **Entregue antes de transferir:** depois do handoff a IA para de responder, então o que o cliente
+  pediu e uma ferramenta atende sai antes da transferência, na mesma resposta. Mídia de **até 3**
+  itens que casam com o pedido vai toda, sem "qual deles você quer ver?"; com 4 ou mais, a IA manda a
+  lista e pergunta. Origem: kailos 2026-11-03. O cliente pediu "foto desse Peugeot 1.4" com três 207
+  no estoque e recebeu "qual deles?". Depois aceitou falar do financiamento, a IA transferiu com
+  "Pediu fotos" no briefing e ele ficou esperando o vendedor para ver as fotos. Canônico: kailos
+  `vehicle_photo_sender.MAX_VEHICLES = 3` e as seções 2 e 8 do `vehicle_sales_agent/prompt.py`.
 
 ## Bloco de prompt em runtime
 
@@ -157,9 +164,13 @@ plataforma (prompt-base), não do gatilho da equipe.
   para `human_handling` (evento `abuse_<motivo>`), deixa nota interna com o motivo e notifica o dono. O
   agente NÃO é acionado. Desbloqueio é ação humana (`whatsapp:manage`) → `whatsapp-inbox.md`.
 - **Rodízio por prazo** (desde 2026-10-23 em `customer_wait/rotation.py` + `decision.py`; antes
-  `cron/sla_redistribution.py`, `5741fec`): o prazo de cada dono conta da CHEGADA da conversa nele
-  (`sla_started_at` = último inbound ou a última troca de dono depois dele). Contar sempre do inbound
-  fazia o recém-atribuído herdar um prazo já estourado: três vendedores em três minutos em prod.
+  `cron/sla_redistribution.py`, `5741fec`): o prazo de cada dono conta do MESMO relógio da TV e dos
+  Alertas (`WaitState.owner_clock_start`): a **1ª** mensagem do cliente sem resposta, ou a troca de
+  dono (handoff/rodízio) depois dela, a que vier por último. Contar sempre do inbound fazia o
+  recém-atribuído herdar um prazo já estourado (três vendedores em três minutos, prod 2026-10-09);
+  contar da **última** mensagem (`sla_started_at = GREATEST(last_inbound_at, troca de dono)`, removido
+  em 2026-11-03) fazia cada "????" do cliente empurrar o prazo — kailos 2026-11-03: rodízio em 6m39s
+  com prazo de 5 min. Mensagem nova do cliente NUNCA adia o rodízio.
 - **Contador na UI** (`4e024cc`): `services/portals/whatsapp/sla_deadline.py` PREVÊ o próximo rodízio
   com as mesmas regras do avaliador. Dono que já respondeu, ou depois de `sla_escalated`, fica sem
   contador. `tests/whatsapp/test_sla_deadline.py` prende os dois.
@@ -260,5 +271,7 @@ Canônico: kailos `services/portals/whatsapp/{agent_followup*,seller_reengage}.p
 - **NUNCA** SLA em segundos corridos — expediente da loja.
 - **NUNCA** varredura periódica de todas as conversas para disparar prazo: use a agenda por prazo (ZSET despertador + releitura do Postgres).
 - **NUNCA** IA decidindo o 1º contato/rodízio do dono que nunca respondeu, nem silenciando por erro (fail-open = avisa).
+- **NUNCA** relógio do rodízio na ÚLTIMA mensagem do cliente: quem insiste ("????") seria atendido mais tarde. Rodízio, contador do inbox, TV e Alertas usam o mesmo `owner_clock_start`.
+- **NUNCA** transferir com o pedido do cliente pendente que uma ferramenta atende (fotos, documento, link): ele sai ANTES do `handoff_to_human`, na mesma resposta. "Pediu fotos" no briefing = falha da IA.
 - **NUNCA** escadas diferentes para TV e celular — mesmo passo, mesmo instante.
 - **NUNCA** "fila" em texto visível — é "equipe" (a palavra técnica fica no código).
