@@ -31,14 +31,27 @@ resposta do vendedor.
 Avaliadas no webhook, logo depois de persistir a inbound (`classify_inbound`), antes de publicar
 o trigger do agente. Defaults (`config/app/*.yaml` → `whatsapp.abuse_*`):
 
+**A trava pega ROBÔ, não cliente empolgado** (decisão do usuário 2026-11-04, "temos que aumentar
+bastante isso"). Os limites de 2026-10-14 bloquearam 2 clientes da Promocar num dia só: uma mandou
+todas as fotos do carro de uma vez (o WhatsApp manda até **100 fotos/vídeos por envio**, uma
+mensagem cada) e caiu na 21ª; o outro só mandou umas mensagens seguidas. Bloqueio tira o cliente
+da IA E do vendedor (`is_blocked` barra o envio manual), então falso positivo custa a venda; o
+custo de volume já tem dono (debounce junta a rajada num turno só, mídia descrita uma vez, teto de
+gasto da camada 2). Nenhum limite pode ficar abaixo do que um cliente real faz:
+
 | Limite | Default | Por quê |
 | --- | --- | --- |
-| texto por mensagem | 5.000 chars | textão = prompt injection/custo; cliente real não manda |
-| áudio | 300 s | Whisper (OpenRouter) cobra por minuto (onde a Meta não manda duração, só o teto de bytes vale) |
-| documento | 5 MB | |
-| qualquer mídia | 4× o documento | vídeo gigante |
-| mensagens | 20 / 60 s (janela fixa) | flood/robô |
-| caracteres | 30.000 / 300 s | rajada de textos médios |
+| mensagens | 150 / 60 s (janela fixa) | álbum de 100 fotos + o texto em volta passa; robô manda milhares |
+| caracteres | 100.000 / 300 s | vários textos colados (anúncio, simulação) passam |
+| texto por mensagem | 20.000 chars | textão colado é cliente; prompt injection é da camada 3 |
+| áudio | 1.800 s (30 min) | Whisper custa US$ 0,012/h — duração não é risco de custo; áudio de 10 min é comum |
+| documento | 50 MB | PDF escaneado no celular (CNH, CRLV, proposta) passa de 5 MB fácil |
+| qualquer mídia | 4× o documento | vídeo gigante (onde há `max_media_bytes` de download, o doc fica = a ele) |
+
+- `tests/whatsapp/test_abuse_limits_config.py` (kailos/emporion/nexarena) lê os 3 yamls entregues
+  e falha se algum limite descer abaixo do piso do cliente real (álbum de 100 + 20 textos, áudio
+  de 15 min, PDF de 25 MB). Os testes de comportamento rodam no `app.test.yaml` e não veem os
+  números de prod — sem esse teste, o limite errado passou verde.
 
 - Contadores = `INCRBY` + `EXPIRE NX` (janela FIXA, não deslizante), **fail-open** (Valkey fora
   não bloqueia cliente).
