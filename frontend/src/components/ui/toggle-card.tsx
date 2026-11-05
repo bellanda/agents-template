@@ -86,7 +86,14 @@ export function ToggleCard({
       )}
 
       <span
-        className={cn("relative flex gap-3", size === "default" ? "items-start" : "items-center")}
+        // Default size wraps the status pill under the text when the card is too narrow for both
+        // (phone grid cell: the pill squeezed title + description into a 5-line column, visual
+        // QA 2026-11-05). Compact peers keep one line: their title is short and a wrapped pill
+        // would double every grid cell's height.
+        className={cn(
+          "relative flex gap-3",
+          size === "default" ? "flex-wrap items-start" : "items-center"
+        )}
       >
         {Icon && size === "default" && (
           <Icon
@@ -96,7 +103,7 @@ export function ToggleCard({
             )}
           />
         )}
-        <span className="min-w-0 flex-1 space-y-1">
+        <span className={cn("flex-1 space-y-1", size === "default" ? "min-w-40" : "min-w-0")}>
           <span
             className={cn(
               "block text-sm leading-none font-medium transition-colors",
