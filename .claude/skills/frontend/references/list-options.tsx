@@ -31,6 +31,12 @@ export interface ToolbarMenuAction {
   icon?: ReactNode;
   onSelect: () => void;
   disabled?: boolean;
+  /**
+   * Also lists the action in the ⋮ on desktop, instead of a button in the line. For occasional
+   * actions that would push the filters to a 2nd line at 1440 (Veículos → Importar planilha,
+   * visual QA 2026-11-05). The call site then leaves it out of `actions`.
+   */
+  showOnDesktop?: boolean;
 }
 
 /**
@@ -44,12 +50,13 @@ export const ToolbarMenuActionsContext = createContext<readonly ToolbarMenuActio
 function ToolbarMenuActionItems() {
   const actions = use(ToolbarMenuActionsContext);
   if (actions.length === 0) return null;
+  const hasDesktopItem = actions.some((action) => action.showOnDesktop);
   return (
     <>
       {actions.map((action) => (
         <DropdownMenuItem
           key={action.label}
-          className="md:hidden"
+          className={action.showOnDesktop ? undefined : "md:hidden"}
           disabled={action.disabled}
           onSelect={action.onSelect}
         >
@@ -57,7 +64,7 @@ function ToolbarMenuActionItems() {
           {action.label}
         </DropdownMenuItem>
       ))}
-      <DropdownMenuSeparator className="md:hidden" />
+      <DropdownMenuSeparator className={hasDesktopItem ? undefined : "md:hidden"} />
     </>
   );
 }

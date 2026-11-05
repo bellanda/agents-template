@@ -30,6 +30,9 @@ rótulo visível → ToggleCard.
 - Peers → `grid grid-cols-1 gap-3 sm:grid-cols-2 lg:grid-cols-3` (item 3 do gate).
 - ToggleCard único em fluxo sequencial → **grupo contido** (`max-w-lg` no fieldgroup, NUNCA na
   página). Card de toggle nunca estica full-width em desktop.
+- Card estreito (célula de grid no celular): no tamanho `default` a pílula de status desce para
+  baixo do texto (`flex-wrap` + texto `min-w-40`), em vez de espremer título e descrição numa
+  coluna de 5 linhas. O `compact` continua numa linha só (QA visual do akmeo, 2026-11-05).
 
 ## Padrão TSX canônico
 

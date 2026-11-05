@@ -561,7 +561,7 @@ function LoadingRows<T>({
 /** Classe do container de cards — compartilhada pelos dois componentes. */
 function cardsClassNameFor(variant: "table" | "grid" | "stack") {
   return variant === "grid"
-    ? "grid gap-4 sm:grid-cols-2 xl:grid-cols-3"
+    ? "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
     : cn("space-y-3", variant === "table" && "md:hidden");
 }
 

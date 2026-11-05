@@ -1,6 +1,6 @@
 ---
 name: frontend
-description: PORTÃO obrigatório antes de QUALQUER construção/edição de UI (React 19 + TanStack + Tailwind 4 + shadcn) — layout, página, componente, overlay/dialog, form, tabela/lista/CRUD, abas, barra de filtros, upload de mídia, impressão/PDF, estados vazio/erro/offline, máscaras, casca de app, PWA, telas canônicas (Equipes, inbox WhatsApp, config de agente de IA). Checklist ordenado de invariantes — layout dita a largura (1440 centrado, página sem max-w), Dialog-first sem Sheet lateral, grid p/ peers e 1 coluna p/ sequencial, onde mora o state, React 19, performance, Tailwind/shadcn semânticos, EntityPicker p/ FK, FormDialog (teclado do celular cobrindo campo ou botão salvar, dialog que sai da tela no mobile), ListToolbar+DataList (tabela vira card, modo por tela: rolagem contínua default + páginas numeradas no ⋮, totais no topo, busca/filtros/ordenação na URL em UMA linha), 3+ abas viram Select no celular, responsivo por CSS (nunca useIsMobile), mobile-first bloqueante — e roteia pros skills profundos. MODO AUDITORIA: varrer/consertar a consistência de UI de um projeto (larguras divergentes, chat bugado, Sheet lateral, logo gigante, quebra no mobile, filtro torto ou em 2ª linha, tabela ilegível no celular, lista sem filtro/ordenação).
+description: PORTÃO obrigatório antes de QUALQUER construção/edição de UI (React 19 + TanStack + Tailwind 4 + shadcn) — layout, página, componente, overlay/dialog, form, tabela/lista/CRUD, abas, barra de filtros, upload de mídia, impressão/PDF, estados vazio/erro/offline, máscaras, casca de app, PWA, telas canônicas (Equipes, inbox WhatsApp, config de agente de IA). Checklist ordenado de invariantes — layout dita a largura (1440 centrado, página sem max-w), Dialog-first sem Sheet lateral, grid p/ peers e 1 coluna p/ sequencial, onde mora o state, React 19, performance, Tailwind/shadcn semânticos, EntityPicker p/ FK, FormDialog (teclado do celular cobrindo campo ou botão salvar, dialog que sai da tela no mobile), ListToolbar+DataList (tabela vira card, modo por tela: rolagem contínua default + páginas numeradas no ⋮, totais no topo, busca/filtros/ordenação na URL em UMA linha), 3+ abas viram Select no celular, responsivo por CSS (nunca useIsMobile), mobile-first bloqueante — e roteia pros skills profundos. MODO AUDITORIA: varrer/consertar a consistência de UI de um projeto (larguras divergentes, chat bugado, Sheet lateral, logo gigante, quebra no mobile, filtro torto ou em 2ª linha, tabela ilegível no celular, lista sem filtro/ordenação). QA VISUAL de seção nova grande: benchmark nas melhores telas da frota + screenshots em celular/tablet/PC (`bun run qa:visual`) olhados e corrigidos antes de entregar.
 ---
 
 # Frontend — O Portão
@@ -211,6 +211,15 @@ standalone e são linkados no roteamento (fim do arquivo).
   overlays, grid-vs-stack, mobile-first, `react-icons`, `html { font-size: 17px }`. **NÃO** padroniza
   (por-projeto): font-**family**, **cores**, **estilo shadcn** (baseColor/new-york etc.). Nunca
   "unifique" marca entre apps.
+- [ ] **12. Seção nova grande → benchmark antes + QA visual em 3 larguras depois** (decisão
+  2026-11-05). Rota/tela nova, redesign, fluxo multi-tela ou dialog grande:
+  - **antes**, abra o melhor exemplo do mesmo padrão (telas canônicas + galeria
+    `Config Files/agents/gallery/`) e escreva o contrato visual de 5 linhas;
+  - **depois**, registre a tela em `frontend/e2e/visual/routes.ts` com dados de pior caso e rode
+    `bun run qa:visual` (390 iPhone, 820, 1440; WebKit real com `VISUAL_WEBKIT=1`);
+  - **olhe cada screenshot** e corrija até as checagens e a passada visual ficarem limpas.
+
+  Entregar tela grande sem QA visual = não entregue. *deep: `references/visual-qa.md`.*
 
 ### Ícones
 `react-icons` para ícones de app — import nomeado por set p/ tree-shake (`import { LuSearch } from
@@ -250,6 +259,9 @@ Padronizadas em 2026-10-01 (código canônico = kailos, salvo onde indicado). N�
 | Equipes (filas humanas do atendente de IA): grid de cards + editor  | `references/queues-editor.md`                     |
 | Horário de funcionamento semanal (grupos de dias com o mesmo horário) | `references/business-hours-editor.md` (+ `business-hours-groups.ts`) |
 | Inbox WhatsApp `/chat` (conversas, janela, envio otimista, SSE)     | `references/whatsapp-inbox.md`                    |
+| Tempo real SSE por usuário (patch com `setQueryData`) + push com botões de ação | `references/realtime-and-push-actions.md` |
+| Quadro kanban (dnd-kit, colunas com keyset, lote, SLA ao vivo)      | `references/kanban-board.md`                      |
+| Balão de onboarding "visto uma vez" por usuário (popover ancorado)  | `references/onboarding-balloon.md` (+ `onboarding-balloon.tsx`, `balloon-slot.ts`) |
 | Ligação recebida do WhatsApp (diálogo, push tocando, seção Ligações) | skill `integrations` → `whatsapp-calling.md`      |
 | Config do agente de IA do tenant (Markdown + ChatGPT + versões; tools como permissões) | `references/agent-instructions.md` (template `agent-config/`) |
 | Chat de IA streaming (`ai-elements/`) — o `chat/` de app é só ref.  | skill `ai-agents` → `frontend-chat.md`            |
@@ -260,12 +272,16 @@ Padronizadas em 2026-10-01 (código canônico = kailos, salvo onde indicado). N�
 
 ## Verificação pré-merge
 
-Confirme cada item do Modo 1 satisfeito + `tsgo --noEmit` e build do projeto verdes.
+Confirme cada item do Modo 1 satisfeito + `tsgo --noEmit` e build do projeto verdes. Seção nova
+grande: `bun run qa:visual` limpo e os screenshots de 390/820/1440 olhados (item 12).
 
 ---
 
 ## References
 
+- `references/visual-qa.md` — seção nova grande: benchmark (telas canônicas + galeria) e QA visual
+  em 3 larguras com o harness `frontend/e2e/visual/` (`bun run qa:visual`, checagens automáticas +
+  olhar os PNGs + loop de correção), modo LIVE opcional, gotchas.
 - `references/layouts.tsx` — `SidebarShell` (flag `fullBleed`) + `SidebarLayout` (1440) + `SidebarChatLayout` (full-bleed).
 - `references/grid-vs-stack.md` — heurística peers→grid / sequencial→stack, com exemplos.
 - `references/overlays.md` — Dialog vs Sheet vs Drawer, tamanhos, geometria à prova de viewport na
@@ -298,6 +314,13 @@ Confirme cada item do Modo 1 satisfeito + `tsgo --noEmit` e build do projeto ver
   grupos derivados por helpers puros; validação pt-BR; emporion canônico, kailos portado).
 - `references/whatsapp-inbox.md` — inbox `/chat` do kailos (layout lista/janela, SSE keyed por ORG e
   nunca pelo contato ativo, envio otimista, tema `--wa-*`); nexarena adota sem equipes.
+- `references/realtime-and-push-actions.md` — um SSE por usuário na casca (reconexão com backoff+jitter,
+  resync ao reabrir, patch por `setQueryData`, teto de frames + `batch`) e push com botões (token HMAC
+  de uso único por botão, endpoint sem sessão sempre 204, iOS via deep link `?crmq=`).
+- `references/kanban-board.md` — quadro dnd-kit (colunas droppable, `DragOverlay`, `decideDrop` puro,
+  diálogo p/ coluna terminal, keyset por coluna, relógio único `useNow`, lote com `versions`).
+- `references/onboarding-balloon.md` + `onboarding-balloon.tsx` + `balloon-slot.ts` — balão único por
+  vez, visto-uma-vez por usuário em `ui_preferences.help_seen`, só a cópia visível abre.
 - `references/feedback-states.md` — `EmptyState`, erro≠vazio (`ErrorState`), `NetworkStatusBanner`,
   `ConfirmDialog` único, toasts, skeletons.
 - `references/printing.md` — `PrintSheet` + `Doc*` + `PrintableDocumentDialog` + rota pública por token.

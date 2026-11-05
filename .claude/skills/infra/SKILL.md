@@ -25,6 +25,9 @@ o checklist roteia.
 - [ ] **3. Valkey (cache)** — implementar com valkey-py: cache-aside, sliding window, contadores atômicos,
   pipeline, invalidação event-driven, versioned keys, SCAN, Lua, TTL → **`references/valkey-cache.md`**
   (código completo em `references/valkey/*.py`).
+- [ ] **4. Agendar por horário ("faça X em T, uma vez": SLA, lembrete, expiração, cadência)** — `DueQueue`
+  (ZSET Valkey + claim Lua com lease + wake JetStream + reconcile; efeitos after-commit; avisa-uma-vez
+  no Postgres) → **`references/due-queue.md`**.
 
 ## Invariantes não negociáveis (sempre)
 
@@ -40,4 +43,5 @@ o checklist roteia.
 
 - `references/decision-map.md` — mapa do ecossistema (quando cada ferramenta brilha/fica pra trás) — antes era `distributed-infrastructure`.
 - `references/nats-messaging.md` — os 5 patterns NATS com nats-py (delivery guarantees, código async).
+- `references/due-queue.md` — motor de tempo `DueQueue` (kailos canônico): Valkey acorda / Postgres decide, lease+CAS, reconcile, after-commit, testes.
 - `references/valkey-cache.md` — patterns de cache/throttle com valkey-py → código working em `references/valkey/`.

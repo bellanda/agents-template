@@ -75,6 +75,12 @@ Refs sem prefixo = `skills/frontend/references/`.
 - **Telefone**: exibir SEMPRE `formatPhone` (`lib/utils/phone.ts`), digitar `PhoneInput`, validar
   `phoneFieldError`, link `whatsAppUrl`/`telUrl`. A API devolve o canônico ("5535991107807");
   valor cru na tela ou `wa.me`/`tel:` montado à mão = PROIBIDO. Gate `integrations` → `phone-numbers.md`.
+- **Seção nova grande = QA visual antes de entregar** (decisão do usuário 2026-11-05). Vale para
+  rota ou tela nova, redesign, fluxo multi-tela e dialog grande.
+  - Benchmark no melhor exemplo da frota (telas canônicas + galeria) antes de desenhar.
+  - Depois, a tela entra em `frontend/e2e/visual/routes.ts` com dados de pior caso.
+  - `bun run qa:visual` (390 iPhone / 820 / 1440; WebKit real com `VISUAL_WEBKIT=1`) limpo, e o agente OLHA cada screenshot e corrige.
+  - PROIBIDO entregar seção grande só com vitest/tsgo verdes. Ref `visual-qa.md`.
 - **DateTime**: API entrega ISO 8601 com `Z`. NUNCA offset math manual. Display via `Intl.DateTimeFormat` em utility module (`formatDateTime`, `formatDate`). Null/invalid → `"—"`.
 
 ## TanStack Router
