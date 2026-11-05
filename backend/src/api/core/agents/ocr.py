@@ -132,7 +132,7 @@ def _max_image_coverage(page: pdfium.PdfPage) -> float:
         return 0.0
     coverage = 0.0
     for image_object in page.get_objects(filter=[pdfium_raw.FPDF_PAGEOBJ_IMAGE]):
-        left, bottom, right, top = image_object.get_pos()
+        left, bottom, right, top = image_object.get_bounds()
         coverage = max(coverage, abs((right - left) * (top - bottom)) / page_area)
     return coverage
 
