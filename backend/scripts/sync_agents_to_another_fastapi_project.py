@@ -5,7 +5,7 @@ the same config/src/api architecture (config/, src/api/, db/ with dbmate).
 
 Usage:
     uv run scripts/sync_agents_to_another_fastapi_project.py --target /path/to/other/backend
-        [--add-module ocr --add-module media --add-module speech] [--optional] [--examples]
+        [--add-module ocr --add-module media --add-module speech --add-module scenario_replay --add-module scenario_checks] [--optional] [--examples]
 
 What gets overwritten (per FILE, template-owned files only — the CANONICAL layer; local edits to
 a file the template owns are lost, so improvements must be made here first). Target files the
@@ -373,7 +373,7 @@ def main() -> None:
         action="append",
         default=[],
         metavar="NAME",
-        help="Add a core/agents module the target does not have yet (e.g. ocr, media, speech). "
+        help="Add a core/agents module the target does not have yet (e.g. ocr, media, speech; scenario_replay needs scenario_checks too). "
         "Repeatable. Without it only modules already present in the target are overwritten.",
     )
     args = parser.parse_args()

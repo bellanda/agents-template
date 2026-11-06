@@ -27,3 +27,23 @@ def test_tenant_markdown_comes_wrapped_by_the_precedence_header():
 
 def test_disclosure_rule_forbids_denying_being_an_ai():
     assert "NUNCA" in DISCLOSURE_RULE and "humano" in DISCLOSURE_RULE
+
+
+RUNTIME_CONTEXT = "## Contexto atual\nLoja aberta até 18h."
+
+
+def test_runtime_context_sits_between_tenant_block_and_disclosure():
+    text = compose_system_message(
+        SystemMessage(content=BASE_PROMPT), TENANT_MARKDOWN, RUNTIME_CONTEXT
+    ).text
+
+    assert text.index(TENANT_MARKDOWN) < text.index(RUNTIME_CONTEXT) < text.index(DISCLOSURE_RULE)
+    assert text.endswith(DISCLOSURE_RULE)
+
+
+def test_empty_runtime_context_is_omitted_without_stray_separators():
+    text = compose_system_message(SystemMessage(content=BASE_PROMPT), TENANT_MARKDOWN, "  \n").text
+
+    assert "\n\n\n" not in text
+    assert text == compose_system_message(SystemMessage(content=BASE_PROMPT), TENANT_MARKDOWN).text
+    assert text.endswith(f"{TENANT_MARKDOWN}\n\n{DISCLOSURE_RULE}")

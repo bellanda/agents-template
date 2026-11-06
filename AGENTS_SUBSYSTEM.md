@@ -503,6 +503,20 @@ runtime.
   Sem tenant/config/DB → prompt base puro (instrução é enriquecimento, nunca motivo de falhar o turno).
   `model_id` hoje só alimenta a tela (catálogo de 1 modelo); com um 2º modelo, o swap entra no
   mesmo middleware (`request.override(model=init_model_by_id(...))`).
+- **Contrato de 3 camadas (frota, 2026-11-06; refs centrais `prompt-layers.md` e `anomaly-catalog.md`):**
+  - **L1** = regras da plataforma em código (limites, handoff, identidade). **L2** = Markdown do tenant
+    (fatos do negócio + tom), sempre sob o cabeçalho que diz "complementa L1 e perde para L1/dado ao vivo".
+    **L3** = tools + contexto de runtime injetado (horário da loja, filas, catálogo).
+  - **Ordem canônica do system message** (`compose_system_message(base, tenant_markdown, runtime_context="")`):
+    L1 base → cabeçalho do tenant + L2 → L3 (partes estáveis, depois voláteis) → regra de identidade POR ÚLTIMO.
+    O relógio (data/hora atual) vai no turno do usuário, nunca no system (quebraria o prefix cache).
+  - **Precedência:** L1 > dado ao vivo (tools/L3) > L2.
+  - **Uma fonte de verdade por fato:** cada fato mora em UMA camada (preço na tool, política no L2,
+    limite no L1); duplicar gera contradição que o modelo resolve ao acaso.
+  - **Regra que o modelo quebra duas vezes vira guard em código** (tool que recusa, validação, filtro
+    de saída), não mais uma frase no prompt.
+  - O middleware passa `runtime_context=""` (não vê L3). App com L3 monta o prompt por turno chamando
+    `compose_system_message` ele mesmo (kailos/emporion).
 - **O que fica no app, não aqui:** dados do negócio injetados em runtime (horário, filas, catálogo),
   flags de captura (balizap `sections`), `enabled` on/off do atendente, preview/tester da config.
 - **Frontend canônico (`components/agent-config/`, decisão 2026-10-01):** dois grupos de arquivo.
@@ -569,6 +583,14 @@ runtime.
   adaptadores **fora** de `core/agents/`. Dica de domínio (vocabulário de placa, matrícula, número de
   peito) entra pelo kwarg `extra_instructions` de `ocr_document`/`describe_media`/`describe_images`/
   `media_to_text`, que é ANEXADO ao prompt canônico, nunca o substitui.
+- **Catálogo de anomalias + replay (contrato de eval da frota, 2026-11-06):** todo app mantém um catálogo
+  de casos que deram errado → `scenarios.yaml` (ids `prod-*` = caso real anonimizado, `synth-*`) → uma
+  `AgentFactory` do app (prompt real + tools falsas, `UsageContext` rotulado como eval) →
+  `core/agents/scenario_replay.py::run_scenarios` (+ `scenario_checks.py`; `load_scenario_file`,
+  `summarize_results`, `log_results`, `langchain_turn_output`). Roda MANUAL contra o modelo real, **custa
+  dinheiro, fora do `check.sh`/pytest**. Todo incidente de prod vira cenário `prod-*` ANTES do fix.
+  Referência: kailos `agents/vehicle_sales_agent/eval/`. Novo app: `--add-module scenario_replay
+  --add-module scenario_checks`. Detalhe em `anomaly-catalog.md` (central).
 - **Propagar:** rode o sync em cada app, revise o diff (o overwrite apaga edições locais nos arquivos
   do template — melhoria volta ao template primeiro), ajuste os pontos de acoplamento do §17 e rode o
   `check.sh` do app.

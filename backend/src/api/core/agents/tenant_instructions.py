@@ -3,7 +3,16 @@
 The canonical "tenant agent config" pattern (kailos/balizap screen, 2026-09): the business owner
 builds its instructions in ChatGPT (frontend `components/agent-config/`), pastes them, and the
 agent reads them at runtime. The agent's OWN system prompt (code) stays first and the tenant
-text comes after it, for two reasons:
+text comes after it, for two reasons.
+
+Fleet-wide 3-layer contract (central refs `prompt-layers.md` / `anomaly-catalog.md`):
+L1 = platform rules in code, L2 = tenant Markdown (facts of the business), L3 = tools + injected
+runtime context. Canonical system-message order (`compose_system_message`):
+L1 base -> tenant header + L2 -> L3 runtime context (stable, then volatile) -> DISCLOSURE_RULE LAST.
+Precedence: L1 > live data (tools / L3) > L2. The clock (current date/time) goes in the USER turn,
+never in the system message (it would break the prefix cache every minute).
+
+Reasons for the order:
 
 * **Platform rules win.** The base prompt states what the platform guarantees (tools, safety,
   disclosure); the tenant text adds business facts and tone and cannot silently replace it.
@@ -13,6 +22,10 @@ text comes after it, for two reasons:
 Scope comes from the run config: `configurable.tenant_id` + `metadata.agent_id` (set by
 `services/agents/streaming.py` / `executors.py` from the auth seam). No tenant, no config, or a
 DB error → the base prompt alone: instructions are an enhancement, never a reason to fail a turn.
+
+The middleware below has no access to L3 runtime context (it only sees the run config), so it
+passes "". Apps with L3 (kailos/emporion) build the whole prompt per turn by calling
+`compose_system_message(base, tenant_markdown, runtime_context)` themselves.
 
 `agent_configs.model_id` is NOT applied here: the catalog has one model (Claude Haiku 5.5), so the
 column only feeds the config screen. When a second catalog model exists, swap it in this
@@ -97,11 +110,20 @@ async def load_tenant_instructions(tenant_id: str, agent_id: str) -> str:
     return markdown
 
 
-def compose_system_message(base: SystemMessage | None, instructions: str) -> SystemMessage:
+def compose_system_message(
+    base: SystemMessage | None, tenant_markdown: str, runtime_context: str = ""
+) -> SystemMessage:
+    """L1 base -> tenant header + L2 -> L3 runtime context -> DISCLOSURE_RULE (always last).
+
+    `runtime_context` is the app's L3 text (stable parts first, volatile last, no clock);
+    empty/blank → omitted without stray separators.
+    """
     base_text = base.text if base is not None else ""
-    return SystemMessage(
-        content=f"{base_text}\n\n{TENANT_SECTION_HEADER}\n\n{instructions}\n\n{DISCLOSURE_RULE}"
-    )
+    blocks = [base_text, f"{TENANT_SECTION_HEADER}\n\n{tenant_markdown}"]
+    if runtime_context.strip():
+        blocks.append(runtime_context.strip())
+    blocks.append(DISCLOSURE_RULE)
+    return SystemMessage(content="\n\n".join(blocks))
 
 
 class TenantInstructionsMiddleware(AgentMiddleware):
