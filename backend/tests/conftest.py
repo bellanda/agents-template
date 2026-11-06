@@ -13,7 +13,18 @@ same var). Tests that need an extra committed connection must use `TEST_DATABASE
 
 import os
 import subprocess
+import time
 from pathlib import Path
+
+# Calendar canary (incident 2026-11-05, emporion): the pytest process AND the test Postgres
+# (tests/compose.yml `-c timezone=`) run in UTC+14, where the local date differs from
+# America/Sao_Paulo from 07:00 to 24:00 SP. A day computed in the host/session zone instead of the
+# store zone (`date.today()`, `created_at::date`, `$1::date` compared to a TIMESTAMPTZ) then fails
+# during working hours, not only from 21:00 to 24:00 like it did in production. Checked by
+# tests/test_timezone_guard.py. Central: Config Files/agents/skills/database/references/local-time/.
+TEST_TIMEZONE = "Pacific/Kiritimati"
+os.environ["TZ"] = TEST_TIMEZONE
+time.tzset()
 
 _TESTS_DIR = Path(__file__).resolve().parent
 BACKEND_DIR = _TESTS_DIR.parent

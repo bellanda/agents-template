@@ -31,6 +31,10 @@ services:
       - full_page_writes=off
       - -c
       - max_connections=300
+      # Calendar canary: session zone UTC+14 (= TEST_TIMEZONE in conftest.py), so a day computed in
+      # the session zone instead of America/Sao_Paulo fails 07:00-24:00 SP, not only at night.
+      - -c
+      - timezone=Pacific/Kiritimati
     ports:
       - "${TEST_DB_PORT:-5441}:5432"
     volumes:
