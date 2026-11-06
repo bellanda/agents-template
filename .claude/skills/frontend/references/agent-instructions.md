@@ -75,15 +75,27 @@ do que qualquer wizard, e o que volta é exatamente o texto que vai para o promp
 
 ## O botão do ChatGPT
 
-```ts
-const CHATGPT_URL = "https://chatgpt.com/";
-export function buildChatGptBuilderUrl(storeName: string): string {
-  return `${CHATGPT_URL}?prompt=${encodeURIComponent(builderPrompt(storeName.trim()))}`;
-}
-```
+Fluxo único da frota (decisão do usuário 2026-11-06: "Aí fica um padrão para todos"). O prompt vai SEMPRE
+pela área de transferência; o modo `?prompt=` na URL saiu (teto de ~4k caracteres empobrecia o prompt).
 
-É navegação, não `fetch`: nenhuma diretiva de CSP muda. O prompt mora num arquivo por projeto
-(`agent-config/chatgpt-builder-prompt.ts`) e carrega, nesta ordem:
+1. **Clique em "Montar com o ChatGPT"** → `copyPromptToClipboard(prompt)` roda DENTRO do clique (a
+   Clipboard API exige ativação do usuário; chamada depois de um `await` ou timer falha no Safari).
+2. **Abre o `ChatGptLaunchDialog`** (`agent-config/ChatGptLaunchDialog.tsx`, canônico e idêntico em
+   todo app): "Prompt copiado" + como colar (PC: clicar na caixa e Ctrl+V / ⌘+V; celular: tocar e segurar
+   → Colar) + contagem de `CHATGPT_OPEN_DELAY_SECONDS = 3` com barra de progresso.
+3. **Fim da contagem** → `window.open(CHATGPT_URL, "_blank")` sem `noopener` (para detectar o bloqueio;
+   `opened.opener = null` logo depois). **Não suba os 3 s**: o navegador só libera popup ~5 s depois do
+   gesto (Safari/iOS menos). Bloqueado → o dialog mostra o botão "Abrir o ChatGPT" (novo gesto).
+4. **Cópia falhou** (sem Clipboard API, permissão negada) → o dialog mostra o prompt num `<pre>` para
+   copiar à mão + "Copiar de novo"; a contagem só começa depois de uma cópia que deu certo.
+
+Nunca truncar o prompt para caber em nada. Teste: `__tests__/ChatGptLaunchDialog.test.tsx` (copiado →
+conta → abre; bloqueado → botão; cópia falhou → `<pre>`). PROIBIDO voltar a `buildChatGptBuilderUrl`,
+`chatGptLaunchPlan` ou orçamento de URL.
+
+É navegação, não `fetch`: nenhuma diretiva de CSP muda. O builder canônico
+(`agent-config/chatgpt-builder-prompt.ts`, igual em todo app; cada app passa um `ChatGptBuilderContext`
+de `agent-config/<app>-builder-context.ts`) monta o prompt nesta ordem:
 
 1. **Quem é:** plataforma, ramo, canal e **o que o cadastro da org já sabe** (nome, cidade, endereço,
    telefone — vem do cache da org já carregada; o ChatGPT não pergunta de novo).
@@ -97,9 +109,6 @@ export function buildChatGptBuilderUrl(storeName: string): string {
    prompt-base usa para o bloco do tenant (ex.: `## CONFIGURAÇÃO DA LOJA`); segunda pessoa, frases
    curtas.
 
-Mantenha a URL codificada abaixo de ~4 mil caracteres (acento vira 6, espaço vira 3) — o **teste do builder**
-guarda o orçamento (falha se `buildChatGptBuilderUrl` passar de ~4k no contexto mais cheio do app).
-
 ### `exceptionTopics` e "Situações especiais" (contrato, 2026-11-06)
 
 `ChatGptBuilderContext` ganha `exceptionTopics?: readonly string[]` — a lista de anomalias do DOMÍNIO do app
@@ -110,9 +119,26 @@ guarda o orçamento (falha se `buildChatGptBuilderUrl` passar de ~4k no contexto
 - O Markdown entregue ganha uma seção final **"Situações especiais"** com a RESPOSTA DA LOJA a cada
   exceção, como FATO ("Currículos: entregar no caixa", "Fornecedor: falar com o financeiro, e-mail X").
   **Nunca regra de comportamento** ("transfira…", "ignore…") e nunca dado de L3 (horário, preço, equipes).
-- **Se o prompt não cabe na URL** (> ~4k): o `InstructionsCard` canônico copia o prompt COMPLETO para a
-  área de transferência e abre o ChatGPT sem `?prompt=`, com o toast **"Prompt copiado — cole no ChatGPT"**.
-  Nunca truncar o prompt para caber. (Implementação no template `agent-config/`; este é o contrato.)
+- **Rico, não curto** (usuário 2026-11-06: "a minha impressão é que seria maior"): sem teto de tamanho,
+  o prompt cobre o domínio inteiro — Emporion tem 14 tópicos na rodada 1, 18 exceções e 14 seções. Cada
+  caso L2 do `docs/agent/anomaly-catalog.md` vira uma pergunta.
+
+#### Lições do review do pre-prompt (Emporion, 2026-11-06)
+
+- **Nada perguntado nas rodadas pode aparecer em `platformHandles`.** O builder diz "não pergunte nem
+  escreva nada a respeito" sobre essa lista; "transferência de quem não é cliente e pedido de outro app"
+  ali fez o ChatGPT pular as perguntas de fornecedor e iFood da rodada 2. A plataforma é dona do
+  COMPORTAMENTO (transferir, nunca prometer); QUEM trata e POR ONDE é fato da loja. Teste do app: a
+  parte antes de "Me entreviste" não contém os termos das exceções.
+- **Regra de escrita não proíbe palavra que uma pergunta pede.** "Não escreva horário" apagou o horário
+  limite do almoço da rodada 1 → "nem horário de funcionamento".
+- **Sem duplicata** entre rodada 1 e 2, nem com o handle base ("dizer que é um assistente virtual
+  quando perguntarem").
+- **Não pergunte o que o L1 proíbe prometer** ("o que oferece de compensação no atraso" contradiz "nunca
+  prometa reembolso/brinde") → pergunte "quem cuida e por onde".
+- **Campo do app = handle, não pergunta.** Se existe um campo próprio (ex.: "Contexto do negócio" por
+  agente no akmeo), ele entra em `platformHandles` e a entrevista não coleta o que ele guarda.
+- **Uma fonte por fato**: o que tem tela (horário, preço, taxa, pagamento, equipes) não entra no L2.
 
 ### Método da plataforma × fatos da loja (kailos, 2026-10-09)
 
