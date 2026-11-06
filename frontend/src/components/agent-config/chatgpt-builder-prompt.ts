@@ -27,13 +27,24 @@
  * diverge on the first edit of either (gate frontend, ref agent-instructions.md). Always fill
  * `platformHandles` with what YOUR runtime injects.
  *
- * URL budget: keep the encoded URL under ~4k characters (an accent costs 6, a space costs 3) —
- * past that chatgpt.com may drop the prompt and open an empty chat. Measured: the default context
- * encodes to ~2.2k and a full kailos-like one (4 facts, 4 handles, 1 tool, 4 domain topics) to ~3.5k,
- * so long `domainTopics`/`knownFacts`/`tools` lists eat into a small margin.
+ * Exceptions (2026-11-06, 3-layer contract: L1 platform rules in code, L2 this Markdown = store
+ * FACTS and its own answers to day-to-day anomalies, L3 tools + injected context): with
+ * `exceptionTopics` the interview runs in ROUNDS (round 1 = interview topics, round 2 = "how does
+ * the business handle each situation") and the delivery ends with "### Situações especiais", one
+ * short line per answered exception. Never behaviour/flow rules, never data the app injects.
+ *
+ * URL budget: the encoded URL should stay under ~4k characters (an accent costs 6, a space costs
+ * 3) — past that chatgpt.com may drop the prompt and open an empty chat. Rich contexts (with
+ * `exceptionTopics`) do not fit, so the button uses `chatGptLaunchPlan`: prefilled URL when it
+ * fits, otherwise copy the full prompt to the clipboard and open an empty chatgpt.com.
  */
 
 const CHATGPT_URL = "https://chatgpt.com/";
+
+/** Encoded `?prompt=` URLs past this many chars risk an empty chat; the launch plan then copies instead. */
+export const CHATGPT_URL_BUDGET = 4000;
+
+const EXCEPTIONS_SECTION = "Situações especiais";
 
 const DEFAULT_CHANNEL = "WhatsApp";
 const DEFAULT_DELIVERY_TITLE = "CONFIGURAÇÃO DO ATENDIMENTO";
@@ -99,6 +110,12 @@ export interface ChatGptBuilderContext {
   interviewTopics?: string[];
   /** Full replacement of the delivered `###` sections (same use as `interviewTopics`). */
   deliverySections?: string[];
+  /**
+   * Day-to-day exceptions the owner answers in round 2 ("how does the business handle each one").
+   * Phrase as short questions about how THE BUSINESS handles it; facts only, never behaviour rules.
+   * Adds a final "### Situações especiais" section to the delivery.
+   */
+  exceptionTopics?: readonly string[];
   /** Replaces the closing "write in second person" instruction with app-specific writing rules. */
   writingRules?: string[];
 }
@@ -162,7 +179,7 @@ function deliverySections(context: ChatGptBuilderContext): string[] {
 }
 
 /** The full prompt text typed into chatgpt.com. */
-function buildChatGptBuilderPrompt(context: ChatGptBuilderContext = {}): string {
+export function buildChatGptBuilderPrompt(context: ChatGptBuilderContext = {}): string {
   const handles = [...BASE_PLATFORM_HANDLES, ...(context.platformHandles ?? [])];
   const topics = interviewTopics(context).map((topic, index) => `${index + 1}. ${topic}`);
   const sections = deliverySections(context).map((section) => `### ${section}`);
@@ -176,17 +193,49 @@ function buildChatGptBuilderPrompt(context: ChatGptBuilderContext = {}): string 
 A plataforma JÁ cuida disto, então não pergunte nem escreva nada a respeito:
 ${bulletList(handles)}${toolsBlock(context.tools)}
 
-Me entreviste em português, com 3 a 5 perguntas por vez, e espere minha resposta antes de seguir. Cubra:
-${topics.join("\n")}
+${interviewBlock(topics, context.exceptionTopics)}
 
 Se eu pular algo, deixe de fora. Nunca invente dado do negócio.
 
 No fim, entregue UM único bloco de código Markdown, pronto para copiar, com estes títulos (título sem conteúdo fica de fora):
 
 ## ${deliveryTitle}
-${sections.join("\n")}
+${sections.join("\n")}${exceptionsDelivery(context.exceptionTopics)}
 
 ${closing}`;
+}
+
+function interviewBlock(
+  topics: readonly string[],
+  exceptions: readonly string[] | undefined
+): string {
+  const intro =
+    "Me entreviste em português, com 3 a 5 perguntas por vez, e espere minha resposta antes de seguir.";
+  if (!exceptions || exceptions.length === 0) return `${intro} Cubra:\n${topics.join("\n")}`;
+  return `${intro} Em 2 rodadas.
+Rodada 1:
+${topics.join("\n")}
+
+Rodada 2 — situações do dia a dia: pergunte como o negócio resolve cada uma (quem trata, por onde, o que oferece) e pule as que eu não souber:
+${bulletList(exceptions)}`;
+}
+
+function exceptionsDelivery(exceptions: readonly string[] | undefined): string {
+  if (!exceptions || exceptions.length === 0) return "";
+  return `\n### ${EXCEPTIONS_SECTION} (uma linha curta por situação que respondi: "Situação: o que o negócio faz / quem trata / por onde"; só fatos)`;
+}
+
+export type ChatGptLaunchPlan =
+  { mode: "url"; url: string } | { mode: "clipboard"; url: string; text: string };
+
+/**
+ * How the "Montar com o ChatGPT" button opens chatgpt.com: prefilled URL when the encoded link
+ * fits the budget; otherwise copy `text` to the clipboard and open the empty chat (`url`).
+ */
+export function chatGptLaunchPlan(prompt: string): ChatGptLaunchPlan {
+  const url = `${CHATGPT_URL}?prompt=${encodeURIComponent(prompt)}`;
+  if (url.length <= CHATGPT_URL_BUDGET) return { mode: "url", url };
+  return { mode: "clipboard", url: CHATGPT_URL, text: prompt };
 }
 
 /** chatgpt.com link with the prompt already typed for this business (empty context is fine). */
