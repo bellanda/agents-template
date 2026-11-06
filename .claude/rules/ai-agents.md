@@ -40,4 +40,5 @@ paths:
   dentro do texto livre das mensagens e do `INDEX.md`. Antes de commitar, varra os YAMLs com `rg`
   pelos primeiros nomes dos contatos/vendedores do banco de origem. Golden set do Olheiro do Kailos
   quase subiu com ~58 nomes reais e 1 CPF (2026-11-05). Rerode o eval depois de anonimizar.
+- **Prompt em 3 camadas (decisão do usuário 2026-11-06):** L1 sistema (como agir, igual p/ todos, guards em código) · L2 instrução da loja via ChatGPT (fatos + exceções, sem regra de fluxo, sem dado de L3) · L3 ferramentas/dados de outras telas (ao vivo). Ordem: L1 → header+L2 → L3 estável → L3 volátil → regra de identidade por último. Precedência: guardrails L1 > identidade > L3 ao vivo > fatos L2 > exemplos genéricos. Falha repetida 2x → guard em código. **Anomalia/incidente de prod → cenário `prod-*` + replay antes do fix.** Skill `ai-agents` → `prompt-layers.md`, `anomaly-catalog.md`.
 - **Não use sem uso:** app sem fluxo de áudio não carrega `media.py`/Whisper; chave/campo/dependência sem leitor é apagado.

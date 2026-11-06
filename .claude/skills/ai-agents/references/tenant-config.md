@@ -26,9 +26,11 @@ salvar = versão + snapshot em transação, invalida o memo (`tenant_instruction
 
 ## Runtime
 
-`tenant_instructions_middleware` lê `configurable.tenant_id` + `metadata.agent_id`, busca o Markdown (memo TTL)
-e anexa DEPOIS do prompt base sob `## Instruções do negócio` (plataforma vence; prefixo cacheável). Sem
-tenant/config/DB → prompt base puro. Quem chama precisa propagar `tenant_id`/`agent_id` no config (o
+**Camadas, ordem de composição e precedência (L1 sistema / L2 este Markdown / L3 ferramentas) → `prompt-layers.md`;
+não repita aqui.** Aqui só o mecanismo: `tenant_instructions_middleware` lê `configurable.tenant_id` +
+`metadata.agent_id`, busca o Markdown (memo TTL) e anexa DEPOIS do prompt base sob `## Instruções do negócio`
+(prefixo cacheável). Serve agente SEM L3/regra de identidade; agente com L3 compõe à mão e NÃO usa o middleware
+(`prompt-layers.md`). Sem tenant/config/DB → prompt base puro. Quem chama precisa propagar `tenant_id`/`agent_id` no config (o
 `streaming.py`/`executors.py` já fazem; job próprio: `UsageContext(...).runnable_config()` + `configurable`).
 `agent_configs.model_id` hoje só alimenta a tela (catálogo de 1 modelo); 2º modelo entra no mesmo middleware
 com `request.override(model=init_model_by_id(model_id))`.

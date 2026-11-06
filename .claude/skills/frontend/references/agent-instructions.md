@@ -7,6 +7,10 @@
 > gate `integrations` (`meta-policy.md`, `human-handoff-queues.md`); gate `ai-agents`
 > (`tenant-config.md`).
 
+> **Camadas do prompt (L1 sistema / L2 esta tela / L3 ferramentas), ordem de composição e precedência →
+> `ai-agents/references/prompt-layers.md` (contrato, decisão 2026-11-06).** Esta tela edita SÓ a L2: fatos da
+> loja + respostas às exceções; nunca regra de comportamento nem dado que vive em L3.
+
 ## Canônico (onde copiar)
 
 Template `~/code/github-templates/agents-template/frontend/src/components/agent-config/` — **copie
@@ -93,7 +97,22 @@ export function buildChatGptBuilderUrl(storeName: string): string {
    prompt-base usa para o bloco do tenant (ex.: `## CONFIGURAÇÃO DA LOJA`); segunda pessoa, frases
    curtas.
 
-Mantenha a URL codificada abaixo de ~4 mil caracteres (acento vira 6, espaço vira 3).
+Mantenha a URL codificada abaixo de ~4 mil caracteres (acento vira 6, espaço vira 3) — o **teste do builder**
+guarda o orçamento (falha se `buildChatGptBuilderUrl` passar de ~4k no contexto mais cheio do app).
+
+### `exceptionTopics` e "Situações especiais" (contrato, 2026-11-06)
+
+`ChatGptBuilderContext` ganha `exceptionTopics?: readonly string[]` — a lista de anomalias do DOMÍNIO do app
+(vem do `docs/agent/anomaly-catalog.md`: fornecedor cobrando, currículo, número errado, imprensa, fiado…).
+
+- A entrevista roda em **rodadas**: primeiro os tópicos básicos (identidade, endereço, pagamento, tom…),
+  depois as **exceções** (`exceptionTopics`), 3–5 perguntas por vez.
+- O Markdown entregue ganha uma seção final **"Situações especiais"** com a RESPOSTA DA LOJA a cada
+  exceção, como FATO ("Currículos: entregar no caixa", "Fornecedor: falar com o financeiro, e-mail X").
+  **Nunca regra de comportamento** ("transfira…", "ignore…") e nunca dado de L3 (horário, preço, equipes).
+- **Se o prompt não cabe na URL** (> ~4k): o `InstructionsCard` canônico copia o prompt COMPLETO para a
+  área de transferência e abre o ChatGPT sem `?prompt=`, com o toast **"Prompt copiado — cole no ChatGPT"**.
+  Nunca truncar o prompt para caber. (Implementação no template `agent-config/`; este é o contrato.)
 
 ### Método da plataforma × fatos da loja (kailos, 2026-10-09)
 
@@ -174,6 +193,7 @@ no lugar dos antigos Selects por linha).
 ## Don'ts
 
 - **NUNCA** formulário que compila Markdown, "modo guiado/avançado", nem preview lado a lado.
+- **NUNCA** deixar `exceptionTopics` virar regra de comportamento no Markdown — só fato/resposta da loja.
 - **NUNCA** pedir no prompt do ChatGPT (ou aceitar no Markdown) dado que tem tela própria — horário,
   equipes, estoque. Fonte única: runtime.
 - **NUNCA** `dangerouslySetInnerHTML`/parser caseiro para mostrar o salvo — Streamdown.
