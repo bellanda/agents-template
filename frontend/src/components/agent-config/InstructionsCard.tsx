@@ -1,8 +1,11 @@
 import {
   buildChatGptBuilderPrompt,
-  chatGptLaunchPlan,
   type ChatGptBuilderContext,
 } from "@/components/agent-config/chatgpt-builder-prompt";
+import {
+  ChatGptLaunchDialog,
+  copyPromptToClipboard,
+} from "@/components/agent-config/ChatGptLaunchDialog";
 import { MarkdownPreview } from "@/components/agent-config/MarkdownPreview";
 import { Button } from "@/components/ui/button";
 import {
@@ -16,11 +19,9 @@ import {
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { notifyError } from "@/lib/api/notify";
 import { cn } from "@/lib/utils";
 import { ExternalLink, Pencil, Save, Sparkles } from "lucide-react";
 import { memo, useMemo, useState } from "react";
-import { toast } from "sonner";
 
 const STEPS = [
   "Clique em Montar com o ChatGPT e responda as perguntas dele sobre o seu negócio.",
@@ -35,51 +36,33 @@ const countFormat = new Intl.NumberFormat("pt-BR");
 
 /**
  * The ChatGPT launcher is its own memo'd component: the card re-renders on every keystroke and the
- * plan (a ~4k-char encode) only depends on the context, which the parent keeps stable.
- * `chatGptLaunchPlan`: prefilled link when it fits the URL budget; otherwise the full prompt goes to
- * the clipboard and the empty chat opens (the user pastes it).
+ * prompt only depends on the context, which the parent keeps stable. Click = start the clipboard
+ * write (must happen inside the click: user activation) and open `ChatGptLaunchDialog`, which
+ * counts down and opens chatgpt.com (decision 2026-11-06).
  */
 const ChatGptBuilderButton = memo(function ChatGptBuilderButton({
   builderContext,
 }: {
   builderContext: ChatGptBuilderContext | undefined;
 }) {
-  const plan = useMemo(
-    () => chatGptLaunchPlan(buildChatGptBuilderPrompt(builderContext)),
-    [builderContext]
-  );
-  const content = (
-    <>
-      <Sparkles />
-      Montar com o ChatGPT
-      <ExternalLink className="text-muted-foreground" />
-    </>
-  );
-  if (plan.mode === "url") {
-    return (
-      <Button asChild variant="outline" className="max-md:h-11">
-        <a href={plan.url} target="_blank" rel="noopener noreferrer">
-          {content}
-        </a>
-      </Button>
-    );
-  }
-  // The write starts BEFORE window.open and is awaited after: popup blockers need the open() inside
-  // the click gesture, and an await first would lose it.
-  const copyAndOpen = async () => {
-    const copying = navigator.clipboard.writeText(plan.text);
-    window.open(plan.url, "_blank", "noopener,noreferrer");
-    try {
-      await copying;
-      toast.success("Prompt copiado — cole no ChatGPT");
-    } catch (error) {
-      notifyError("Não foi possível copiar o prompt", error);
-    }
-  };
+  const prompt = useMemo(() => buildChatGptBuilderPrompt(builderContext), [builderContext]);
+  const [copying, setCopying] = useState<Promise<void> | null>(null);
   return (
-    <Button type="button" variant="outline" className="max-md:h-11" onClick={copyAndOpen}>
-      {content}
-    </Button>
+    <>
+      <Button
+        type="button"
+        variant="outline"
+        className="max-md:h-11"
+        onClick={() => setCopying(copyPromptToClipboard(prompt))}
+      >
+        <Sparkles />
+        Montar com o ChatGPT
+        <ExternalLink className="text-muted-foreground" />
+      </Button>
+      {copying && (
+        <ChatGptLaunchDialog prompt={prompt} copying={copying} onClose={() => setCopying(null)} />
+      )}
+    </>
   );
 });
 

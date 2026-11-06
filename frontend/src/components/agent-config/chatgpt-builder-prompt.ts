@@ -7,7 +7,7 @@
  * below is the kailos prompt, made domain-agnostic. Apps never fork this file — they pass a
  * `ChatGptBuilderContext` with their own domain text:
  *
- *   buildChatGptBuilderUrl({
+ *   buildChatGptBuilderPrompt({
  *     platformName: "Kailos",
  *     businessName: org.name,
  *     businessDescription: "loja de veículos",
@@ -33,16 +33,13 @@
  * the business handle each situation") and the delivery ends with "### Situações especiais", one
  * short line per answered exception. Never behaviour/flow rules, never data the app injects.
  *
- * URL budget: the encoded URL should stay under ~4k characters (an accent costs 6, a space costs
- * 3) — past that chatgpt.com may drop the prompt and open an empty chat. Rich contexts (with
- * `exceptionTopics`) do not fit, so the button uses `chatGptLaunchPlan`: prefilled URL when it
- * fits, otherwise copy the full prompt to the clipboard and open an empty chatgpt.com.
+ * Delivery: the prompt always goes by clipboard + the launch dialog (`ChatGptLaunchDialog`, decision
+ * 2026-11-06). A prefilled `?prompt=` URL is gone: encoded, the prompt is far past the ~4k chars
+ * chatgpt.com tolerates (an accent costs 6, a space costs 3).
  */
 
-const CHATGPT_URL = "https://chatgpt.com/";
-
-/** Encoded `?prompt=` URLs past this many chars risk an empty chat; the launch plan then copies instead. */
-export const CHATGPT_URL_BUDGET = 4000;
+/** Empty chat the launch dialog opens; the user pastes the clipboard prompt there. */
+export const CHATGPT_URL = "https://chatgpt.com/";
 
 const EXCEPTIONS_SECTION = "Situações especiais";
 
@@ -223,22 +220,4 @@ ${bulletList(exceptions)}`;
 function exceptionsDelivery(exceptions: readonly string[] | undefined): string {
   if (!exceptions || exceptions.length === 0) return "";
   return `\n### ${EXCEPTIONS_SECTION} (uma linha curta por situação que respondi: "Situação: o que o negócio faz / quem trata / por onde"; só fatos)`;
-}
-
-export type ChatGptLaunchPlan =
-  { mode: "url"; url: string } | { mode: "clipboard"; url: string; text: string };
-
-/**
- * How the "Montar com o ChatGPT" button opens chatgpt.com: prefilled URL when the encoded link
- * fits the budget; otherwise copy `text` to the clipboard and open the empty chat (`url`).
- */
-export function chatGptLaunchPlan(prompt: string): ChatGptLaunchPlan {
-  const url = `${CHATGPT_URL}?prompt=${encodeURIComponent(prompt)}`;
-  if (url.length <= CHATGPT_URL_BUDGET) return { mode: "url", url };
-  return { mode: "clipboard", url: CHATGPT_URL, text: prompt };
-}
-
-/** chatgpt.com link with the prompt already typed for this business (empty context is fine). */
-export function buildChatGptBuilderUrl(context: ChatGptBuilderContext = {}): string {
-  return `${CHATGPT_URL}?prompt=${encodeURIComponent(buildChatGptBuilderPrompt(context))}`;
 }

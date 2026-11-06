@@ -539,8 +539,10 @@ runtime.
   - **Prompt do ChatGPT:** o app só fornece texto de domínio via `ChatGptBuilderContext`
     (`platformName`, `channel`, `businessName`, `businessDescription`, `knownFacts`, `platformHandles`,
     `tools`, `domainTopics`, `domainSections`, `deliveryTitle`); o esqueleto (contexto → "a plataforma
-    JÁ cuida disto" → entrevista → UM bloco Markdown) é fixo. `buildChatGptBuilderUrl(context)`;
-    URL codificada < ~4k chars. Sempre preencha `platformHandles` com o que o SEU runtime injeta.
+    JÁ cuida disto" → entrevista → UM bloco Markdown) é fixo. `buildChatGptBuilderPrompt(context)`;
+    o botão sempre copia o prompt para a área de transferência e abre `ChatGptLaunchDialog` (contagem de
+    3 s → abre chatgpt.com; popup bloqueado → botão "Abrir o ChatGPT"; clipboard falhou → prompt visível +
+    "Copiar de novo"; decisão 2026-11-06, sem modo URL prefill). Sempre preencha `platformHandles` com o que o SEU runtime injeta.
 
 ## 15. Setup num projeto novo
 
