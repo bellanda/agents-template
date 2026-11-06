@@ -43,7 +43,7 @@ export interface ToolbarMenuAction {
  * Ponte `ListToolbar` → `ListOptionsMenu`: a toolbar publica as ações secundárias do celular
  * e o ⋮ (que o call site monta no slot `menu`) as lista acima das opções de exibição. Contexto
  * em vez de prop porque o `ListOptionsMenu` é criado pela tela, não pela toolbar. Os itens
- * levam `md:hidden`: no desktop as mesmas ações continuam na linha, o ⋮ fica só com exibição.
+ * levam `@3xl/main:hidden`: no desktop as mesmas ações continuam na linha, o ⋮ fica só com exibição.
  */
 export const ToolbarMenuActionsContext = createContext<readonly ToolbarMenuAction[]>([]);
 
@@ -56,7 +56,7 @@ function ToolbarMenuActionItems() {
       {actions.map((action) => (
         <DropdownMenuItem
           key={action.label}
-          className={action.showOnDesktop ? undefined : "md:hidden"}
+          className={action.showOnDesktop ? undefined : "@3xl/main:hidden"}
           disabled={action.disabled}
           onSelect={action.onSelect}
         >
@@ -64,7 +64,7 @@ function ToolbarMenuActionItems() {
           {action.label}
         </DropdownMenuItem>
       ))}
-      <DropdownMenuSeparator className={hasDesktopItem ? undefined : "md:hidden"} />
+      <DropdownMenuSeparator className={hasDesktopItem ? undefined : "@3xl/main:hidden"} />
     </>
   );
 }
@@ -75,7 +75,7 @@ export function ToolbarOverflowMenu() {
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button variant="outline" size="icon" aria-label="Mais ações" className="md:hidden">
+        <Button variant="outline" size="icon" aria-label="Mais ações" className="@3xl/main:hidden">
           <LuEllipsisVertical className="size-4" />
         </Button>
       </DropdownMenuTrigger>

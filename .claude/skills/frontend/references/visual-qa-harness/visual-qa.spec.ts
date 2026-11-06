@@ -41,10 +41,15 @@ const MAX_SCROLL_SHOTS = 4;
  * A dialog/settings hub scrolls INSIDE itself, so the main screenshot only shows its first
  * screen (the holiday section of `settings-hours` was never seen at 390). Scroll the largest
  * scrollable region of the open dialog and shoot each next screen as `<viewport>-scroll-N.png`.
+ * Without a dialog, the same applies to a shell whose DOCUMENT never scrolls (optimuslar: the
+ * page scrolls inside a `flex-1 overflow-y-auto` container, so the full-page shot stops at the
+ * fold). Apps whose document scrolls keep zero extra shots: the full-page shot already has it all.
  */
 async function captureScrolledDialog(page: Page, dir: string, viewport: string) {
   const handle = await page.evaluateHandle(() => {
-    const dialog = document.querySelector("[role=dialog]");
+    const documentScrolls = (document.scrollingElement?.scrollHeight ?? 0) > window.innerHeight + 8;
+    const dialog =
+      document.querySelector("[role=dialog]") ?? (documentScrolls ? null : document.body);
     if (!dialog) return null;
     const scrollers = Array.from(dialog.querySelectorAll<HTMLElement>("*")).filter(
       (el) =>

@@ -5,7 +5,7 @@
 > Secundárias (importar, exportar, lote, sincronizar) entram no ⋮ via
 > `mobileActions={{ primary, secondary: [{ label, icon, onSelect, disabled? }] }}` — `actions`
 > (ReactNode) continua sendo o desktop. O toolbar publica `secondary` por
-> `ToolbarMenuActionsContext`; `ListOptionsMenu` lista acima de "Exibição" (`md:hidden`); tela sem
+> `ToolbarMenuActionsContext`; `ListOptionsMenu` lista acima de "Exibição" (`@3xl/main:hidden`); tela sem
 > `menu` ganha `ToolbarOverflowMenu` mobile-only. Antes Veículos empilhava 4 linhas de botões
 > antes do conteúdo. Código canônico: `list-toolbar.tsx`, `list-options.tsx`.
 
@@ -113,6 +113,10 @@ const changeListMode = (next: ListMode) => {
 
 ```
 ≥768px   [ busca ][ filtro ][ filtro ][ ordenação ][ Limpar ]          [ ação ][ ação ]
+         (⚠ "≥768px" aqui = LARGURA ÚTIL do `@container/main` ≥ `@3xl` (48rem), NÃO viewport —
+          decisão 2026-11-06: a 820px com sidebar aberta sobram ~560px e o inline quebrava em 2–3
+          linhas. Abaixo disso: o layout "Filtros" colapsado. Toolbar fora do `@container/main`
+          (Dialog/portal) sempre sai colapsada. `DataList` segue no `md` de viewport.)
          └─ grupo da esquerda: flex-1 + flex-wrap (quebra controle a controle) ┘ └ ml-auto ┘
 640–768  [ busca ]                                                  [ Filtros ][ ação ]
 <640     [ busca ─────────────────────────────── ]
@@ -123,9 +127,9 @@ const changeListMode = (next: ListMode) => {
   linha das ações. Sem busca, a ordenação sozinha abre a linha à esquerda.
 - **Ações à direita** (`sm:ml-auto`), alinhadas no topo (`items-start`) — quando os filtros quebram
   em duas linhas, as ações não descem junto.
-- Os controles do desktop ficam num wrapper `hidden md:contents`: cada `Select` vira item do
+- Os controles do desktop ficam num wrapper `hidden @3xl/main:contents`: cada `Select` vira item do
   `flex-wrap` da linha e quebra sozinho, em vez de o bloco inteiro descer de uma vez.
-- Sem busca, o grupo da esquerda é `max-md:hidden` — grupo vazio numa coluna flex deixa o `gap` como
+- Sem busca, o grupo da esquerda é `@max-3xl/main:hidden` — grupo vazio numa coluna flex deixa o `gap` como
   espaço fantasma acima das ações no celular.
 - **Filtro do toolbar é controle de UMA altura (`h-9`), sem `<Label>` empilhado.** A linha é
   `items-center`: o campo rotulado desce meia linha e fica torto. O rótulo visível mora DENTRO do

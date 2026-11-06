@@ -262,6 +262,10 @@ migration).
 
 ## Gotchas
 
+- **`min-w-0` no wrapper E no trigger (2026-11-05):** o picker é filho flex dentro de card/grid;
+  sem `min-w-0` o nome longo selecionado empurra o trigger para fora do card no celular (orçamento
+  do nexarena, QA visual). Canônico: wrapper `flex min-w-0 items-center gap-2` e trigger
+  `flex min-w-0 flex-1 justify-between`. Não remova ao adaptar.
 - **Popover SEMPRE abaixo do campo, sem flip (2026-10-22):** `PopoverContent` com `side="bottom"`,
   `avoidCollisions={false}` e `max-h-(--radix-popover-content-available-height)`; o `CommandList`
   usa `max-h-[min(18rem,calc(var(--radix-popover-content-available-height,18rem)-6.5rem))]`. Sem

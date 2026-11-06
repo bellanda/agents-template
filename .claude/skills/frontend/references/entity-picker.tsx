@@ -102,7 +102,7 @@ export function EntityPicker<T>({
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex min-w-0 items-center gap-2">
       {/* `modal`: dentro de um Dialog o Radix trava o scroll (react-remove-scroll) e o
           conteúdo portalado ficava FORA da trava — a roda do mouse não rolava a lista, só a
           barra arrastada. Modal, o Popover empilha a própria trava (a última vence) e libera
@@ -116,7 +116,7 @@ export function EntityPicker<T>({
             aria-expanded={open}
             disabled={disabled}
             // Campo de formulário segue a métrica de Input, não a escala de botão do projeto.
-            className={cn(FIELD_TRIGGER_CLASS, "flex flex-1 justify-between font-normal")}
+            className={cn(FIELD_TRIGGER_CLASS, "flex min-w-0 flex-1 justify-between font-normal")}
           >
             <span
               className={cn(

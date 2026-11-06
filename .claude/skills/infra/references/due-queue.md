@@ -98,3 +98,10 @@ registra uma ação e o chamador a executa depois do commit.
 - Handler que decide pelo score do ZSET em vez de reler o banco.
 - Agendar dentro da transação (fora do `defer_after_commit`).
 - `CURRENT_DATE`/`date.today()` em handler ou em teste de fronteira de dia.
+- **Ligar o `run_due_tickers` no lifespan com o MESMO `anyio.CancelScope` de outro ticker.** O anyio
+  recusa um segundo `with` no mesmo escopo (`RuntimeError: Each CancelScope may only be used for a
+  single 'with' block`): o lifespan cai em todos os workers e o `finally` para TODOS os consumers. O
+  HTTP segue 200 e o health não acusa. Aconteceu no deploy do CRM do Kailos (2026-11-05, ~5 min sem
+  IA no WhatsApp). Use um escopo novo por ticker (`start_ticker_in_own_scope` em `main.py`, teste
+  `tests/scheduling/test_ticker_scopes.py`). Depois de todo deploy que mexe no lifespan, confira
+  `consumer_loop_stopped` = 0 e nenhum `Traceback` nos logs, não só o health.

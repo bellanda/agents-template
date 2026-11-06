@@ -508,7 +508,8 @@ throttle conta FALHAS por alvo.
 | ----------------------------- | ------------------------- | --------------------------------- | ------------------------------------------- |
 | Por IP (senha)                | `rl:login:ip:{ip}`        | senha errada                      | `grant_type=password`                       |
 | Por usuário (senha)           | `rl:login:user:{username}` (minúsculo) | senha errada          | `grant_type=password`                       |
-| IP dos endpoints sem usuário  | `rl:authep:ip:{ip}`       | refresh/Google/etc. **falhou**    | refresh, Google, demais token endpoints     |
+| IP dos endpoints sem usuário  | `rl:authep:ip:{ip}`       | Google/convite **falhou**         | Google, invites lookup/accept (NÃO refresh) |
+| IP do refresh (teto ALTO)     | `rl:refresh:ip:{ip}`      | refresh **falhou**                | `grant_type=refresh_token` (60/janela)      |
 
 - **Limites:** `security.max_login_attempts` (kailos prod = **5**) por janela de
   `security.login_lockout_duration_minutes` (prod = **15**), ambos no yaml (`config/security.py`). Janela
@@ -519,9 +520,16 @@ throttle conta FALHAS por alvo.
   `AuthenticationError` ⇒ `record_failed_login` (INCR nos dois) e re-raise → sucesso ⇒ `reset_login_attempts`
   (`DEL` dos dois). O IP vem de `core/client_ip.client_ip` (`X-Real-IP` posto pelo nginx; NUNCA o primeiro
   `X-Forwarded-For`, que o atacante controla e usaria para travar o IP de uma vítima).
-- **Os endpoints sem username** (refresh, Google) usam o contador SEPARADO `rl:authep:ip:`
+- **Os endpoints sem username** (Google, invites) usam o contador SEPARADO `rl:authep:ip:`
   (`assert_auth_endpoint_allowed` / `record_auth_endpoint_failure`): só FALHA incrementa e sucesso nunca
-  toca. Assim um refresh barulhento (várias abas) não trava o login por senha nem o reseta.
+  toca.
+- **Refresh NUNCA compartilha o lockout de login/Google** (incidente kailos prod 2026-11-06): um restart do
+  backend cortou refreshes no meio, 5 deram 401, e como dividiam `rl:authep` o Google login da loja inteira
+  (um IP público só) travou 15 min; falha de Google também podia 429 o refresh e deslogar gente. O refresh
+  token é opaco de 256 bits com lookup por SHA-256, então contar falhas dele não dá proteção de brute force,
+  só auto-DoS. Por isso tem contador PRÓPRIO `rl:refresh:ip:{ip}` com teto ALTO (`MAX_REFRESH_FAILURES = 60`
+  por janela; `assert_refresh_allowed` / `record_refresh_failure`) só para abuso extremo. Teste de regressão:
+  N+1 refreshes inválidos não tocam `rl:authep` nem bloqueiam Google/convite.
 - Contador por usuário significa que atacante pode travar a conta-alvo por 15 min (DoS de login) — aceito
   em troca de barrar credential stuffing distribuído; Google login não é afetado.
 

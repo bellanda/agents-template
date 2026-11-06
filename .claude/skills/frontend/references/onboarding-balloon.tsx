@@ -24,6 +24,7 @@ import {
   useState,
   useSyncExternalStore,
   type ReactNode,
+  type RefObject,
 } from "react";
 
 const UI_PREFERENCES_ENDPOINT = "/accounts/me/ui-preferences";
@@ -53,6 +54,33 @@ export interface OnboardingBalloonProps {
 function isProbeRendered(probe: HTMLElement | null): boolean {
   if (!probe) return false;
   return typeof probe.checkVisibility === "function" ? probe.checkVisibility() : true;
+}
+
+/**
+ * A modal Radix dialog marks everything outside it with `data-aria-hidden` (aria-hidden's
+ * `hideOthers`). An anchor under a modal must not pop its balloon over the dialog: a deep link
+ * (`?attendance=`) opened the list balloon on top of the detail dialog and it swallowed the taps.
+ */
+function isProbeBehindModal(probe: HTMLElement | null): boolean {
+  return probe?.parentElement?.closest("[data-aria-hidden]") != null;
+}
+
+/** Live "behind a modal" flag, observed only while the balloon could open (cheap: one filter). */
+function useIsBehindModal(probeRef: RefObject<HTMLElement | null>, isWatching: boolean): boolean {
+  const [isBehind, setIsBehind] = useState(false);
+  useEffect(() => {
+    if (!isWatching) return;
+    const update = () => setIsBehind(isProbeBehindModal(probeRef.current));
+    update();
+    const observer = new MutationObserver(update);
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ["data-aria-hidden"],
+      subtree: true,
+    });
+    return () => observer.disconnect();
+  }, [probeRef, isWatching]);
+  return isWatching && isBehind;
 }
 
 /** Marca de um balão no servidor; exportada para os testes e para quem quiser reabrir um balão. */
@@ -92,8 +120,12 @@ export function OnboardingBalloon(props: OnboardingBalloonProps) {
     void client.patch(UI_PREFERENCES_ENDPOINT, { helpSeen: [mark] }).catch(() => {});
   }, [client, mark]);
 
-  const isEligible =
+  const couldOpen =
     enabled && isRendered && !isStyleChoicePending && wasSeenBefore === false && !dismissed;
+  // Closing here is controlled (`open` flips), so it does NOT mark the balloon as seen: it comes
+  // back when the dialog closes.
+  const isBehindModal = useIsBehindModal(probeRef, couldOpen);
+  const isEligible = couldOpen && !isBehindModal;
   useEffect(() => {
     if (!isEligible) return;
     requestBalloonSlot(mark);
@@ -112,7 +144,11 @@ export function OnboardingBalloon(props: OnboardingBalloonProps) {
       <span ref={probeRef} aria-hidden className="sr-only" />
       <Popover open={isOpen} onOpenChange={(next) => !next && dismiss()}>
         {children ? (
-          <PopoverAnchor asChild>{children}</PopoverAnchor>
+          // Tapping the pointed control is "understood" too: on touch, Radix only dismisses on the
+          // following click, after the control already opened its own dialog under the balloon.
+          <PopoverAnchor asChild onClickCapture={isOpen ? dismiss : undefined}>
+            {children}
+          </PopoverAnchor>
         ) : (
           <PopoverAnchor className="pointer-events-none absolute top-0 left-6 size-0" />
         )}

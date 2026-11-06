@@ -44,6 +44,7 @@ migrations) vivem na rule `backend.md`; aqui está a profundidade.
 
 ## References
 
+- `references/local-time.md` — datas e fuso: instante UTC × DIA da loja, `core/timezone.py`, trava `test_timezone_guard.py` + canário UTC+14 (arquivos em `references/local-time/`).
 - `references/backup-b2.md` — backup diário do Postgres no B2 (serviço `pg-backup`, retenção, restore, quando migrar para físico/PITR).
 
 - `references/schema-discipline.md` — disciplina de schema/índice/constraint em migrations dbmate.

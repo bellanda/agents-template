@@ -263,6 +263,11 @@ export function ListToolbar({
   const mobilePrimary = mobileActions?.primary;
 
   return (
+    // Inline vs. collapsed ("Filtros" dialog) follows the USABLE width (`@container/main`, set by the
+    // shell wrapper), not the viewport. 2026-11-06 incident: at 820px with the sidebar open only ~560px
+    // are usable, so the viewport-`md` inline controls wrapped into 2-3 rows (kailos CRM Lista,
+    // optimuslar admin lists). `@3xl` = 48rem (~816px at the 17px root) of content. A ListToolbar
+    // outside `@container/main` (portal/Dialog/Sheet) always gets the collapsed variant.
     // UMA linha: busca + filtros + ordenação ancorados à ESQUERDA, ações à DIREITA. A versão
     // anterior jogava filtros/ordenação numa 2ª linha com a ordenação em `ml-auto` — sem busca,
     // a tela virava duas ilhas empilhadas à direita ("Mais recentes" embaixo dos botões) com a
@@ -272,7 +277,10 @@ export function ListToolbar({
         // Sem busca, abaixo de 768px o grupo só teria controles escondidos: some inteiro para
         // não deixar o `gap` da coluna como espaço fantasma acima das ações.
         <div
-          className={cn("flex flex-1 flex-wrap items-center gap-2", !hasSearch && "max-md:hidden")}
+          className={cn(
+            "flex flex-1 flex-wrap items-center gap-2",
+            !hasSearch && "@max-3xl/main:hidden"
+          )}
         >
           {onSearchChange && (
             <SearchInput
@@ -283,11 +291,11 @@ export function ListToolbar({
             />
           )}
 
-          {/* Desktop: filtros e ordenação inline. Mobile: dentro do dialog. `md:contents`
+          {/* Desktop: filtros e ordenação inline. Mobile: dentro do dialog. `@3xl/main:contents`
               promove cada controle a item do flex-wrap da linha — quebram um a um quando
               não cabem, em vez de o bloco inteiro descer de uma vez. */}
           {hasCollapsible && (
-            <div className="hidden md:contents">
+            <div className="hidden @3xl/main:contents">
               {filters}
               {hasSort && (
                 <SortSelect
@@ -314,15 +322,15 @@ export function ListToolbar({
         // esquerda não existe ou está escondido.
         <div
           className={cn(
-            "flex items-center gap-2 max-md:flex-nowrap sm:ml-auto sm:justify-end md:flex-wrap",
-            !actions && !menu && !mobileActions && "md:hidden"
+            "flex items-center gap-2 sm:ml-auto sm:justify-end @max-3xl/main:flex-nowrap @3xl/main:flex-wrap",
+            !actions && !menu && !mobileActions && "@3xl/main:hidden"
           )}
         >
           {hasCollapsible && (
             <Button
               variant="outline"
               size="icon"
-              className="relative md:hidden"
+              className="relative @3xl/main:hidden"
               onClick={() => setFiltersOpen(true)}
               aria-label={
                 activeFilterCount > 0
@@ -343,9 +351,11 @@ export function ListToolbar({
           )}
           {mobileActions ? (
             <>
-              <div className="hidden md:contents">{actions}</div>
+              <div className="hidden @3xl/main:contents">{actions}</div>
               {mobilePrimary && (
-                <div className="min-w-0 flex-1 md:hidden [&>button]:w-full">{mobilePrimary}</div>
+                <div className="min-w-0 flex-1 @3xl/main:hidden [&>button]:w-full">
+                  {mobilePrimary}
+                </div>
               )}
             </>
           ) : (

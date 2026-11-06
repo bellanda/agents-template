@@ -110,7 +110,10 @@ no repo.
   `LANG=pt_BR.UTF-8` o print mostra "08:00 AM" e "mm/dd/yyyy", que o usuário nunca vê
   (`VISUAL_LOCALE`, verificado em 2026-11-05).
 - **Dialog aberto = print só do viewport.** Full-page com dialog mostra a lista vazando por baixo do
-  overlay. A rolagem interna do dialog sai como `<viewport>-scroll-N.png`.
+  overlay. A rolagem interna do dialog sai como `<viewport>-scroll-N.png`. O mesmo vale sem dialog
+  quando o DOCUMENTO não rola e a página rola num container interno (casca do optimuslar,
+  `flex-1 overflow-y-auto`): o full-page parava na dobra. App cujo documento rola não ganha shot
+  extra (2026-11-05).
 - **O mock espelha a API de verdade.** Telefone canônico (`5511987654321`, sem `+`), datas ISO com
   `Z`, snake_case. Mock "bonito" esconde bug: o valor cru no cabeçalho da conversa só apareceu
   quando o mock passou a mandar o canônico (kailos 2026-11-05). Leia o PNG procurando valor cru.
@@ -121,3 +124,10 @@ no repo.
 - **Balão de onboarding intercepta clique.** Tela com `OnboardingBalloon` deve dispensá-lo ("Entendi") no
   `setup` da rota antes de interagir (cobre header/burger/menu do usuário e o clique estoura timeout).
   Ver `onboarding-balloon.md` (`dismissListBalloon` no kailos).
+- **`getByRole('dialog')` é ambíguo com balão aberto**: o popover também é `role=dialog`. No strict
+  mode o locator quebra; com `.first()` o desktop fotografou o balão como "superfície". Localize pelo
+  slot (`[data-slot=form-dialog]`, `[data-slot=dialog-content]`).
+- **Mock com shape errado derruba a tela no print.** Endpoint de coleção devolve `PagedResponse`
+  (`{items,total,skip,limit,has_more}`), nunca `[]` cru: um `/members` mockado como lista solta deu
+  "Cannot read properties of undefined (reading 'length')" e o print saiu com a tela de erro (kailos
+  2026-11-05).

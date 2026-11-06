@@ -35,4 +35,9 @@ paths:
 - **Secrets:** só `OPENROUTER_API_KEY` — OpenRouter é o ÚNICO provedor de IA (decisão do usuário 2026-10-22: Whisper saiu do Groq-direto; `GROQ_API_KEY` não existe mais; Groq-direto dava 429 em rajada, 82 de 107 áudios, e custava 3,3x mais). Resto (modelo, timeouts, flags) é config no `config/app/*.yaml`.
 - **Model picker / catálogo por tenant:** oferece só **Claude Haiku 5.5** (label "Claude Haiku 5.5"). Linha legada com outro slug (inclusive GLM) → migration dbmate reescrevendo para `anthropic/claude-haiku-5.5` (precedente: agents-template `20261010200000_default_model_claude_haiku_5_5.sql`).
 - **Segurança de chatbot público (decisão do usuário 2026-10-14):** todo agente que fala com o público tem as 3 camadas — travas fixas de volume/tamanho no webhook (Valkey), teto de gasto de IA, e trava de manipulação (`report_manipulation_attempt`: o modelo detecta, o código conta; na 2ª tentativa a IA para, a conversa vai a um humano marcada como suspeita — nunca como lead — e o cliente recebe texto FIXO dizendo que só um humano responde dali em diante e que ele foi informado). Manipulação não bloqueia o contato. Skill `ai-agents` → `chatbot-security.md`.
+- **Eval/golden set de conversa real = anonimizado ANTES do commit** (o repo vai pro GitHub): nome,
+  telefone, CPF/CNPJ, placa, e-mail e endereço viram placeholders (`[cliente]`, `[cpf]`…), inclusive
+  dentro do texto livre das mensagens e do `INDEX.md`. Antes de commitar, varra os YAMLs com `rg`
+  pelos primeiros nomes dos contatos/vendedores do banco de origem. Golden set do Olheiro do Kailos
+  quase subiu com ~58 nomes reais e 1 CPF (2026-11-05). Rerode o eval depois de anonimizar.
 - **Não use sem uso:** app sem fluxo de áudio não carrega `media.py`/Whisper; chave/campo/dependência sem leitor é apagado.

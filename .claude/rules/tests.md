@@ -33,6 +33,13 @@ paths:
 
 ### Repeatable inclui o CALENDÁRIO — relógio e data são um PAR
 
+**Canário de fuso (padrão da frota, 2026-11-06):** a suíte roda com o processo pytest e o Postgres
+de teste em `Pacific/Kiritimati` (UTC+14: `TEST_TIMEZONE` + `time.tzset()` no topo do conftest e
+`-c timezone=` no `tests/compose.yml`). Lá a data local difere da de São Paulo das 07h às 24h, então
+dia calculado no fuso do servidor falha em horário de trabalho em vez de só à noite. Teste que quebra
+com o canário é bug (de teste ou de produção), nunca motivo para tirar o canário. Trava estática +
+canário: gate `database` → `local-time.md`.
+
 Todo teste que envolve tempo tem dois lados: o **dado** (a data semeada) e o **relógio** (o que o código chama de "agora"). Só existem duas combinações válidas, e a mistura das duas é a que apodrece:
 
 | Combinação                       | Como                                                           | Quando usar                                                                                   |
