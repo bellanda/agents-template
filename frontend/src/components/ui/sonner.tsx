@@ -1,12 +1,12 @@
-import { useTheme } from "@/components/theme";
+import { useAppStyleMode } from "@/hooks/useAppStyle";
 import { Toaster as Sonner, type ToasterProps } from "sonner";
 
 /**
  * Toaster único do app. `richColors` (padrão da frota, 2026-10-22): erro vermelho, sucesso
- * verde, aviso amarelo, info azul. O tema vem do ThemeProvider (sempre "light"/"dark").
+ * verde, aviso amarelo, info azul. O tema vem do modo do estilo ativo (`useAppStyleMode`, sempre "light"/"dark").
  */
 const Toaster = ({ ...props }: ToasterProps) => {
-  const { theme } = useTheme();
+  const theme = useAppStyleMode();
 
   return (
     <Sonner

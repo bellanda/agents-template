@@ -1,0 +1,40 @@
+/* Escuro suave: o "dark dimmed" do GitHub (2026-11-07) — cinza-azulado (#212830) em vez de
+   quase-preto, para quem acha o escuro puro duro demais. Moldura #151b23, cards #262c36,
+   bordas #3d444d, texto #d1d7e0 (10:1), secundário #9198a1 (5,1:1). */
+
+:root[data-style="escuro-suave"],
+.dark[data-style-preview="escuro-suave"] {
+  --background: oklch(0.274 0.018 252);
+  --foreground: oklch(0.877 0.014 258);
+  --card: oklch(0.292 0.02 261);
+  --card-foreground: oklch(0.877 0.014 258);
+  --popover: oklch(0.311 0.022 259);
+  --popover-foreground: oklch(0.877 0.014 258);
+  --secondary: oklch(0.311 0.022 259);
+  --secondary-foreground: oklch(0.877 0.014 258);
+  --muted: oklch(0.311 0.022 259);
+  --muted-foreground: oklch(0.677 0.016 255);
+  --accent: oklch(0.334 0.022 256);
+  --accent-foreground: oklch(0.877 0.014 258);
+  --border: oklch(0.384 0.018 255);
+  --input: oklch(0.42 0.018 255);
+  --sidebar: oklch(0.22 0.018 256);
+  --sidebar-foreground: oklch(0.877 0.014 258);
+  --sidebar-accent: oklch(0.292 0.02 261);
+  --sidebar-accent-foreground: oklch(0.93 0.012 258);
+  --sidebar-border: oklch(0.384 0.018 255);
+}
+
+:root[data-style="escuro-suave"] [data-app-header],
+:root[data-style="escuro-suave"] [data-settings-header] {
+  background: var(--sidebar);
+}
+
+:root[data-style="escuro-suave"] [data-sidebar="menu-button"][data-active="true"],
+:root[data-style="escuro-suave"] [data-settings-nav] button[data-active] {
+  background: color-mix(in oklch, var(--primary) 16%, transparent);
+  color: var(--sidebar-accent-foreground);
+  font-weight: 600;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  box-shadow: inset 3px 0 0 var(--primary);
+}

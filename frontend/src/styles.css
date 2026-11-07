@@ -4,6 +4,17 @@
 @import "@fontsource-variable/jetbrains-mono";
 @import "@fontsource-variable/figtree";
 
+/* Estilos do app (ref app-styles). `surfaces.css` vem primeiro: as regras empatam em
+   especificidade e vencem na ordem. `app-claro` é o :root e `app-escuro` o .dark abaixo. */
+@import "./styles/themes/surfaces.css";
+@import "./styles/themes/app-escuro.css";
+@import "./styles/themes/nitido.css";
+@import "./styles/themes/grafite.css";
+@import "./styles/themes/areia.css";
+@import "./styles/themes/escuro-suave.css";
+@import "./styles/themes/carbono.css";
+@import "./styles/themes/alto-contraste.css";
+
 @source "../node_modules/streamdown/dist/*.js";
 
 @custom-variant dark (&:is(.dark *));
@@ -21,7 +32,10 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
-:root {
+:root,
+/* `.light` too: the identity-light thumbnail in the style picker needs these tokens
+   even when the whole app is `.dark` (same as kailos). */
+.light {
   --card: oklch(1 0 0);
   --card-foreground: oklch(0.141 0.005 285.823);
   --popover: oklch(1 0 0);
@@ -56,37 +70,40 @@ code {
   --foreground: oklch(0.141 0.005 285.823);
 }
 
-.dark {
-  --background: oklch(0.141 0.005 285.823);
-  --foreground: oklch(0.985 0 0);
-  --card: oklch(0.21 0.006 285.885);
-  --card-foreground: oklch(0.985 0 0);
-  --popover: oklch(0.21 0.006 285.885);
-  --popover-foreground: oklch(0.985 0 0);
+/* Base escura da frota (GitHub, decisão do usuário 2026-11-07; ref app-styles/dark-base.css).
+   Neutros = padrão; --primary*, --ring, --chart-* e --sidebar-primary*/
+--sidebar-ring = identidade. */ .dark {
+  --background: oklch(0.176 0.014 258); /* #0d1117 */
+  --foreground: oklch(0.97 0.01 248); /* #f0f6fc */
+  --card: oklch(0.22 0.018 256); /* #151b23 */
+  --card-foreground: oklch(0.97 0.01 248);
+  --popover: oklch(0.22 0.018 256);
+  --popover-foreground: oklch(0.97 0.01 248);
   --primary: oklch(0.7 0.15 162);
   --primary-foreground: oklch(0.26 0.05 173);
-  --secondary: oklch(0.274 0.006 286.033);
-  --secondary-foreground: oklch(0.985 0 0);
-  --muted: oklch(0.274 0.006 286.033);
-  --muted-foreground: oklch(0.705 0.015 286.067);
-  --accent: oklch(0.274 0.006 286.033);
-  --accent-foreground: oklch(0.985 0 0);
-  --destructive: oklch(0.704 0.191 22.216);
-  --border: oklch(1 0 0 / 10%);
-  --input: oklch(1 0 0 / 15%);
+  --secondary: oklch(0.274 0.018 252); /* #212830 */
+  --secondary-foreground: oklch(0.97 0.01 248);
+  --muted: oklch(0.274 0.018 252);
+  --muted-foreground: oklch(0.677 0.016 255); /* #9198a1 */
+  --accent: oklch(0.292 0.02 261); /* #262c36 */
+  --accent-foreground: oklch(0.97 0.01 248);
+  --destructive: oklch(0.665 0.205 27); /* #f85149 */
+  --destructive-foreground: oklch(0.985 0 0);
+  --border: oklch(0.384 0.018 255 / 70%); /* #3d444d b3 */
+  --input: oklch(0.384 0.018 255); /* #3d444d */
   --ring: oklch(0.552 0.016 285.938);
   --chart-1: oklch(0.85 0.13 165);
   --chart-2: oklch(0.77 0.15 163);
   --chart-3: oklch(0.7 0.15 162);
   --chart-4: oklch(0.6 0.13 163);
   --chart-5: oklch(0.51 0.1 166);
-  --sidebar: oklch(0.21 0.006 285.885);
-  --sidebar-foreground: oklch(0.985 0 0);
+  --sidebar: oklch(0.104 0.019 248); /* #010409 */
+  --sidebar-foreground: oklch(0.97 0.01 248);
   --sidebar-primary: oklch(0.77 0.15 163);
   --sidebar-primary-foreground: oklch(0.26 0.05 173);
-  --sidebar-accent: oklch(0.274 0.006 286.033);
-  --sidebar-accent-foreground: oklch(0.985 0 0);
-  --sidebar-border: oklch(1 0 0 / 10%);
+  --sidebar-accent: oklch(0.22 0.018 256); /* #151b23 */
+  --sidebar-accent-foreground: oklch(0.97 0.01 248);
+  --sidebar-border: oklch(0.384 0.018 255 / 70%);
   --sidebar-ring: oklch(0.552 0.016 285.938);
 }
 

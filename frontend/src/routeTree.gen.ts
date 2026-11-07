@@ -14,6 +14,7 @@ import { Route as AgentConfigRouteImport } from './routes/agent-config'
 import { Route as React19DemoRouteImport } from './routes/react19-demo'
 import { Route as AgentAgentIdRouteImport } from './routes/agent/$agentId'
 import { Route as ChatAgentIdRouteImport } from './routes/chat/$agentId'
+import { Route as EstiloStyleIdRouteImport } from './routes/estilo/$styleId'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -40,6 +41,11 @@ const ChatAgentIdRoute = ChatAgentIdRouteImport.update({
   path: '/chat/$agentId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const EstiloStyleIdRoute = EstiloStyleIdRouteImport.update({
+  id: '/estilo/$styleId',
+  path: '/estilo/$styleId',
+  getParentRoute: () => rootRouteImport,
+} as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -47,6 +53,7 @@ export interface FileRoutesByFullPath {
   '/react19-demo': typeof React19DemoRoute
   '/agent/$agentId': typeof AgentAgentIdRoute
   '/chat/$agentId': typeof ChatAgentIdRoute
+  '/estilo/$styleId': typeof EstiloStyleIdRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -54,6 +61,7 @@ export interface FileRoutesByTo {
   '/react19-demo': typeof React19DemoRoute
   '/agent/$agentId': typeof AgentAgentIdRoute
   '/chat/$agentId': typeof ChatAgentIdRoute
+  '/estilo/$styleId': typeof EstiloStyleIdRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -62,6 +70,7 @@ export interface FileRoutesById {
   '/react19-demo': typeof React19DemoRoute
   '/agent/$agentId': typeof AgentAgentIdRoute
   '/chat/$agentId': typeof ChatAgentIdRoute
+  '/estilo/$styleId': typeof EstiloStyleIdRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -71,6 +80,7 @@ export interface FileRouteTypes {
     | '/react19-demo'
     | '/agent/$agentId'
     | '/chat/$agentId'
+    | '/estilo/$styleId'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -78,6 +88,7 @@ export interface FileRouteTypes {
     | '/react19-demo'
     | '/agent/$agentId'
     | '/chat/$agentId'
+    | '/estilo/$styleId'
   id:
     | '__root__'
     | '/'
@@ -85,6 +96,7 @@ export interface FileRouteTypes {
     | '/react19-demo'
     | '/agent/$agentId'
     | '/chat/$agentId'
+    | '/estilo/$styleId'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -93,6 +105,7 @@ export interface RootRouteChildren {
   React19DemoRoute: typeof React19DemoRoute
   AgentAgentIdRoute: typeof AgentAgentIdRoute
   ChatAgentIdRoute: typeof ChatAgentIdRoute
+  EstiloStyleIdRoute: typeof EstiloStyleIdRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -132,6 +145,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatAgentIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/estilo/$styleId': {
+      id: '/estilo/$styleId'
+      path: '/estilo/$styleId'
+      fullPath: '/estilo/$styleId'
+      preLoaderRoute: typeof EstiloStyleIdRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -141,6 +161,7 @@ const rootRouteChildren: RootRouteChildren = {
   React19DemoRoute: React19DemoRoute,
   AgentAgentIdRoute: AgentAgentIdRoute,
   ChatAgentIdRoute: ChatAgentIdRoute,
+  EstiloStyleIdRoute: EstiloStyleIdRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)

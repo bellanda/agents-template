@@ -1,0 +1,8 @@
+/* `app-escuro` = o `.dark` do styles.css (base escura GitHub). Só o header é moldura aqui.
+   Slug do template: um app novo renomeia `app-escuro` para `<slug>-escuro`. */
+/* Header na mesma moldura da sidebar, mais fundo que o conteúdo (como o topo do GitHub).
+   Id do estilo escuro do app. */
+:root[data-style="app-escuro"] [data-app-header],
+.dark[data-style-preview="app-escuro"] [data-app-header] {
+  background: var(--sidebar);
+}

@@ -1,0 +1,41 @@
+/* Nítido (claro): neutros frios de alto contraste — a paleta clara do GitHub (2026-11-07).
+   Conteúdo branco, moldura gelo (#f6f8fa) na sidebar e no header, bordas #d1d9e0, texto
+   #1f2328 e secundário #59636e (6,1:1). Item ativo: fundo neutro + barra da primária do app. */
+
+:root[data-style="nitido"],
+.light[data-style-preview="nitido"] {
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.254 0.011 254);
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.254 0.011 254);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.254 0.011 254);
+  --secondary: oklch(0.978 0.003 248);
+  --secondary-foreground: oklch(0.254 0.011 254);
+  --muted: oklch(0.978 0.003 248);
+  --muted-foreground: oklch(0.495 0.022 251);
+  --accent: oklch(0.96 0.005 248);
+  --accent-foreground: oklch(0.254 0.011 254);
+  --destructive: oklch(0.557 0.206 25);
+  --border: oklch(0.881 0.013 244);
+  --input: oklch(0.881 0.013 244);
+  --sidebar: oklch(0.978 0.003 248);
+  --sidebar-foreground: oklch(0.254 0.011 254);
+  --sidebar-accent: oklch(0.94 0.006 248);
+  --sidebar-accent-foreground: oklch(0.254 0.011 254);
+  --sidebar-border: oklch(0.881 0.013 244);
+}
+
+:root[data-style="nitido"] [data-app-header],
+:root[data-style="nitido"] [data-settings-header] {
+  background: var(--sidebar);
+}
+
+:root[data-style="nitido"] [data-sidebar="menu-button"][data-active="true"],
+:root[data-style="nitido"] [data-settings-nav] button[data-active] {
+  background: var(--sidebar-accent);
+  color: var(--sidebar-accent-foreground);
+  font-weight: 600;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  box-shadow: inset 3px 0 0 var(--primary);
+}

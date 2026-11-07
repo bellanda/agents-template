@@ -1,0 +1,27 @@
+/* O slug deste TEMPLATE é `app` (ids `app-claro`/`app-escuro`). Um app novo criado a partir
+   dele renomeia `app-` para o próprio slug em: este arquivo, `app-escuro.css`, `app-styles.ts`
+   e o `AppStyleId` do backend (decisão do usuário 2026-11-07). */
+/*
+ * Superfícies fora da casca que repetem a moldura de cada estilo (origem: kailos).
+ *
+ * Dialogs, popovers e o hub de Configurações são portados para o `<body>` e já leem os
+ * tokens do estilo. Aqui entra só a moldura: a nav do hub de Configurações é uma sidebar e
+ * se pinta com a paleta da sidebar. O par de identidade (`app-claro`/`app-escuro`)
+ * fica como sempre foi, por isso o `:not`. Importe ANTES dos arquivos de estilo: as regras
+ * empatam em especificidade e vencem na ordem.
+ */
+
+:root:not([data-style^="app-"]) [data-settings-nav] {
+  background: var(--sidebar);
+  color: var(--sidebar-foreground);
+  --foreground: var(--sidebar-foreground);
+  --accent: var(--sidebar-accent);
+  --accent-foreground: var(--sidebar-accent-foreground);
+  --border: var(--sidebar-border);
+  --input: var(--sidebar-border);
+}
+
+/* O sublinhado da aba ativa (variante `line`) acompanha a primária do estilo. */
+:root:not([data-style^="app-"]) [data-slot="tabs-trigger"][data-state="active"]::after {
+  background: var(--primary);
+}
