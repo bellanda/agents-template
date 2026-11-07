@@ -36,6 +36,13 @@ services:
           memory: 256m
 
   backend:
+    # json-file per environment (base declares no logging; prod uses journald).
+    logging:
+      driver: json-file
+      options:
+        max-size: "100m"
+        max-file: "10"
+        compress: "true"
     environment:
       # Granian sizing for this env. Pool max_size (yaml) is per process: workers x max_size
       # must stay under Postgres max_connections (100 default).
@@ -57,6 +64,13 @@ services:
           memory: 512m
 
   nginx:
+    # json-file per environment (base declares no logging; prod uses journald).
+    logging:
+      driver: json-file
+      options:
+        max-size: "50m"
+        max-file: "10"
+        compress: "true"
     build:
       args:
         # Mirror the `vite:` block of config/app/local.yaml — THESE decide the bundle (the image

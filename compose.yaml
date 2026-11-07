@@ -212,12 +212,6 @@ services:
       start_period: 30s
     restart: always
     stop_grace_period: 30s
-    logging:
-      driver: json-file
-      options:
-        max-size: "100m"
-        max-file: "10"
-        compress: "true"
 
   nginx:
     container_name: agents-template-nginx
@@ -250,12 +244,6 @@ services:
       start_period: 10s
     restart: always
     stop_grace_period: 10s
-    logging:
-      driver: json-file
-      options:
-        max-size: "50m"
-        max-file: "10"
-        compress: "true"
 
 volumes:
   pgdata:

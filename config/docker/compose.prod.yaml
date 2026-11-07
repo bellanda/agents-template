@@ -33,6 +33,13 @@ services:
           memory: 512m
 
   backend:
+    # Logs survive the deploy recreate (json-file lives INSIDE the container). Prod only: dev has no
+    # journald. The base compose.yaml must NOT declare `logging` for backend/nginx: the `include:`
+    # sits UNDER the base, so a base block would win over this one.
+    logging:
+      driver: journald
+      options:
+        tag: agents-template-backend
     environment:
       # Granian sizing for this env. Pool max_size (yaml) is per process: workers x max_size
       # must stay under Postgres max_connections (100 default).
@@ -51,6 +58,13 @@ services:
           memory: 512m
 
   nginx:
+    # Logs survive the deploy recreate (json-file lives INSIDE the container). Prod only: dev has no
+    # journald. The base compose.yaml must NOT declare `logging` for backend/nginx: the `include:`
+    # sits UNDER the base, so a base block would win over this one.
+    logging:
+      driver: journald
+      options:
+        tag: agents-template-nginx
     build:
       args:
         # Mirror the `vite:` block of config/app/prod.yaml — THESE decide the bundle (the image
