@@ -81,16 +81,19 @@ pela área de transferência; o modo `?prompt=` na URL saiu (teto de ~4k caracte
 1. **Clique em "Montar com o ChatGPT"** → `copyPromptToClipboard(prompt)` roda DENTRO do clique (a
    Clipboard API exige ativação do usuário; chamada depois de um `await` ou timer falha no Safari).
 2. **Abre o `ChatGptLaunchDialog`** (`agent-config/ChatGptLaunchDialog.tsx`, canônico e idêntico em
-   todo app): "Prompt copiado" + como colar (PC: clicar na caixa e Ctrl+V / ⌘+V; celular: tocar e segurar
-   → Colar) + contagem de `CHATGPT_OPEN_DELAY_SECONDS = 3` com barra de progresso.
+   todo app). Layout (usuário 2026-11-07: "somente 2 frases e em baixo somente o contador nada mais"):
+   dialog grande (`sm:max-w-2xl`), centrado, com SÓ "Prompt copiado!" em verde grande + "Cole o
+   conteúdo no ChatGPT (Ctrl + V)" grande (o "(Ctrl + V)" some em `pointer-coarse`, celular) + o
+   contador (número grande + barra) de `CHATGPT_OPEN_DELAY_SECONDS = 4`. Sem botão "Abrir agora", sem
+   texto de ajuda — o único botão é o X do dialog.
 3. **Fim da contagem** → `window.open(CHATGPT_URL, "_blank")` sem `noopener` (para detectar o bloqueio;
-   `opened.opener = null` logo depois). **Não suba os 3 s**: o navegador só libera popup ~5 s depois do
-   gesto (Safari/iOS menos). Bloqueado → o dialog mostra o botão "Abrir o ChatGPT" (novo gesto).
+   `opened.opener = null` logo depois). **Não passe de 4 s**: a ativação do clique dura 5 s no Chrome e
+   no Firefox (Safari/iOS menos). Bloqueado → o contador dá lugar ao botão "Abrir o ChatGPT" (novo gesto).
 4. **Cópia falhou** (sem Clipboard API, permissão negada) → o dialog mostra o prompt num `<pre>` para
    copiar à mão + "Copiar de novo"; a contagem só começa depois de uma cópia que deu certo.
 
 Nunca truncar o prompt para caber em nada. Teste: `__tests__/ChatGptLaunchDialog.test.tsx` (copiado →
-conta → abre; bloqueado → botão; cópia falhou → `<pre>`). PROIBIDO voltar a `buildChatGptBuilderUrl`,
+só as 2 frases + contador, nenhum botão além do X → abre; bloqueado → botão; cópia falhou → `<pre>`). PROIBIDO voltar a `buildChatGptBuilderUrl`,
 `chatGptLaunchPlan` ou orçamento de URL.
 
 É navegação, não `fetch`: nenhuma diretiva de CSP muda. O builder canônico
