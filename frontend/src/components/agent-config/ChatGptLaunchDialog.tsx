@@ -4,21 +4,21 @@ import {
   Dialog,
   DialogContent,
   DialogDescription,
-  DialogFooter,
   DialogHeader,
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Progress } from "@/components/ui/progress";
+import { cn } from "@/lib/utils";
 import { Copy, ExternalLink } from "lucide-react";
 import { useEffect, useState } from "react";
 
 /**
- * Seconds between "prompt copied" and opening chatgpt.com. Long enough to read the instructions,
- * short enough to stay inside the browsers' popup window: `window.open` outside a click handler is
- * only allowed for ~5 s after the user gesture (Safari/iOS tolerate less), so do NOT raise this.
- * If the browser blocks it anyway the dialog falls back to a button (a real gesture).
+ * Seconds between "prompt copied" and opening chatgpt.com (user, 2026-11-07: "Pode ser 4s").
+ * `window.open` outside a click handler only works while the click's transient user activation
+ * lasts — 5 s in Chrome and Firefox, less in Safari/iOS — so do NOT raise this above 4. If the
+ * browser blocks it anyway the counter gives way to a button (a real gesture).
  */
-export const CHATGPT_OPEN_DELAY_SECONDS = 3;
+export const CHATGPT_OPEN_DELAY_SECONDS = 4;
 
 const TICK_MS = 1000;
 
@@ -41,8 +41,11 @@ interface ChatGptLaunchDialogProps {
 }
 
 /**
- * "Montar com o ChatGPT" launch flow (decision 2026-11-06): the prompt is already on the
- * clipboard, a short countdown tells the user what to do, then chatgpt.com opens in another window.
+ * "Montar com o ChatGPT" launch flow (decision 2026-11-06, layout 2026-11-07): the prompt is
+ * already on the clipboard; the dialog shows ONLY two big sentences ("Prompt copiado!" in green +
+ * "Cole o conteúdo no ChatGPT (Ctrl + V)") and the countdown, then chatgpt.com opens in another
+ * window. User 2026-11-07: "somente 2 frases e em baixo somente o contador nada mais" — no "open
+ * now" button; a button only appears when the browser blocks the window or the copy fails.
  * Closing the dialog (X / outside) cancels the countdown because the effects unmount with it.
  */
 export function ChatGptLaunchDialog({ prompt, copying, onClose }: ChatGptLaunchDialogProps) {
@@ -93,57 +96,71 @@ export function ChatGptLaunchDialog({ prompt, copying, onClose }: ChatGptLaunchD
     );
   };
 
+  const copyFailed = phase === "copy-failed";
+
   return (
     <Dialog open onOpenChange={(open) => !open && onClose()}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>
-            {phase === "copy-failed" ? "Não consegui copiar automaticamente" : "Prompt copiado"}
+      <DialogContent className="gap-8 p-8 sm:max-w-2xl sm:gap-10 sm:p-12">
+        <DialogHeader className="items-center gap-3 text-center sm:text-center">
+          <DialogTitle
+            className={cn(
+              "text-3xl font-bold sm:text-5xl",
+              copyFailed ? "text-destructive" : "text-emerald-600 dark:text-emerald-400"
+            )}
+          >
+            {copyFailed ? "Não consegui copiar" : "Prompt copiado!"}
           </DialogTitle>
-          <DialogDescription className="text-sm">{describe(phase)}</DialogDescription>
+          <DialogDescription className="text-foreground text-xl font-medium sm:text-3xl">
+            {copyFailed ? (
+              "Copie o texto abaixo e cole no ChatGPT"
+            ) : (
+              <>
+                Cole o conteúdo no ChatGPT{" "}
+                {/* Ctrl + V means nothing on a phone: there the sentence alone is the instruction. */}
+                <span className="whitespace-nowrap pointer-coarse:hidden">(Ctrl + V)</span>
+              </>
+            )}
+          </DialogDescription>
         </DialogHeader>
 
-        {counting && (
-          <div className="space-y-2" aria-live="polite">
-            <p className="text-sm font-medium tabular-nums">
-              Abrindo o ChatGPT em {Math.max(secondsLeft, 0)} s
-            </p>
-            <Progress
-              value={
-                ((CHATGPT_OPEN_DELAY_SECONDS - secondsLeft) / CHATGPT_OPEN_DELAY_SECONDS) * 100
-              }
-            />
-          </div>
+        {counting && <OpeningCountdown secondsLeft={secondsLeft} />}
+
+        {phase === "blocked" && (
+          <Button type="button" className="mx-auto h-12 px-6 text-base" onClick={openChatGpt}>
+            <ExternalLink />
+            Abrir o ChatGPT
+          </Button>
         )}
 
-        {phase === "copy-failed" && (
-          <pre className="bg-muted/40 max-h-64 overflow-y-auto rounded-md border p-3 text-xs break-all whitespace-pre-wrap">
-            {prompt}
-          </pre>
-        )}
-
-        <DialogFooter>
-          {phase === "copy-failed" ? (
-            <Button type="button" className="max-md:h-11" onClick={retryCopy}>
+        {copyFailed && (
+          <>
+            <pre className="bg-muted/40 max-h-64 overflow-y-auto rounded-md border p-3 text-left text-xs break-all whitespace-pre-wrap">
+              {prompt}
+            </pre>
+            <Button type="button" className="mx-auto h-12 px-6 text-base" onClick={retryCopy}>
               <Copy />
               Copiar de novo
             </Button>
-          ) : (
-            <Button type="button" className="max-md:h-11" onClick={openChatGpt}>
-              <ExternalLink />
-              {phase === "blocked" ? "Abrir o ChatGPT" : "Abrir agora"}
-            </Button>
-          )}
-        </DialogFooter>
+          </>
+        )}
       </DialogContent>
     </Dialog>
   );
 }
 
-function describe(phase: Phase): string {
-  if (phase === "blocked")
-    return "O navegador bloqueou a janela. Toque no botão para abrir o ChatGPT.";
-  if (phase === "copy-failed")
-    return "Selecione o texto abaixo, copie e cole no ChatGPT. Ou toque em Copiar de novo.";
-  return `Em ${CHATGPT_OPEN_DELAY_SECONDS} s abrimos o ChatGPT em outra janela. No computador, clique na caixa de mensagem e cole com Ctrl+V (⌘+V no Mac). No celular, toque e segure na caixa e escolha Colar. Depois é só enviar.`;
+/** Big seconds number + bar. `role="timer"` stays silent for screen readers (aria-live off). */
+function OpeningCountdown({ secondsLeft }: { secondsLeft: number }) {
+  const seconds = Math.max(secondsLeft, 0);
+  const elapsedPercent =
+    ((CHATGPT_OPEN_DELAY_SECONDS - seconds) / CHATGPT_OPEN_DELAY_SECONDS) * 100;
+  return (
+    <div
+      role="timer"
+      aria-label={`Abrindo o ChatGPT em ${seconds} s`}
+      className="mx-auto flex w-full max-w-xs flex-col items-center gap-3"
+    >
+      <span className="text-7xl leading-none font-bold tabular-nums sm:text-8xl">{seconds}</span>
+      <Progress value={elapsedPercent} className="h-2" />
+    </div>
+  );
 }

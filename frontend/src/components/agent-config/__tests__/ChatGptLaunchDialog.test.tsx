@@ -9,6 +9,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 const PROMPT = "Monte as instruções da minha loja.";
 const DELAY_MS = CHATGPT_OPEN_DELAY_SECONDS * 1000;
+const COUNTDOWN_START = `Abrindo o ChatGPT em ${CHATGPT_OPEN_DELAY_SECONDS} s`;
 
 const openMock = vi.fn();
 const writeText = vi.fn();
@@ -52,11 +53,14 @@ afterEach(() => {
 });
 
 describe("ChatGptLaunchDialog", () => {
-  it("shows the copied state, counts down and opens chatgpt.com, then closes itself", async () => {
+  it("shows only the two sentences and the countdown, opens chatgpt.com and closes itself", async () => {
     render(<Host copying={Promise.resolve()} />);
     await advance(0);
-    expect(screen.getByText("Prompt copiado")).toBeTruthy();
-    expect(screen.getByText(/Abrindo o ChatGPT em 3 s/)).toBeTruthy();
+    expect(screen.getByText("Prompt copiado!")).toBeTruthy();
+    expect(screen.getByText(/Cole o conteúdo no ChatGPT/)).toBeTruthy();
+    expect(screen.getByRole("timer", { name: COUNTDOWN_START })).toBeTruthy();
+    // User 2026-11-07: "somente 2 frases e em baixo somente o contador" — the X is the only button.
+    expect(screen.getAllByRole("button").map((button) => button.textContent)).toEqual(["Close"]);
 
     await advance(DELAY_MS - 1);
     expect(openMock).not.toHaveBeenCalled();
@@ -81,7 +85,7 @@ describe("ChatGptLaunchDialog", () => {
     render(<Host copying={Promise.resolve()} />);
     await advance(0); // let the copy promise settle so the countdown starts
     await advance(DELAY_MS);
-    expect(screen.getByText(/O navegador bloqueou a janela/)).toBeTruthy();
+    expect(screen.queryByRole("timer")).toBeNull();
     expect(onCloseSpy).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Abrir o ChatGPT" }));
@@ -93,14 +97,14 @@ describe("ChatGptLaunchDialog", () => {
     rejected.catch(() => undefined); // the dialog handles it; this only avoids an unhandled-rejection warning
     render(<Host copying={rejected} />);
     await advance(DELAY_MS + 1000);
-    expect(screen.getByText("Não consegui copiar automaticamente")).toBeTruthy();
+    expect(screen.getByText("Não consegui copiar")).toBeTruthy();
     expect(screen.getByText(PROMPT)).toBeTruthy();
     expect(openMock).not.toHaveBeenCalled();
 
     fireEvent.click(screen.getByRole("button", { name: "Copiar de novo" }));
     await advance(0);
     expect(writeText).toHaveBeenCalledWith(PROMPT);
-    expect(screen.getByText(/Abrindo o ChatGPT em 3 s/)).toBeTruthy();
+    expect(screen.getByRole("timer", { name: COUNTDOWN_START })).toBeTruthy();
     await advance(DELAY_MS);
     expect(openMock).toHaveBeenCalledWith("https://chatgpt.com/", "_blank");
   });
