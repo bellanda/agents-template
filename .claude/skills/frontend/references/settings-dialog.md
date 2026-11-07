@@ -103,12 +103,16 @@ export function getVisibleSections(can: (p: Permission) => boolean, isAdminLevel
 - **`render` é dado.** O kailos decidia por `group === "Organização"` e uma aba de org no grupo
   "IA" abria em branco. `org-tab` = a casca carrega a org (`useGet(orgId)`) e entrega ao
   `OrgTabSection`; `standalone` = seção que busca o próprio dado (`NonOrgSection`).
-- A ordem do array = ordem da nav = ordem do tour de onboarding ("passo N de M"). Primeiros passos
-  no kailos: Empresa → Membros → Equipes → Atendente de IA → Templates do WhatsApp → **Ligações**
-  → WhatsApp Business (a IA precisa das equipes para transferir; o número só liga depois de haver
-  quem atenda). App com WhatsApp tem as 4 seções do canal nessa ordem — Atendente de IA,
-  Templates, Ligações (`?settings=calls`, skill `integrations` → `whatsapp-calling.md`), WhatsApp
-  Business (decisão do usuário 2026-10-27).
+- A ordem do array = ordem da nav = ordem do tour de onboarding ("passo N de M"), e
+  `SETTINGS_GROUPS` também é ordem (a nav itera os grupos): "Primeiros passos" é SEMPRE o primeiro.
+  **App com WhatsApp + IA** (decisão do usuário 2026-11-07, substitui a de 2026-10-27): Empresa →
+  [pré-requisitos do domínio] → Membros → Equipes → Atendente de IA → **WhatsApp Business** →
+  Templates do WhatsApp → Ligações (`?settings=calls`) — Templates e Ligações exigem o número
+  conectado, então vêm depois dele. A nav mostra ✓ no passo feito e cadeado no bloqueado
+  (`useSetupReadiness`); a seção bloqueada abre e diz o que falta. Contrato completo (prontidão no
+  backend, travas 409, "inativo = sem IA"): skill `integrations` → `whatsapp-ai-setup.md`. Teste
+  `sections-config.test.ts` trava a sequência e "o array segue a ordem dos grupos" (emporion tinha
+  `["Conexões", "Atendimento"]` e Ligações/WhatsApp apareciam acima do modelo).
 - Cada app mantém **suas** seções/gates (emporion/nexarena/akmeo/promoservice têm conjuntos
   diferentes); o que é padrão é o **mecanismo** (`id/label/group/icon/gate/render` +
   `getVisibleSections`) e a casca.

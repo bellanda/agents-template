@@ -117,6 +117,7 @@ e quantas vezes. Se código decide a sequência, use `complete*` (mais barato, t
 - `references/prompt-layers.md` — O CONTRATO das 3 camadas (L1 sistema / L2 instrução da loja / L3 ferramentas), ordem canônica, precedência, tabela "onde entra cada correção", changelog datado.
 - `references/anomaly-catalog.md` — método de catálogo de anomalias + formato do `scenarios.yaml`/replay + catálogo genérico de 10 categorias.
 - `references/tenant-config.md` — instruções por tenant (Markdown, versões, ChatGPT), catálogo de modelos, handoff (rotas).
+- Ligar/desligar o atendente, "sem linha = inativo", prontidão antes de ligar → skill `integrations` → `references/whatsapp-ai-setup.md`.
 - `references/chatbot-security.md` — as 3 camadas obrigatórias de chatbot público: travas fixas (flood/tamanho), teto de gasto, manipulação/prompt injection (tool + contador Valkey + resposta fixa + rótulos no inbox).
 - `references/propagation.md` — sync script, adicionar agente/tool/modelo, convergência por app.
 

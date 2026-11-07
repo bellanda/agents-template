@@ -54,8 +54,9 @@ Clique no card (ou "Nova equipe") → FormDialog size="xl" (full-bleed no mobile
   emporion quando existir. A chave técnica (`name`) é gerada do nome (`queueKeyFromLabel`:
   "Pós-venda" → `pos_venda`) **só na criação** — o lojista nunca digita chave.
 - **Coluna direita (membros + ordem)**: lista ordenável com **dnd-kit** (`DndContext` +
-  `SortableContext` + `useSortable`, sensores `PointerSensor` com `distance: 6` + `KeyboardSensor`;
-  handle `≡` com `aria-label`), badge `#n`, remover `X`, e "Adicionar membro" (Popover + Command
+  `SortableContext` + `useSortable`; arrasta a **linha inteira** com `useRowDragSensors`
+  (`lib/dnd/row-drag-sensors.ts`, kailos `f8f22940`: mouse com `distance: 6`, toque com long-press para
+  não roubar a rolagem, + `KeyboardSensor`); o `≡` fica como afordância com `aria-label`), badge `#n`, remover `X`, e "Adicionar membro" (Popover + Command
   sobre os membros da org que ainda não estão na equipe). Texto de apoio: "O primeiro da lista
   recebe o próximo cliente que a IA passar, depois o segundo — um de cada vez."
 - **Rodapé** (slot `footer` do `FormDialog`): **"Excluir equipe"** vermelho (`variant="destructive"`,

@@ -38,7 +38,9 @@ com `request.override(model=init_model_by_id(model_id))`.
 ## O que fica no APP, não no template
 
 Dados do negócio injetados em runtime (horário, filas, catálogo), flags de captura (`sections`), `enabled`
-on/off do atendente (nasce DESLIGADO; ligar exige canal conectado), preview/tester, regras de disclosure
+on/off do atendente (nasce DESLIGADO; ligar exige instrução + pré-requisitos; sem linha, desligado ou
+instrução em branco = inativo, sem nenhuma chamada de modelo para atender — contrato em `integrations` →
+`whatsapp-ai-setup.md`; o fallback "prompt base puro" do middleware NÃO é "ativo"), preview/tester, regras de disclosure
 (`integrations` → `meta-policy.md`), `org_agent_configs` legado do kailos/emporion até convergir.
 
 ## Catálogo de modelos

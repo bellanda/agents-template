@@ -49,7 +49,9 @@ do que qualquer wizard, e o que volta é exatamente o texto que vai para o promp
 
 ```
 [ ToggleCard  Atendente IA · Ativo/Desativado ]      PATCH /enabled — nasce DESLIGADO; ligar
-                                                     exige o canal conectado (senão 400 + atalho)
+                                                     exige instrução salva + pré-requisitos (409 +
+                                                     o que falta; NÃO exige o número conectado) —
+                                                     `integrations` → `whatsapp-ai-setup.md`
 ┌ Instruções do atendente ─────────────── [Editar] ┐
 │ (salvo)   Markdown renderizado (Streamdown)       │
 │ (editando)                                        │
@@ -172,6 +174,9 @@ O texto do tenant é **complementar**, nunca substituto. Separação canônica:
 - Cada save = linha imutável em `*_versions`; **restaurar é um save novo** que mantém o `enabled`
   corrente (o snapshot guarda o texto, não a decisão de estar no ar).
 - Texto em branco = **não configurado**: o runtime devolve `enabled=false` e a conversa vai para humano.
+  Sem linha também é inativo (`bool(row and row["enabled"] and texto.strip())`, default `False` em todo
+  `get("enabled")`) — incidente emporion 2026-11-06: `if row else True` fez a IA responder com a tela
+  em "Desativado". O `PUT` não tem `enabled` com default `True` nem muda o flag.
 - A regra de identidade do agente vai **depois** do Markdown do tenant na composição do prompt
   (`meta-policy.md`) — o texto é livre e pode tentar contradizê-la.
 
@@ -226,7 +231,7 @@ no lugar dos antigos Selects por linha).
 - **NUNCA** pedir no prompt do ChatGPT (ou aceitar no Markdown) dado que tem tela própria — horário,
   equipes, estoque. Fonte única: runtime.
 - **NUNCA** `dangerouslySetInnerHTML`/parser caseiro para mostrar o salvo — Streamdown.
-- **NUNCA** salvar religando a IA: ligar é o `ToggleCard`, com o portão de canal conectado.
+- **NUNCA** salvar religando a IA: ligar é o `ToggleCard`, com o portão de prontidão (`whatsapp-ai-setup.md`).
 - **NUNCA** um editor de agente por app — copie o `agent-config/` do template; o que muda por app é o
   `chatgpt-builder-prompt.ts` (domínio) e o `use-agent-config.ts` (endpoints).
 - **NUNCA** Select por linha para conceder tool a agente — é o picker de colunas (tools = permissões).

@@ -317,6 +317,14 @@ O inbox imita a identidade do canal. As cores vivem **escopadas** em `.whatsapp-
 Fora do escopo `.whatsapp-theme` vale a regra normal (vars semânticas shadcn). **NUNCA** hex cru
 dentro de componente do inbox — sempre `var(--wa-*)`.
 
+**Os valores derivam do tema do app** (kailos `f0f92069`, 2026-10-09; canônico = os dois blocos de
+`kailos/frontend/src/index.css`): fundo, cabeçalho, hover, ativo, bolha de entrada, chip de dia e meta são
+`color-mix` de `--background/--card/--muted/--accent/--border/--muted-foreground`, então o inbox segue a
+paleta e o claro/escuro do app. Hex fixo SÓ na identidade do canal: verde da bolha de saída (misturado ao
+fundo), tique azul `#53bdeb`, teal do envio e selo de não lidas `#008069` (branco sobre `#25d366` dá ~2:1).
+Copiar os hex originais do WhatsApp (`#efeae2`, `#f0f2f5`, `#202c33`…) deixa o chat com cara de outro app —
+emporion e nexarena ficaram assim até 2026-11-07.
+
 ## Anti-padrões
 
 - **NUNCA** `activeContactId`/contato selecionado nas deps do stream (reconecta a cada clique).

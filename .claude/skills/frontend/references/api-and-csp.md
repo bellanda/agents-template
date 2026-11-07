@@ -63,7 +63,9 @@ chamada morre com o access expirado e o usuário só recupera com F5.
 
 ## Falha de rede tem UMA mensagem, em pt-BR
 
-`lib/api/network-error.ts` (`NETWORK_ERROR_MESSAGE` + `isNetworkError`), aplicada nos **dois** pontos de
+`lib/api/network-error.ts` (`NETWORK_ERROR_MESSAGE` + `isNetworkError` + `httpStatusFallbackMessage`:
+resposta HTTP **sem corpo JSON** — 413 do nginx, 502/503/504 do proxy — vira frase pt-BR pelo status em vez
+de "An error occurred", kailos `0326c627`), aplicada nos **dois** pontos de
 normalização: `adapters/*.transformError` E `ApiClient.defaultErrorTransform`. Corrigir só um deixa o
 outro reaparecer no primeiro erro que não passa pelo adapter.
 
