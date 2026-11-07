@@ -132,14 +132,75 @@ code {
   --radius-4xl: calc(var(--radius) + 16px);
 }
 
-/* ToggleCard (gate frontend, ref toggle-card.md) — orbit beam + status dot */
+/* ToggleCard (gate frontend, ref toggle-card.md) — liquid wash + synced border beam + status dot */
 @theme {
-  --animate-tc-beam: tc-beam 5s linear infinite;
+  --animate-tc-beam: tc-beam-travel 6s linear infinite, tc-beam-pulse 3s ease-in-out infinite;
+  --animate-tc-wash-a: tc-wash-a 3s ease-in-out infinite;
+  --animate-tc-wash-b: tc-wash-b 4s ease-in-out infinite;
   --animate-tc-dot: tc-dot 2.4s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 
-  @keyframes tc-beam {
+  /* sweep-across: faixa estreita atravessa o card (~1/3 aceso por vez) → sai e some → reset invisível.
+     translate em % é relativo à largura da faixa (≈45% do card), então X grande = travessia completa. */
+  @keyframes tc-wash-a {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+      opacity: 0;
+    }
+    15% {
+      opacity: 1;
+    }
+    50% {
+      transform: translate(150%, 8%) scale(1.1);
+      opacity: 0.85;
+    }
+    72% {
+      transform: translate(270%, 14%) scale(1);
+      opacity: 0;
+    }
+  }
+  @keyframes tc-wash-b {
+    0%,
+    100% {
+      transform: translate(0, 0) scale(1);
+      opacity: 0;
+    }
+    20% {
+      opacity: 0.85;
+    }
+    55% {
+      transform: translate(-150%, -8%) scale(1.1);
+      opacity: 0.6;
+    }
+    78% {
+      transform: translate(-270%, -12%) scale(1);
+      opacity: 0;
+    }
+  }
+  /* border beam: 1 volta (6s) enquanto o wash-a faz 2 ciclos (3s). Travel e brilho separados —
+     travel contínuo 0→100% (seam coincide no path fechado); brilho pulsa a cada 3s, sincronizado
+     a cada passada da onda (sobe a 15%, baixa a 72% quando o card esvazia). */
+  @keyframes tc-beam-travel {
+    from {
+      offset-distance: 0%;
+    }
     to {
       offset-distance: 100%;
+    }
+  }
+  @keyframes tc-beam-pulse {
+    0%,
+    100% {
+      opacity: 0.35;
+    }
+    15% {
+      opacity: 1;
+    }
+    50% {
+      opacity: 0.85;
+    }
+    72% {
+      opacity: 0.35;
     }
   }
   @keyframes tc-dot {

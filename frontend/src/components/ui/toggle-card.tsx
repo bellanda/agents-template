@@ -1,5 +1,5 @@
 // Cross-project standard (gate frontend, ref toggle-card.md). Requires the
-// `tc-beam` / `tc-dot` keyframes in the global CSS.
+// `tc-wash-a` / `tc-wash-b` / `tc-beam` / `tc-dot` keyframes in the global CSS.
 import { cn } from "@/lib/utils";
 import type { ComponentType } from "react";
 
@@ -13,7 +13,7 @@ interface ToggleCardProps {
   icon?: ComponentType<{ className?: string }>;
   disabled?: boolean;
   /** Transient commit in flight: blocks interaction WITHOUT dimming or restarting
-   * the beam. Use for `isPending`/`saving` — passing those as `disabled` makes
+   * the wash/beam. Use for `isPending`/`saving` — passing those as `disabled` makes
    * every sibling card blink. */
   busy?: boolean;
   /** Chip label while on. */
@@ -29,7 +29,8 @@ interface ToggleCardProps {
 
 /** Boolean toggle rendered as a fully clickable card. Replaces the "small Switch
  * lost inside a wide card" anti-pattern: the whole surface is the control, and the
- * state reads from the status chip + orbit beam instead of a distant tick. */
+ * state reads from the status chip + liquid wash (narrow bands sweeping across) plus
+ * a hairline border beam synced to the wash, instead of a distant tick. */
 export function ToggleCard({
   checked,
   onCheckedChange,
@@ -69,20 +70,39 @@ export function ToggleCard({
       )}
     >
       {checked && !disabled && (
-        <span
-          aria-hidden
-          className="animate-in fade-in pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] duration-700"
-        >
-          {/* MagicUI-style border beam orbiting the card edge (offset-path comet). */}
+        <>
+          {/* Liquid wash: faixas estreitas varrendo o card (sweep-and-empty). */}
           <span
+            aria-hidden
+            className="animate-in fade-in pointer-events-none absolute inset-0 overflow-hidden rounded-[inherit] duration-700"
+          >
+            <span
+              className={cn(
+                "animate-tc-wash-a absolute -top-[50%] -left-[50%] h-[200%] w-[45%] rounded-full blur-2xl will-change-transform motion-reduce:hidden",
+                isPrimary ? "bg-primary/18" : "bg-destructive/18"
+              )}
+            />
+            <span
+              className={cn(
+                "animate-tc-wash-b absolute -top-[50%] -right-[55%] h-[200%] w-[50%] rounded-full blur-2xl will-change-transform motion-reduce:hidden",
+                isPrimary ? "bg-primary/12" : "bg-destructive/12"
+              )}
+            />
+          </span>
+          {/* Hairline border beam (técnica do Border Beam do MagicUI, CSS-only) sincronizado
+              ao wash: 1 volta (6s) a cada 2 ciclos da onda (3s); brilho pulsa junto. */}
+          <span
+            aria-hidden
             className={cn(
-              "animate-tc-beam absolute h-3 w-16 blur-[1px] [offset-path:rect(0_auto_auto_0_round_var(--radius,0.5rem))] motion-reduce:hidden",
-              isPrimary
-                ? "from-primary via-primary/50 bg-gradient-to-l to-transparent"
-                : "from-destructive via-destructive/50 bg-gradient-to-l to-transparent"
+              "animate-tc-beam pointer-events-none absolute top-0 left-0 h-[0.5px] w-14 rounded-full bg-gradient-to-r to-transparent will-change-transform motion-reduce:hidden",
+              isPrimary ? "via-primary from-transparent" : "via-destructive from-transparent"
             )}
+            style={{
+              offsetPath:
+                "rect(1px calc(100% - 1px) calc(100% - 1px) 1px round calc(var(--radius) - 1px))",
+            }}
           />
-        </span>
+        </>
       )}
 
       <span

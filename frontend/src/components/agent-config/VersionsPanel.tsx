@@ -50,7 +50,8 @@ export function VersionsPanel({
   };
 
   return (
-    <Card>
+    // Own `@container`: the panel lives in pages and dialogs; viewport `md:` is wrong in both.
+    <Card className="@container">
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <History className="size-4" />
@@ -72,29 +73,29 @@ export function VersionsPanel({
             {versions.map((item) => (
               <li
                 key={item.version}
-                className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 py-2.5 text-sm md:grid-cols-[5rem_minmax(0,1fr)_auto_auto]"
+                className="grid grid-cols-[1fr_auto] items-center gap-x-3 gap-y-1 py-2.5 text-sm @2xl:grid-cols-[5rem_minmax(0,1fr)_auto_auto]"
               >
-                <span className="flex items-center gap-2 font-medium max-md:col-start-1 max-md:row-start-1">
+                <span className="flex items-center gap-2 font-medium @max-2xl:col-start-1 @max-2xl:row-start-1">
                   v{item.version}
                   {item.version === activeVersion && <Badge className="h-4 px-1.5">Atual</Badge>}
                 </span>
                 <span
                   className={cn(
-                    "text-muted-foreground min-w-0 max-md:col-span-2 max-md:row-start-2 md:truncate",
+                    "text-muted-foreground min-w-0 @max-2xl:col-span-2 @max-2xl:row-start-2 @2xl:truncate",
                     // No note: the "—" only keeps the desktop columns aligned; on mobile it is noise.
-                    item.note === null && "max-md:hidden"
+                    item.note === null && "@max-2xl:hidden"
                   )}
                 >
                   {item.note ?? "—"}
                 </span>
-                <span className="text-muted-foreground text-xs tabular-nums max-md:col-start-2 max-md:row-start-1">
+                <span className="text-muted-foreground text-xs tabular-nums @max-2xl:col-start-2 @max-2xl:row-start-1">
                   {formatVersionDateTime(item.createdAt)}
                 </span>
-                <div className="flex justify-end gap-1 max-md:col-span-2 max-md:row-start-3">
+                <div className="flex justify-end gap-1 @max-2xl:col-span-2 @max-2xl:row-start-3">
                   <Button
                     type="button"
                     variant="ghost"
-                    className="max-md:h-10"
+                    className="@max-2xl:h-10"
                     onClick={() => setPreviewVersionNumber(item.version)}
                   >
                     <Eye />
@@ -104,7 +105,7 @@ export function VersionsPanel({
                     <Button
                       type="button"
                       variant="ghost"
-                      className="max-md:h-10"
+                      className="@max-2xl:h-10"
                       disabled={item.version === activeVersion || activatingVersion !== null}
                       onClick={() => onActivate(item.version)}
                     >
