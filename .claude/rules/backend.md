@@ -51,7 +51,9 @@ paths:
   via `core/phones.py` copiado do kailos — schema de entrada `PhoneNumber`/`OptionalPhoneNumber`,
   webhook `canonical_phone("+" + wa_id)`, planilha/lead `canonical_phone`, busca
   `phone_lookup_variants` + `ORDER BY array_position`. PROIBIDO normalizador local e match por
-  sufixo. Gate `integrations` → `phone-numbers.md`.
+  sufixo. **Envio à Meta vai para o `wa_id` que ela conhece** (`contacts.whatsapp_wa_id`, via
+  `whatsapp_recipient(contact)`), nunca para o canônico quando há `wa_id` — o número de teste
+  recusou a resposta da IA com 131030 (emporion 2026-11-07). Gate `integrations` → `phone-numbers.md`.
 - **JSONB**: orjson pool codec resolve. Pass `dict`/`list` direto; NUNCA `orjson.loads/dumps` manual. Gate `database`.
 - **Concurrency**: fan-out, timeout, file I/O em handler async, capacity limiter, memory stream, cancel shield → SEMPRE skill `anyio-concurrency`.
 - **Cache + messaging**: TTL/contador/sliding window/invalidation (Valkey) e Pub/Sub/Queue/JetStream/KV (NATS) → gate `infra`. Valkey UDS only (`unix:///run/valkey/valkey.sock`), `decode_responses=False`, AOF everysec.

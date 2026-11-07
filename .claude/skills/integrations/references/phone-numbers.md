@@ -23,8 +23,11 @@ Cada app tinha o seu normalizador (`_normalize_br_phone` ×4, `normalize_wa_phon
   - Estrangeiro fica com os dígitos como vieram (8-15). EUA sem `+` não colide com DDD+celular: o
     2º dígito do código de área nunca é 9.
   - Idempotente: a API devolve o canônico e recebe ele de volta igual.
-- É o valor que se **grava, compara, envia à Meta e devolve na API**. A tela formata na exibição.
-- Meta aceita enviar para o canônico de 13 dígitos (template "Alves" entregue e lido 2026-10-29).
+- É o valor que se **grava, compara e devolve na API**. A tela formata na exibição.
+- **Envio à Meta NÃO usa o canônico quando já existe `wa_id`.** O destino é o `wa_id` que a Meta
+  conhece (seção "Backend — ENVIO" abaixo). O canônico só é destino quando o contato ainda não tem
+  `wa_id` (1º template para um lead). Isso funciona em prod: o template "Alves" foi entregue e lido
+  em 2026-10-29.
 
 ## Arquivos canônicos — CÓPIA IDÊNTICA em todo app (nunca reescreva, copie do kailos)
 
@@ -50,9 +53,11 @@ Processo Python separado com `pyproject` próprio (ex.: `cron/` do promoservice)
   vire DDD brasileiro.
 - **Planilha/importação/lead de portal/integração**: `canonical_phone(raw)`; `None` = sem telefone
   (linha pulada/sinalizada, nunca gravada crua).
-- **Ids da plataforma NÃO são telefone de pessoa**: `phone_number_id`, `display_phone_number` do
-  número da loja e a chave de conversa da Meta que o app guarde como veio (`wa_conversation_phone`)
-  ficam crus — são o endereço que a Meta reconhece.
+- **Ids da plataforma NÃO são telefone de pessoa.** Ficam crus, porque são o endereço que a Meta
+  reconhece:
+  - `phone_number_id` e `display_phone_number` do número da loja;
+  - a chave de conversa da Meta que o app guarda como veio (`wa_conversation_phone`);
+  - o `whatsapp_wa_id` do contato (seção "Backend — ENVIO").
 - **Proibido** normalizador local (`_normalize_br_phone`, `normalize_wa_phone`,
   `normalize_lead_phone`, sufixo de 8 dígitos `RIGHT(phone, 8)`): apague e chame `core/phones.py`.
 
@@ -74,6 +79,39 @@ row = await conn.fetchrow(
 O `ORDER BY` prefere a grafia canônica e, empatado, a linha mais antiga (uuidv7) — a que recebeu o
 template. Teste de regressão por app: inbound com o `wa_id` SEM o 9 cai no MESMO contato/conversa do
 envio COM o 9 (kailos `tests/whatsapp/test_template_button_reply.py`).
+
+## Backend — ENVIO vai para o `wa_id` que a Meta conhece
+
+**Por quê.** Incidente no emporion em 2026-11-07, piloto NV Grill no número de TESTE da Meta:
+- A mensagem do Maurício chegou com `from` = `556499512546`, sem o 9.
+- O contato foi gravado com o canônico `5564999512546`, e a IA respondeu para ele.
+- A Meta recusou com `(#131030) Recipient phone number not in allowed list`: a lista de teste compara o número EXATO.
+- O consumer tentou 3 vezes; a cada tentativa o LLM rodou de novo e o envio falhou.
+
+O endereço que a Meta reconhece é o `wa_id`, não o canônico. Responder para ele vale no número de teste e no de produção.
+
+**A regra:**
+- **Identidade:** continua o canônico (`contacts.phone`), com busca, deduplicação e exibição como acima.
+- **Destino:** é a coluna `contacts.whatsapp_wa_id`, `VARCHAR(32)` NULL, sem índice (nunca é buscada).
+  - O webhook grava ali o `from` cru de TODA mensagem recebida, com `UPDATE … WHERE whatsapp_wa_id IS DISTINCT FROM $2`.
+  - Todo envio grava ali o `contacts[0].wa_id` que a Meta devolve, quando vier e for diferente. É assim que o 1º template para um lead aprende o `wa_id`.
+- **Função única de destino** no serviço do WhatsApp: `whatsapp_recipient(contact) -> contact["whatsapp_wa_id"] or contact["phone"]`.
+  - Passam por ela TODOS os caminhos: texto livre, mídia, link, interativo, reação, template, campanha, aviso/follow-up e ligação (iniciar e pedir permissão).
+  - Nada de `contact["phone"]` como `to` fora dela.
+  - Ela NÃO mora em `core/phones.py`, que é cópia idêntica da frota e não conhece WhatsApp.
+- **Mensagem enviada:** a linha guarda em `wa_conversation_phone` o destino realmente usado.
+- **Backfill na mesma migration:** o último `from` de entrada de cada contato.
+  ```sql
+  UPDATE contacts c SET whatsapp_wa_id = m.wa_conversation_phone
+  FROM (SELECT DISTINCT ON (contact_id) contact_id, wa_conversation_phone
+        FROM whatsapp_messages
+        WHERE direction = 'inbound' AND contact_id IS NOT NULL AND wa_conversation_phone <> ''
+        ORDER BY contact_id, created_at DESC, id DESC) m
+  WHERE m.contact_id = c.id;
+  ```
+- **Testes de regressão, por app:**
+  - Entrada com `wa_id` SEM o 9: o contato fica com `phone` canônico COM o 9 e `whatsapp_wa_id` cru, e a resposta sai com `to` = o `wa_id` cru. Capture o argumento do client.
+  - Contato sem `wa_id`: o envio vai ao canônico, e o `wa_id` devolvido pela Meta é gravado.
 
 ## Front — exibir, digitar, validar, linkar
 

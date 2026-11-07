@@ -38,7 +38,8 @@ também.
 - [ ] **6. Telefone (com ou sem WhatsApp)** — canônico único da frota (só dígitos com DDI, celular
   BR sempre com o 9), `core/phones.py` + `lib/utils/phone.ts` + `PhoneInput` copiados do kailos,
   webhook = `canonical_phone("+" + wa_id)`, busca por `phone_lookup_variants`, migration de
-  normalização por app → **`references/phone-numbers.md`**.
+  normalização por app; ENVIO para o `wa_id` que a Meta conhece (`contacts.whatsapp_wa_id` +
+  `whatsapp_recipient`, canônico só sem `wa_id`) → **`references/phone-numbers.md`**.
 
 - [ ] **7. Setup do módulo WhatsApp + IA** — ordem canônica do hub (Empresa → domínio → Membros →
   Equipes → Atendente de IA → WhatsApp Business → Templates → Ligações), prontidão única no backend
@@ -73,7 +74,9 @@ também.
 - **Telefone de pessoa = canônico de `core/phones.py`** em toda entrada (schema `PhoneNumber`,
   webhook `canonical_phone("+" + wa_id)`, planilha/lead) e busca por `phone_lookup_variants`. O
   `wa_id` de celular antigo vem SEM o 9 e a planilha COM: comparar o cru duplicou contato e tirou o
-  template do contexto da IA (Kailos 2026-10-29). Detalhe em `phone-numbers.md`.
+  template do contexto da IA (Kailos 2026-10-29). O ENVIO, ao contrário, vai para o `wa_id` cru
+  que a Meta conhece (`whatsapp_recipient`): responder ao canônico deu 131030 no número de teste
+  (emporion 2026-11-07). Detalhe em `phone-numbers.md`.
 - **Origin de `postMessage`** (Embedded Signup): `new URL(origin).hostname` igual a `facebook.com`
   ou terminando em **`.facebook.com`** (com o ponto), `https:` — NUNCA `origin.endsWith("facebook.com")`
   cru (casa `evil-facebook.com`) e NUNCA lista fixa de 3 subdomínios (descartou o FINISH em prod,

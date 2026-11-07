@@ -132,6 +132,22 @@ impede alguém de "simplificar" de volta.
 - Várias fotos: preparar todas em paralelo e enviar em rajada na ordem é o que faz o WhatsApp do
   cliente agrupar em álbum (`services/agents/vehicle_photo_sender.py`).
 
+**Resposta da IA — erro DEFINITIVO da Meta não roda o modelo de novo** (decisão do usuário 2026-11-07)
+- Incidente (emporion prod, 2026-11-07): número de TESTE da Meta, destino fora da lista → `(#131030)`.
+  O envio da resposta lançava `RuntimeError("WhatsApp API error: …")` genérico, o consumer dava NAK, e
+  cada uma das 5 entregas do JetStream rodava o LLM de novo (pago) para falhar igual.
+- O client lança **`MetaGraphError`** (com `code`, `error_subcode` e o HTTP status) em TODO envio que
+  a Graph recusa; mensagem genérica sem código impede a classificação.
+- Uma função só no serviço do WhatsApp, `is_permanent_send_error(exc) -> bool`:
+  - **definitivo** = `MetaGraphError` com HTTP 4xx cujo `code` NÃO está em `TRANSIENT_META_SEND_CODES`;
+  - **temporário** = 5xx, erro de rede/timeout, e os códigos de limite e instabilidade
+    (`1, 2, 4, 80007, 130429, 131000, 131016, 131048, 131056`).
+- No despachante do agente: erro definitivo → `log.warning("agent_reply_send_failed_permanent",
+  code=…)`, a conversa vai para humano NA HORA (`agent_send_failed`) e o turno termina SEM relançar
+  (ACK). Temporário segue com NAK e reentrega (a última entrega dá a conversa ao humano).
+- Teste de regressão obrigatório: client falso lançando `131030` → o modelo é chamado UMA vez, a
+  conversa vai para humano, nenhuma exceção sobe ao consumer.
+
 **Marcar como lida (`mark_read`)** (`_handle_mark_read`)
 - Best-effort e cosmético: o token NÃO vai no payload NATS (re-resolve por `phone_number_id`);
   qualquer erro vira `log.warning("mark_read_suppressed_error", …, exc_info=True)` e ACK — retry numa
