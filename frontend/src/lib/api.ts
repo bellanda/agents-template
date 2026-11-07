@@ -1,3 +1,5 @@
+import { httpStatusFallbackMessage } from "./api/network-error";
+
 const API_BASE = "/api/v1/agents";
 
 // ── Suggestions ────────────────────────────────────────────────────────────────
@@ -260,7 +262,7 @@ async function requestAgentConfig<T>(
     body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
   });
   if (!res.ok) {
-    let message = `Falha na requisição (HTTP ${res.status}).`;
+    let message = httpStatusFallbackMessage(res.status);
     try {
       const body = (await res.json()) as { detail?: unknown };
       if (typeof body.detail === "string") message = body.detail;
@@ -486,7 +488,7 @@ export async function uploadFile(
       code: fallbackCode,
       filename: file.name,
       mediaType: file.type || "application/octet-stream",
-      message: typeof detail === "string" ? detail : `Upload failed (HTTP ${response.status}).`,
+      message: typeof detail === "string" ? detail : httpStatusFallbackMessage(response.status),
     });
   }
 

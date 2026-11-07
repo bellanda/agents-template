@@ -33,3 +33,15 @@ export function isNetworkFailure(error: unknown): boolean {
 export function rawNetworkErrorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
+
+/**
+ * Resposta de erro SEM corpo JSON (nginx/gateway respondem HTML): o motivo vem do status.
+ * Antes saía texto genérico em inglês — no Kailos/Promocar um 413 de fotos grandes não dava
+ * nenhuma pista do que fazer (2026-11-04).
+ */
+export function httpStatusFallbackMessage(status: number | undefined): string {
+  if (status === 413) return "O envio ficou grande demais para o servidor aceitar.";
+  if (status === 502 || status === 503 || status === 504)
+    return "O servidor está indisponível no momento. Tente novamente em instantes.";
+  return status ? `Erro inesperado do servidor (HTTP ${status}).` : "Erro inesperado do servidor.";
+}
