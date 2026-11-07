@@ -1,0 +1,39 @@
+/* Alto contraste (escuro): o "dark high contrast" do GitHub (2026-11-07) — fundo #010409,
+   texto branco, secundário #b7bdc8 (10,9:1), bordas claras bem visíveis e item ativo cheio
+   na primária. Para sol na tela, vista cansada e quem lê de longe. */
+
+:root[data-style="alto-contraste"],
+.dark[data-style-preview="alto-contraste"] {
+  --background: oklch(0.104 0.019 248);
+  --foreground: oklch(1 0 0);
+  --card: oklch(0.176 0.014 258);
+  --card-foreground: oklch(1 0 0);
+  --popover: oklch(0.176 0.014 258);
+  --popover-foreground: oklch(1 0 0);
+  --secondary: oklch(0.292 0.02 261);
+  --secondary-foreground: oklch(1 0 0);
+  --muted: oklch(0.22 0.018 256);
+  --muted-foreground: oklch(0.797 0.017 263);
+  --accent: oklch(0.311 0.022 259);
+  --accent-foreground: oklch(1 0 0);
+  --destructive: oklch(0.7 0.19 25);
+  --border: oklch(0.797 0.017 263 / 45%);
+  --input: oklch(0.797 0.017 263 / 70%);
+  --sidebar: oklch(0.104 0.019 248);
+  --sidebar-foreground: oklch(1 0 0);
+  --sidebar-accent: oklch(0.22 0.018 256);
+  --sidebar-accent-foreground: oklch(1 0 0);
+  --sidebar-border: oklch(0.797 0.017 263 / 45%);
+}
+
+:root[data-style="alto-contraste"] [data-sidebar="menu-button"][data-active="true"],
+:root[data-style="alto-contraste"] [data-settings-nav] button[data-active] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 700;
+}
+
+:root[data-style="alto-contraste"] :focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}

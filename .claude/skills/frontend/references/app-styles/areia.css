@@ -1,0 +1,39 @@
+/* Areia (claro): papel quente (hue 75), item ativo com fundo suave e barra da primária,
+   faixa quente no header. Os neutros de areia SÃO o estilo; o realce segue a primária. */
+
+:root[data-style="areia"],
+.light[data-style-preview="areia"] {
+  --background: oklch(0.986 0.005 75);
+  --secondary: oklch(0.955 0.016 75);
+  --secondary-foreground: oklch(0.32 0.035 50);
+  --accent: oklch(0.95 0.02 72);
+  --accent-foreground: oklch(0.32 0.035 50);
+  --muted: oklch(0.96 0.011 75);
+  --muted-foreground: oklch(0.5 0.025 60);
+  --border: oklch(0.905 0.014 72);
+  --input: oklch(0.905 0.014 72);
+  --sidebar: oklch(0.962 0.016 75);
+  --sidebar-foreground: oklch(0.25 0.02 50);
+  --sidebar-accent: oklch(0.925 0.024 70);
+  --sidebar-accent-foreground: oklch(0.25 0.02 50);
+  --sidebar-border: oklch(0.9 0.02 70);
+}
+
+:root[data-style="areia"] [data-sidebar="menu-button"][data-active="true"],
+:root[data-style="areia"] [data-settings-nav] button[data-active] {
+  background: color-mix(in oklch, var(--primary) 14%, var(--sidebar));
+  color: color-mix(in oklch, var(--primary) 70%, var(--sidebar-foreground));
+  font-weight: 600;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+:root[data-style="areia"] [data-app-header],
+:root[data-style="areia"] [data-settings-header],
+:root[data-style="areia"] [data-slot="form-dialog"] > [data-slot="dialog-header"] {
+  background-image: linear-gradient(
+    90deg,
+    color-mix(in oklch, var(--primary) 18%, var(--background)) 0%,
+    var(--background) 60%
+  );
+}

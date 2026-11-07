@@ -1,6 +1,6 @@
 ---
 name: frontend
-description: PORTÃO obrigatório antes de QUALQUER construção/edição de UI (React 19 + TanStack + Tailwind 4 + shadcn) — layout, página, componente, overlay/dialog, form, tabela/lista/CRUD, abas, barra de filtros, upload de mídia, impressão/PDF, estados vazio/erro/offline, máscaras, casca de app, PWA, telas canônicas (Equipes, inbox WhatsApp, config de agente de IA). Checklist ordenado de invariantes — layout dita a largura (1440 centrado, página sem max-w), Dialog-first sem Sheet lateral, grid p/ peers e 1 coluna p/ sequencial, onde mora o state, React 19, performance, Tailwind/shadcn semânticos, EntityPicker p/ FK, FormDialog (teclado do celular cobrindo campo ou botão salvar, dialog que sai da tela no mobile), ListToolbar+DataList (tabela vira card, modo por tela: rolagem contínua default + páginas numeradas no ⋮, totais no topo, busca/filtros/ordenação na URL em UMA linha), 3+ abas viram Select no celular, responsivo por CSS (nunca useIsMobile), mobile-first bloqueante — e roteia pros skills profundos. MODO AUDITORIA: varrer/consertar a consistência de UI de um projeto (larguras divergentes, chat bugado, Sheet lateral, logo gigante, quebra no mobile, filtro torto ou em 2ª linha, tabela ilegível no celular, lista sem filtro/ordenação). QA VISUAL de seção nova grande: benchmark nas melhores telas da frota + screenshots em celular/tablet/PC (`bun run qa:visual`) olhados e corrigidos antes de entregar.
+description: PORTÃO obrigatório antes de QUALQUER construção/edição de UI (React 19 + TanStack + Tailwind 4 + shadcn) — layout, página, componente, overlay/dialog, form, tabela/lista/CRUD, abas, barra de filtros, upload de mídia, impressão/PDF, estados vazio/erro/offline, máscaras, casca de app, PWA, telas canônicas (Equipes, inbox WhatsApp, config de agente de IA), estilos/temas do app (seletor de estilo, modo escuro, base escura GitHub). Checklist ordenado de invariantes — layout dita a largura (1440 centrado, página sem max-w), Dialog-first sem Sheet lateral, grid p/ peers e 1 coluna p/ sequencial, onde mora o state, React 19, performance, Tailwind/shadcn semânticos, EntityPicker p/ FK, FormDialog (teclado do celular cobrindo campo ou botão salvar, dialog que sai da tela no mobile), ListToolbar+DataList (tabela vira card, modo por tela: rolagem contínua default + páginas numeradas no ⋮, totais no topo, busca/filtros/ordenação na URL em UMA linha), 3+ abas viram Select no celular, responsivo por CSS (nunca useIsMobile), mobile-first bloqueante — e roteia pros skills profundos. MODO AUDITORIA: varrer/consertar a consistência de UI de um projeto (larguras divergentes, chat bugado, Sheet lateral, logo gigante, quebra no mobile, filtro torto ou em 2ª linha, tabela ilegível no celular, lista sem filtro/ordenação). QA VISUAL de seção nova grande: benchmark nas melhores telas da frota + screenshots em celular/tablet/PC (`bun run qa:visual`) olhados e corrigidos antes de entregar.
 ---
 
 # Frontend — O Portão
@@ -210,7 +210,11 @@ standalone e são linkados no roteamento (fim do arquivo).
 - [ ] **11. PADRÃO vs IDENTIDADE.** Padroniza (cross-projeto): layout, larguras (1440), enquadramento,
   overlays, grid-vs-stack, mobile-first, `react-icons`, `html { font-size: 17px }`. **NÃO** padroniza
   (por-projeto): font-**family**, **cores**, **estilo shadcn** (baseColor/new-york etc.). Nunca
-  "unifique" marca entre apps.
+  "unifique" marca entre apps. **Exceção decidida (2026-11-07):** os NEUTROS do escuro são padrão
+  (base GitHub `#0d1117`/moldura `#010409`) e todo app tem o seletor de **estilos** (Kailos
+  canônico: catálogo + `data-style` + `ui_preferences.app_style`, 6 estilos genéricos + par de
+  identidade); primária/gráficos seguem identidade. *deep: `references/app-styles.md` +
+  `references/app-styles/*.css` (canônicos).*
 - [ ] **12. Seção nova grande → benchmark antes + QA visual em 3 larguras depois** (decisão
   2026-11-05). Rota/tela nova, redesign, fluxo multi-tela ou dialog grande:
   - **antes**, abra o melhor exemplo do mesmo padrão (telas canônicas + galeria
@@ -259,6 +263,7 @@ Padronizadas em 2026-10-01 (código canônico = kailos, salvo onde indicado). N�
 | Equipes (filas humanas do atendente de IA): grid de cards + editor  | `references/queues-editor.md`                     |
 | Horário de funcionamento semanal (grupos de dias com o mesmo horário) | `references/business-hours-editor.md` (+ `business-hours-groups.ts`) |
 | Inbox WhatsApp `/chat` (conversas, janela, envio otimista, SSE)     | `references/whatsapp-inbox.md`                    |
+| Estilos do app (seletor "Estilo", claro/escuro, base escura GitHub, `data-style`) | `references/app-styles.md` (+ `app-styles/*.css`) |
 | Tempo real SSE por usuário (patch com `setQueryData`) + push com botões de ação | `references/realtime-and-push-actions.md` |
 | Quadro kanban (dnd-kit, colunas com keyset, lote, SLA ao vivo)      | `references/kanban-board.md`                      |
 | Balão de onboarding "visto uma vez" por usuário (popover ancorado)  | `references/onboarding-balloon.md` (+ `onboarding-balloon.tsx`, `balloon-slot.ts`) |
@@ -312,6 +317,9 @@ grande: `bun run qa:visual` limpo e os screenshots de 390/820/1440 olhados (item
 - `references/business-hours-editor.md` + `references/business-hours-groups.ts` — editor semanal agrupado
   (define o horário uma vez e aplica a vários dias; chips + presets + faixas; dado por dia inalterado,
   grupos derivados por helpers puros; validação pt-BR; emporion canônico, kailos portado).
+- `references/app-styles.md` + `references/app-styles/*.css` — estilos visuais por pessoa (kailos
+  canônico, frota 2026-11-07): catálogo `APP_STYLES`, store/hook/dialog/prévia, `PATCH
+  /accounts/me/ui-preferences`, base escura GitHub (`dark-base.css`) e 6 estilos genéricos.
 - `references/whatsapp-inbox.md` — inbox `/chat` do kailos (layout lista/janela, SSE keyed por ORG e
   nunca pelo contato ativo, envio otimista, tema `--wa-*`); nexarena adota sem equipes.
 - `references/realtime-and-push-actions.md` — um SSE por usuário na casca (reconexão com backoff+jitter,

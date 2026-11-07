@@ -1,0 +1,45 @@
+/* Carbono (escuro): preto profundo levemente quente; bordas finas, barra da primária no item
+   ativo, filete da primária sob o header. Os neutros quentes (hue 60) SÃO o estilo — não
+   tinja pela cor do app. Origem: kailos (2026-09). */
+
+:root[data-style="carbono"],
+.dark[data-style-preview="carbono"] {
+  --background: oklch(0.145 0.004 60);
+  --foreground: oklch(0.96 0.003 60);
+  --card: oklch(0.185 0.005 60);
+  --card-foreground: oklch(0.96 0.003 60);
+  --popover: oklch(0.2 0.005 60);
+  --popover-foreground: oklch(0.96 0.003 60);
+  --secondary: oklch(0.235 0.005 60);
+  --secondary-foreground: oklch(0.96 0.003 60);
+  --muted: oklch(0.22 0.005 60);
+  --muted-foreground: oklch(0.7 0.004 60);
+  --accent: oklch(0.24 0.006 60);
+  --accent-foreground: oklch(0.96 0.003 60);
+  --border: oklch(1 0 0 / 9%);
+  --input: oklch(1 0 0 / 13%);
+  --sidebar: oklch(0.115 0.003 60);
+  --sidebar-foreground: oklch(0.94 0.003 60);
+  --sidebar-accent: oklch(0.19 0.004 60);
+  --sidebar-accent-foreground: oklch(0.97 0.003 60);
+  --sidebar-border: oklch(1 0 0 / 7%);
+}
+
+:root[data-style="carbono"] [data-sidebar="menu-button"][data-active="true"],
+:root[data-style="carbono"] [data-settings-nav] button[data-active] {
+  background: color-mix(in oklch, var(--primary) 12%, transparent);
+  color: var(--primary);
+  font-weight: 600;
+  border-radius: 0 var(--radius) var(--radius) 0;
+  box-shadow: inset 3px 0 0 var(--primary);
+}
+
+:root[data-style="carbono"] [data-app-header],
+:root[data-style="carbono"] [data-settings-header],
+:root[data-style="carbono"] [data-slot="form-dialog"] > [data-slot="dialog-header"] {
+  border-bottom-color: color-mix(in oklch, var(--primary) 35%, transparent);
+}
+
+:root[data-style="carbono"] [data-kpi-icon] {
+  color: var(--primary);
+}

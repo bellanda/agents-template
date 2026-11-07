@@ -1,0 +1,24 @@
+/*
+ * Superfícies fora da casca que repetem a moldura de cada estilo (origem: kailos).
+ *
+ * Dialogs, popovers e o hub de Configurações são portados para o `<body>` e já leem os
+ * tokens do estilo. Aqui entra só a moldura: a nav do hub de Configurações é uma sidebar e
+ * se pinta com a paleta da sidebar. O par de identidade (`<slug>-claro`/`<slug>-escuro`)
+ * fica como sempre foi, por isso o `:not`. Importe ANTES dos arquivos de estilo: as regras
+ * empatam em especificidade e vencem na ordem.
+ */
+
+:root:not([data-style^="<slug>-"]) [data-settings-nav] {
+  background: var(--sidebar);
+  color: var(--sidebar-foreground);
+  --foreground: var(--sidebar-foreground);
+  --accent: var(--sidebar-accent);
+  --accent-foreground: var(--sidebar-accent-foreground);
+  --border: var(--sidebar-border);
+  --input: var(--sidebar-border);
+}
+
+/* O sublinhado da aba ativa (variante `line`) acompanha a primária do estilo. */
+:root:not([data-style^="<slug>-"]) [data-slot="tabs-trigger"][data-state="active"]::after {
+  background: var(--primary);
+}

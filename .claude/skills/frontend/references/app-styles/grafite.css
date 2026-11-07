@@ -1,0 +1,43 @@
+/* Grafite (claro): conteúdo claro do app + sidebar grafite, item ativo em pílula da
+   primária, filete da primária no header. <H> = hue da primária do app (tinge o grafite de
+   leve: kailos 55, emporion/promoservice 262, nexarena/optimuslar 165, akmeo 56).
+   App cujo claro padrão JÁ tem sidebar escura (akmeo) não precisa deste estilo. */
+
+:root[data-style="grafite"],
+.light[data-style-preview="grafite"] {
+  --sidebar: oklch(0.235 0.008 <H>);
+  --sidebar-foreground: oklch(0.93 0.006 <H>);
+  --sidebar-accent: oklch(0.305 0.01 <H>);
+  --sidebar-accent-foreground: oklch(0.98 0.004 <H>);
+  --sidebar-border: oklch(1 0 0 / 9%);
+}
+
+/* O cinza-médio do app some no grafite — o texto secundário da sidebar clareia. */
+:root[data-style="grafite"] [data-sidebar="sidebar"],
+:root[data-style="grafite"] [data-settings-nav] {
+  --muted-foreground: oklch(0.72 0.012 <H>);
+}
+
+:root[data-style="grafite"] [data-sidebar="menu-button"][data-active="true"],
+:root[data-style="grafite"] [data-settings-nav] button[data-active] {
+  background: var(--primary);
+  color: var(--primary-foreground);
+  font-weight: 600;
+}
+
+:root[data-style="grafite"] [data-app-header],
+:root[data-style="grafite"] [data-settings-header],
+:root[data-style="grafite"] [data-slot="form-dialog"] > [data-slot="dialog-header"] {
+  box-shadow: inset 0 -2px 0 var(--primary);
+}
+
+:root[data-style="grafite"] [data-kpi-icon] {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 2.25rem;
+  height: 2.25rem;
+  border-radius: var(--radius);
+  background: color-mix(in oklch, var(--primary) 14%, transparent);
+  color: var(--primary);
+}
