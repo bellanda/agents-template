@@ -50,6 +50,7 @@ resumidos (só config + tools):
 | `speech.py` | Texto em fala (OPCIONAL: só app que fala; `--add-module speech`): `synthesize_speech(text, instructions, SpeechReference \| None)` → `SpeechResult(audio mp3, generation_id, cost_usd)` via `POST /audio/speech` (Fish Audio drama-3, clonagem por `input_references`); `record_speech_cost(result, usage=UsageContext)` grava a linha em `agent_message_usage` NA HORA, pelo preço por caractere (o custo do `GET /generation` só aparece ~11 s depois). Cache, armazenamento e teto de gasto são do app. (origem: kailos Modo TV, 2026-10-23) |
 | `checkpointer.py` | `AsyncPostgresSaver` singleton (`init_checkpointer`/`get_checkpointer`/`close_checkpointer`). |
 | `history_window.py` | `sliding_window_middleware` — corta o histórico enviado ao LLM por orçamento de tokens/mensagens. |
+| `empty_reply_guard.py` | `empty_reply_guard_middleware` — se o modelo encerra o turno logo após uma tool com texto vazio (cliente ficaria no silêncio), refaz a chamada UMA vez com uma instrução só no request (nunca persistida). Opt-in para agentes que falam com cliente final: `middleware=[sliding_window_middleware, empty_reply_guard_middleware]`. (origem: kailos, 2026-11-05) |
 | `prompt_cache.py` | Memo TTL in-process de fragmentos de prompt vindos do DB (instruções do tenant). NÃO é o cache do provedor — esse é implícito por prefixo (ver §10). |
 | `schemas.py` | `AgentConfig`, `AgentSuggestion` (com `action: fill|attach`), serialização de sugestões. |
 

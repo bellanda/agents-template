@@ -13,6 +13,18 @@ from api.core.agents.models import (
 from api.models.agents.usage import AgentMessageUsage
 
 
+def collapse_repeated_model_id(raw: str) -> str:
+    """`"abab"` -> `"ab"`. Streaming merges `response_metadata` across chunks by concatenating
+    strings, so when 2+ chunks carry `model_name` the stored id came out doubled
+    (`anthropic/claude-haiku-5.5anthropic/claude-haiku-5.5`, 728 prod rows in Kailos by 2026-10-22)
+    and `find_model_config` missed it. Collapsing here fixes every caller of the usage builder."""
+    size = len(raw)
+    for period in range(1, size // 2 + 1):
+        if size % period == 0 and raw[:period] * (size // period) == raw:
+            return raw[:period]
+    return raw
+
+
 def build_usage_from_ai_message(
     ai: AIMessage | None,
     *,
@@ -42,6 +54,7 @@ def build_usage_from_ai_message(
     model_id = rm.get("model_name") or rm.get("model")
     if not provider or not model_id:
         return None
+    model_id = collapse_repeated_model_id(str(model_id))
 
     cfg = find_model_config(str(provider), str(model_id))
     reported_cost = rm.get("provider_cost_usd")
