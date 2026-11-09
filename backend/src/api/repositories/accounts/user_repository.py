@@ -31,5 +31,21 @@ class UserRepository:
             app_style,
         )
 
+    async def set_font_size(self, conn: Connection, user_id: str, font_size: str) -> dict:
+        """Saves ``ui_preferences->font_size`` without touching other keys (upsert, like the style)."""
+        return await conn.fetchval(
+            """
+            INSERT INTO users (id, ui_preferences)
+            VALUES ($1, jsonb_build_object('font_size', $2::text))
+            ON CONFLICT (id) DO UPDATE
+            SET ui_preferences = jsonb_set(
+                users.ui_preferences, '{font_size}', to_jsonb($2::text), true
+            )
+            RETURNING ui_preferences
+            """,
+            user_id,
+            font_size,
+        )
+
 
 user_repository = UserRepository()

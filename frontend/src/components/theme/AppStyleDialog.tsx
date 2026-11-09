@@ -1,20 +1,29 @@
 import { AppStylePreview } from "@/components/theme/AppStylePreview";
+import { AppStyleSamples } from "@/components/theme/AppStyleSamples";
+import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { FormDialog } from "@/components/ui/form-dialog";
-import { useAppStyle, useAppStyleChoicePending } from "@/hooks/useAppStyle";
-import {
-  APP_STYLES,
-  findAppStyle,
-  type AppStyleId,
-  type AppStyleMode,
-} from "@/lib/appearance/app-styles";
+import { useAppStyle, useAppStyleChoicePending, useFontSize } from "@/hooks/useAppStyle";
+import { APP_STYLES, type AppStyleId, type AppStyleMode } from "@/lib/appearance/app-styles";
+import { FONT_SIZES, type FontSizeId } from "@/lib/appearance/font-size";
 import { cn } from "@/lib/utils";
-import { CheckIcon } from "@phosphor-icons/react";
+import { CheckIcon, EyeIcon } from "@phosphor-icons/react";
 
 const STYLE_GROUPS: ReadonlyArray<{ mode: AppStyleMode; label: string }> = [
   { mode: "light", label: "Claros" },
   { mode: "dark", label: "Escuros" },
 ];
+
+/** Each button's "A" grows with the option, so it can be picked even without reading the name. */
+const FONT_SIZE_GLYPH: Record<FontSizeId, string> = {
+  padrao: "text-sm",
+  grande: "text-lg",
+  "muito-grande": "text-2xl",
+};
+
+const OPTION_CLASS = "hover:bg-accent min-w-0 rounded-lg border transition-colors";
+const OPTION_SELECTED_CLASS = "border-primary ring-primary/30 bg-accent ring-2";
+const GROUP_LABEL_CLASS = "text-muted-foreground text-xs font-medium";
 
 /**
  * Primeira entrada na plataforma: abre sozinho uma vez por conta (`ui_preferences.app_style`
@@ -33,43 +42,83 @@ interface AppStyleDialogProps {
 }
 
 /**
- * Escolha de estilo com prévia ao vivo.
+ * Appearance settings, laid out like Shadcn Create (user decision 2026-11-09): the options sit on
+ * the left and the right side labels itself as an example, so nobody mistakes those buttons for
+ * real ones.
  *
- * Cada toque aplica o estilo na hora ao app inteiro (este dialog incluso) e à prévia, sem
- * gravar; "Usar" — ou fechar, que fica com o que está na tela — grava na conta.
+ * Each tap applies at once to the whole app (this dialog included) without saving; "Salvar", or
+ * closing, which keeps what is on screen, saves to the account.
  */
 export function AppStyleDialog({ open, onOpenChange }: AppStyleDialogProps) {
   const { style, chooseStyle, previewStyle } = useAppStyle();
-  const confirmStyle = () => {
-    chooseStyle(style);
+  const { fontSize, previewFontSize } = useFontSize();
+  const confirmAppearance = () => {
+    chooseStyle(style, fontSize);
     onOpenChange(false);
   };
 
   return (
     // `FormDialog` (header/body/footer anchored to the visual viewport): on a phone the body
-    // scrolls and "Usar" always stays in view (a plain/sticky footer ended up off-screen or
-    // floating over the list in QA, 2026-11-07). The list comes first so the choice is one tap
-    // away on a phone; from @2xl the preview sits to the right of it.
+    // scrolls and "Salvar" always stays in view. The two columns switch on the dialog's own width
+    // (`@3xl`, in rem), so a large font size falls back to one column before anything gets tight.
     <FormDialog
       open={open}
-      onOpenChange={(next) => !next && confirmStyle()}
-      size="xl"
-      title="Escolha o seu estilo"
-      description="Toque em um estilo e veja o app mudar na hora. Dá para trocar quando quiser no ícone de paleta, no topo da tela."
+      onOpenChange={(next) => !next && confirmAppearance()}
+      size="2xl"
+      className="h-[calc(100dvh-2rem)]"
+      bodyClassName="@3xl:overflow-hidden @3xl:p-0"
+      title="Aparência"
+      description="Toque em uma opção e veja o app mudar na hora. Dá para trocar quando quiser no ícone de paleta, no topo da tela."
       footer={
-        <Button onClick={confirmStyle}>
+        <Button onClick={confirmAppearance}>
           <CheckIcon aria-hidden />
-          Usar {findAppStyle(style).name}
+          Salvar
         </Button>
       }
     >
-      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 @2xl:grid-cols-[15rem_minmax(0,1fr)]">
-        <AppStyleOptions selected={style} onSelect={previewStyle} />
-        <div className="min-w-0">
-          <AppStylePreview styleId={style} />
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-4 @3xl:h-full @3xl:grid-cols-[18rem_minmax(0,1fr)] @3xl:gap-0">
+        <div className="space-y-4 @3xl:overflow-y-auto @3xl:overscroll-contain @3xl:border-r @3xl:p-4">
+          <FontSizeOptions selected={fontSize} onSelect={previewFontSize} />
+          <AppStyleOptions selected={style} onSelect={previewStyle} />
         </div>
+        <AppearanceExample styleId={style} />
       </div>
     </FormDialog>
+  );
+}
+
+function FontSizeOptions({
+  selected,
+  onSelect,
+}: {
+  selected: FontSizeId;
+  onSelect: (id: FontSizeId) => void;
+}) {
+  return (
+    <div role="radiogroup" aria-label="Tamanho da letra" className="space-y-1.5">
+      <p className={GROUP_LABEL_CLASS}>Tamanho da letra</p>
+      <div className="grid grid-cols-[repeat(3,minmax(0,1fr))] gap-1.5">
+        {FONT_SIZES.map((item) => (
+          <button
+            key={item.id}
+            type="button"
+            role="radio"
+            aria-checked={item.id === selected}
+            onClick={() => onSelect(item.id)}
+            className={cn(
+              OPTION_CLASS,
+              "flex min-h-16 flex-col items-center justify-center gap-1 px-1 py-1.5 text-center text-xs",
+              item.id === selected && OPTION_SELECTED_CLASS
+            )}
+          >
+            <span aria-hidden className={cn("leading-none font-bold", FONT_SIZE_GLYPH[item.id])}>
+              A
+            </span>
+            <span className="leading-tight">{item.name}</span>
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 
@@ -84,8 +133,8 @@ function AppStyleOptions({
     <div role="radiogroup" aria-label="Estilos" className="space-y-3">
       {STYLE_GROUPS.map((group) => (
         <div key={group.mode} className="space-y-1.5">
-          <p className="text-muted-foreground text-xs font-medium">{group.label}</p>
-          <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-1.5 @2xl:grid-cols-1">
+          <p className={GROUP_LABEL_CLASS}>{group.label}</p>
+          <div className="grid grid-cols-[repeat(2,minmax(0,1fr))] gap-1.5 @3xl:grid-cols-1">
             {APP_STYLES.filter((item) => item.mode === group.mode).map((item) => (
               <button
                 key={item.id}
@@ -94,8 +143,9 @@ function AppStyleOptions({
                 aria-checked={item.id === selected}
                 onClick={() => onSelect(item.id)}
                 className={cn(
-                  "hover:bg-accent flex min-h-11 min-w-0 items-center gap-2 rounded-lg border px-2.5 text-left text-sm transition-colors md:min-h-10 @md:gap-3",
-                  item.id === selected && "border-primary ring-primary/30 bg-accent ring-2"
+                  OPTION_CLASS,
+                  "flex min-h-11 items-center gap-2 px-2.5 text-left text-sm md:min-h-10 @md:gap-3",
+                  item.id === selected && OPTION_SELECTED_CLASS
                 )}
               >
                 <AppStyleSwatch styleId={item.id} mode={item.mode} />
@@ -106,6 +156,33 @@ function AppStyleOptions({
         </div>
       ))}
     </div>
+  );
+}
+
+/**
+ * Display-only area. `inert` removes focus and clicks from everything inside: otherwise Tab would
+ * wander through fake buttons and people would think something needs configuring there.
+ */
+function AppearanceExample({ styleId }: { styleId: AppStyleId }) {
+  return (
+    <section
+      aria-label="Exemplo de como o app fica"
+      className="bg-muted/40 min-w-0 space-y-3 rounded-xl border p-3 @3xl:overflow-y-auto @3xl:overscroll-contain @3xl:rounded-none @3xl:border-0 @3xl:p-4"
+    >
+      <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <Badge variant="outline" className="bg-background">
+          <EyeIcon aria-hidden />
+          Exemplo
+        </Badge>
+        <p className="text-muted-foreground text-xs">
+          Só para você ver como fica. Nada aqui funciona de verdade.
+        </p>
+      </div>
+      <div inert className="space-y-3">
+        <AppStylePreview styleId={styleId} />
+        <AppStyleSamples />
+      </div>
+    </section>
   );
 }
 

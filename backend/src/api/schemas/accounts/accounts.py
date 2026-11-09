@@ -19,9 +19,13 @@ AppStyleId = Literal[
     "alto-contraste",
 ]
 
+# Mirrors `FONT_SIZES` in `frontend/src/lib/appearance/font-size.ts`: a new id goes in both.
+FontSizeId = Literal["padrao", "grande", "muito-grande"]
+
 
 class UiPreferencesPatch(BaseModel):
     app_style: AppStyleId
+    font_size: FontSizeId | None = None  # absent = keeps what is saved
 
 
 class UiPreferencesResponse(BaseModel):

@@ -156,7 +156,7 @@ const FOCUS_SCROLL_MARGIN_PX = 24;
 /** Recuo do dialog aninhado (quick-create) pro pai aparecer atrás. */
 const NESTED_INSET_PX = 24;
 
-export type FormDialogSize = "sm" | "md" | "lg" | "xl";
+export type FormDialogSize = "sm" | "md" | "lg" | "xl" | "2xl";
 
 /**
  * Cada degrau crava `sm:` também: a base do `DialogContent` traz um `sm:max-w-*`
@@ -168,6 +168,8 @@ const SIZE_CLASS: Record<FormDialogSize, string> = {
   md: "sm:max-w-lg",
   lg: "sm:max-w-lg lg:max-w-2xl",
   xl: "sm:max-w-lg lg:max-w-3xl xl:max-w-4xl",
+  // Same width as the settings hub: a configuration screen with a panel + example area.
+  "2xl": "sm:max-w-[55rem] lg:max-w-[83rem]",
 };
 
 const FormDialogDepthContext = React.createContext(0);

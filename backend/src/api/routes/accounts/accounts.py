@@ -36,4 +36,7 @@ async def patch_ui_preferences(
     conn: Connection = Depends(get_conn),
 ) -> UiPreferencesResponse:
     preferences = await user_repository.set_app_style(conn, auth["user_id"], data.app_style)
+    if data.font_size is not None:
+        # The last write returns the final state, with both keys.
+        preferences = await user_repository.set_font_size(conn, auth["user_id"], data.font_size)
     return UiPreferencesResponse(ui_preferences=preferences)

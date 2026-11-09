@@ -9,6 +9,12 @@ import {
   subscribeAppStyle,
 } from "@/lib/appearance/app-style-store";
 import { findAppStyle, type AppStyleId, type AppStyleMode } from "@/lib/appearance/app-styles";
+import {
+  applyFontSize,
+  getActiveFontSize,
+  subscribeFontSize,
+  type FontSizeId,
+} from "@/lib/appearance/font-size";
 import { useQuery } from "@tanstack/react-query";
 import { useCallback, useEffect, useSyncExternalStore } from "react";
 
@@ -23,12 +29,12 @@ export function useAppStyle() {
   const style = useSyncExternalStore(subscribeAppStyle, getActiveAppStyle);
 
   const chooseStyle = useCallback(
-    (id: AppStyleId) => {
+    (id: AppStyleId, fontSize?: FontSizeId) => {
       applyAppStyle(id);
       markAppStyleChosen(userId);
       // Falhar em gravar a preferência não é algo que a pessoa resolva, e o cache já segura
       // este aparelho.
-      void patchAppStyle(userId, id).catch(() => {});
+      void patchAppStyle(userId, id, fontSize).catch(() => {});
     },
     [userId]
   );
@@ -45,8 +51,19 @@ export function useAppStyleAccountSync(): void {
     meta: { silentError: true },
   });
   useEffect(() => {
-    if (data) setAccount({ userId: data.id, appStyle: data.uiPreferences.appStyle });
+    if (data)
+      setAccount({
+        userId: data.id,
+        appStyle: data.uiPreferences.appStyle,
+        fontSize: data.uiPreferences.fontSize,
+      });
   }, [data]);
+}
+
+/** Active font size + preview without saving. `chooseStyle` saves it along with the style. */
+export function useFontSize() {
+  const fontSize = useSyncExternalStore(subscribeFontSize, getActiveFontSize);
+  return { fontSize, previewFontSize: applyFontSize };
 }
 
 /**

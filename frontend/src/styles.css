@@ -14,6 +14,7 @@
 @import "./styles/themes/escuro-suave.css";
 @import "./styles/themes/carbono.css";
 @import "./styles/themes/alto-contraste.css";
+@import "./styles/themes/font-size.css";
 
 @source "../node_modules/streamdown/dist/*.js";
 
@@ -243,6 +244,9 @@ code {
     @apply bg-background text-foreground font-sans;
   }
   html {
+    /* The scale is the font size each person picks (`lib/appearance/font-size.ts`). The template has no
+       fixed px base, so 100% (the browser's size) is the unit that scales. */
+    font-size: calc(100% * var(--app-font-scale, 1));
     @apply font-sans;
     @apply font-sans;
   }

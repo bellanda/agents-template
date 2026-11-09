@@ -61,3 +61,30 @@ async def test_patch_keeps_other_preference_keys_and_other_users_untouched(clien
 
     assert res.json()["ui_preferences"] == {"app_style": "escuro-suave", "help_seen": ["home"]}
     assert (await client.get(ME, headers=other)).json()["ui_preferences"] == {"app_style": "areia"}
+
+
+async def test_font_size_is_saved_with_the_style_without_erasing_other_keys(client, db_conn):
+    """The dialog saves style and font size together; neither may erase what was already saved."""
+    await client.patch(PATCH, headers=USER, json={"app_style": "carbono"})
+    await db_conn.execute(
+        'UPDATE users SET ui_preferences = ui_preferences || \'{"help_seen": ["home"]}\'::jsonb '
+        "WHERE id = 'pessoa-1'"
+    )
+    res = await client.patch(
+        PATCH, headers=USER, json={"app_style": "nitido", "font_size": "grande"}
+    )
+
+    assert res.status_code == 200
+    assert res.json()["ui_preferences"] == {
+        "app_style": "nitido",
+        "font_size": "grande",
+        "help_seen": ["home"],
+    }
+    assert (await client.get(ME, headers=USER)).json()["ui_preferences"]["font_size"] == "grande"
+
+
+async def test_unknown_font_size_is_rejected_with_422(client):
+    res = await client.patch(
+        PATCH, headers=USER, json={"app_style": "nitido", "font_size": "gigante"}
+    )
+    assert res.status_code == 422

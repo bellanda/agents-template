@@ -5,6 +5,7 @@ import {
   isAppStyleId,
   type AppStyleId,
 } from "@/lib/appearance/app-styles";
+import { syncFontSizeFromAccount } from "@/lib/appearance/font-size";
 
 /**
  * Estilo visual ativo, fora do React: vive em `<html data-style="…" class="light|dark">`.
@@ -23,6 +24,8 @@ interface AccountSnapshot {
   userId: string;
   /** `ui_preferences.app_style` como veio do servidor (qualquer valor, inclusive inválido). */
   appStyle: unknown;
+  /** `ui_preferences.font_size` as it came from the server; follows the same rules as `appStyle`. */
+  fontSize?: unknown;
 }
 
 const listeners = new Set<() => void>();
@@ -88,6 +91,7 @@ export function bootAppStyle(): void {
 /** Resultado do `/accounts/me`: reaplica só quando o valor DA CONTA muda. */
 export function setAccount(next: AccountSnapshot | null): void {
   account = next;
+  syncFontSizeFromAccount(next?.fontSize);
   const fromServer = next?.appStyle;
   if (fromServer !== lastServerStyle) {
     lastServerStyle = fromServer;

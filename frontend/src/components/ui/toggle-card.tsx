@@ -146,7 +146,7 @@ export function ToggleCard({
         <span
           className={cn(
             "inline-flex shrink-0 items-center gap-1.5 self-center rounded-full px-2 py-0.5",
-            "text-[10px] font-medium tracking-wider uppercase transition-colors",
+            "text-[0.625rem] font-medium tracking-wider uppercase transition-colors",
             checked
               ? isPrimary
                 ? "bg-primary/10 text-primary"

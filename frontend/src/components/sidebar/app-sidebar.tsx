@@ -230,7 +230,7 @@ export function AppSidebar() {
               </div>
               <div className="flex flex-1 flex-col leading-tight">
                 <span className="truncate text-xs font-medium">Default User</span>
-                <span className="text-muted-foreground truncate text-[10px]">
+                <span className="text-muted-foreground truncate text-[0.625rem]">
                   default@example.com
                 </span>
               </div>

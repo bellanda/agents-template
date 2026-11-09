@@ -156,7 +156,12 @@ function DocAttachmentChip({ filename, mediaType, onRemove }: AttachmentChipProp
         <p className="truncate text-sm font-medium" title={filename}>
           {filename || "File"}
         </p>
-        <p className={cn("truncate text-[11px] font-medium tracking-wider uppercase", iconColor)}>
+        <p
+          className={cn(
+            "truncate text-[0.6875rem] font-medium tracking-wider uppercase",
+            iconColor
+          )}
+        >
           {label}
         </p>
       </div>
