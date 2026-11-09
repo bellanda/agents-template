@@ -1,0 +1,25 @@
+/* Per-person font size (`lib/appearance/font-size.ts`), on `<html data-font-size="<id>">`.
+   The scale feeds the `<html>` font-size (index.css), so everything sized in `rem` grows with it.
+   "padrao" has no rule: with or without the attribute, the scale is the `var()` fallback of 1. */
+:root[data-font-size="grande"] {
+  --app-font-scale: 1.125;
+}
+
+:root[data-font-size="muito-grande"] {
+  --app-font-scale: 1.25;
+}
+
+/* Recharts writes the size as an SVG attribute (`font-size="11"`), which ignores `rem`; a CSS rule
+   beats an attribute. Only on the larger sizes, so charts stay identical on "padrao". */
+:root[data-font-size="grande"] .recharts-text,
+:root[data-font-size="muito-grande"] .recharts-text {
+  font-size: 0.65rem;
+}
+
+/* The preference is for the screen: printed documents keep their own size. `[data-font-size]`
+   ties the rules above in specificity and wins by coming later. */
+@media print {
+  :root[data-font-size] {
+    --app-font-scale: 1;
+  }
+}

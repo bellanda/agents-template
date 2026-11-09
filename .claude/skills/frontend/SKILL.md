@@ -213,8 +213,9 @@ standalone e são linkados no roteamento (fim do arquivo).
   "unifique" marca entre apps. **Exceção decidida (2026-11-07):** os NEUTROS do escuro são padrão
   (base GitHub `#0d1117`/moldura `#010409`) e todo app tem o seletor de **estilos** (Kailos
   canônico: catálogo + `data-style` + `ui_preferences.app_style`, 6 estilos genéricos + par de
-  identidade); primária/gráficos seguem identidade. *deep: `references/app-styles.md` +
-  `references/app-styles/*.css` (canônicos).*
+  identidade); primária/gráficos seguem identidade. Mesmo dialog: **tamanho da letra** por pessoa
+  (`data-font-size`, escala no `<html>`, decisão 2026-11-09), por isso **texto sempre em `rem`, nunca
+  `text-[Npx]`**. *deep: `references/app-styles.md` §7–8 + `references/app-styles/*.css` (canônicos).*
 - [ ] **12. Seção nova grande → benchmark antes + QA visual em 3 larguras depois** (decisão
   2026-11-05). Rota/tela nova, redesign, fluxo multi-tela ou dialog grande:
   - **antes**, abra o melhor exemplo do mesmo padrão (telas canônicas + galeria
@@ -263,7 +264,7 @@ Padronizadas em 2026-10-01 (código canônico = kailos, salvo onde indicado). N�
 | Equipes (filas humanas do atendente de IA): grid de cards + editor  | `references/queues-editor.md`                     |
 | Horário de funcionamento semanal (grupos de dias com o mesmo horário) | `references/business-hours-editor.md` (+ `business-hours-groups.ts`) |
 | Inbox WhatsApp `/chat` (conversas, janela, envio otimista, SSE)     | `references/whatsapp-inbox.md`                    |
-| Estilos do app (seletor "Estilo", claro/escuro, base escura GitHub, `data-style`) | `references/app-styles.md` (+ `app-styles/*.css`) |
+| Aparência do app (dialog de estilos + tamanho da letra, claro/escuro, base escura GitHub, `data-style`, `data-font-size`) | `references/app-styles.md` (+ `app-styles/*.css`) |
 | Tempo real SSE por usuário (patch com `setQueryData`) + push com botões de ação | `references/realtime-and-push-actions.md` |
 | Quadro kanban (dnd-kit, colunas com keyset, lote, SLA ao vivo)      | `references/kanban-board.md`                      |
 | Balão de onboarding "visto uma vez" por usuário (popover ancorado)  | `references/onboarding-balloon.md` (+ `onboarding-balloon.tsx`, `balloon-slot.ts`) |
