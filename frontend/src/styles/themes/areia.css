@@ -1,5 +1,7 @@
 /* Areia (claro): papel quente (hue 75), item ativo com fundo suave e barra da primária,
-   faixa quente no header. Os neutros de areia SÃO o estilo; o realce segue a primária. */
+   faixa quente no header. Os neutros de areia SÃO o estilo; o realce segue a primária.
+   Suavizado 2026-11-10: texto marrom-escuro #2a221d em vez do quase-preto da base antiga e
+   secundário um pouco mais claro (0.52). */
 
 :root[data-style="areia"],
 .light[data-style-preview="areia"] {
@@ -9,7 +11,7 @@
   --accent: oklch(0.95 0.02 72);
   --accent-foreground: oklch(0.32 0.035 50);
   --muted: oklch(0.96 0.011 75);
-  --muted-foreground: oklch(0.5 0.025 60);
+  --muted-foreground: oklch(0.52 0.025 60);
   --border: oklch(0.905 0.014 72);
   --input: oklch(0.905 0.014 72);
   --sidebar: oklch(0.962 0.016 75);
@@ -17,6 +19,9 @@
   --sidebar-accent: oklch(0.925 0.024 70);
   --sidebar-accent-foreground: oklch(0.25 0.02 50);
   --sidebar-border: oklch(0.9 0.02 70);
+  --foreground: oklch(0.26 0.02 50);
+  --card-foreground: oklch(0.26 0.02 50);
+  --popover-foreground: oklch(0.26 0.02 50);
 }
 
 :root[data-style="areia"] [data-sidebar="menu-button"][data-active="true"],

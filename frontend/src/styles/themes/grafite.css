@@ -1,7 +1,8 @@
 /* Grafite (claro): conteúdo claro do app + sidebar grafite, item ativo em pílula da
    primária, filete da primária no header. 163 = hue da primária do app (tinge o grafite de
    leve: kailos 55, emporion/promoservice 262, nexarena/optimuslar 165, akmeo 56).
-   App cujo claro padrão JÁ tem sidebar escura (akmeo) não precisa deste estilo. */
+   App cujo claro padrão JÁ tem sidebar escura (akmeo) não precisa deste estilo.
+   O conteúdo herda a base clara suavizada (2026-11-10); só a sidebar é grafite. */
 
 :root[data-style="grafite"],
 .light[data-style-preview="grafite"] {

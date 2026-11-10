@@ -1,6 +1,8 @@
 /* Alto contraste (escuro): o "dark high contrast" do GitHub (2026-11-07) — fundo #010409,
    texto branco, secundário #b7bdc8 (10,9:1), bordas claras bem visíveis e item ativo cheio
-   na primária. Para sol na tela, vista cansada e quem lê de longe. */
+   na primária. Para sol na tela, vista cansada e quem lê de longe.
+   Fica DE PROPÓSITO fora da suavização de 2026-11-10 (nada de preto puro): é o único estilo de
+   contraste máximo. */
 
 :root[data-style="alto-contraste"],
 .dark[data-style-preview="alto-contraste"] {

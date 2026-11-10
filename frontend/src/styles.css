@@ -5,13 +5,13 @@
 @import "@fontsource-variable/figtree";
 
 /* Estilos do app (ref app-styles). `surfaces.css` vem primeiro: as regras empatam em
-   especificidade e vencem na ordem. `app-claro` é o :root e `app-escuro` o .dark abaixo. */
+   especificidade e vencem na ordem. `:root` e `.dark` abaixo são a base que cada estilo
+   (`<html data-style="<id>">`) sobrescreve. */
 @import "./styles/themes/surfaces.css";
-@import "./styles/themes/app-escuro.css";
 @import "./styles/themes/nitido.css";
+@import "./styles/themes/escuro-suave.css";
 @import "./styles/themes/grafite.css";
 @import "./styles/themes/areia.css";
-@import "./styles/themes/escuro-suave.css";
 @import "./styles/themes/carbono.css";
 @import "./styles/themes/alto-contraste.css";
 @import "./styles/themes/font-size.css";
@@ -33,25 +33,29 @@ code {
   font-family: source-code-pro, Menlo, Monaco, Consolas, "Courier New", monospace;
 }
 
+/* Base clara da frota, a paleta clara do GitHub (decisão do usuário 2026-11-10: nada de
+   branco puro em tudo nem texto quase preto; o antigo "App claro" saiu). Todo estilo claro que
+   não redefine um neutro herda estes; ver `.claude/skills/frontend/references/app-styles/
+   light-base.css`. `.light` junto do `:root`: a miniatura de um estilo claro no seletor precisa
+   dos tokens claros mesmo com o app inteiro em `.dark`. Primária, ring, charts e sidebar-primary
+   seguem a identidade verde do app. */
 :root,
-/* `.light` too: the identity-light thumbnail in the style picker needs these tokens
-   even when the whole app is `.dark` (same as kailos). */
 .light {
   --card: oklch(1 0 0);
-  --card-foreground: oklch(0.141 0.005 285.823);
+  --card-foreground: oklch(0.254 0.011 254);
   --popover: oklch(1 0 0);
-  --popover-foreground: oklch(0.141 0.005 285.823);
+  --popover-foreground: oklch(0.254 0.011 254);
   --primary: oklch(0.6 0.13 163);
   --primary-foreground: oklch(0.98 0.02 166);
-  --secondary: oklch(0.967 0.001 286.375);
-  --secondary-foreground: oklch(0.21 0.006 285.885);
-  --muted: oklch(0.967 0.001 286.375);
-  --muted-foreground: oklch(0.552 0.016 285.938);
-  --accent: oklch(0.967 0.001 286.375);
-  --accent-foreground: oklch(0.21 0.006 285.885);
+  --secondary: oklch(0.978 0.003 248);
+  --secondary-foreground: oklch(0.254 0.011 254);
+  --muted: oklch(0.978 0.003 248);
+  --muted-foreground: oklch(0.495 0.022 251);
+  --accent: oklch(0.96 0.005 248);
+  --accent-foreground: oklch(0.254 0.011 254);
   --destructive: oklch(0.577 0.245 27.325);
-  --border: oklch(0.92 0.004 286.32);
-  --input: oklch(0.92 0.004 286.32);
+  --border: oklch(0.881 0.013 244);
+  --input: oklch(0.881 0.013 244);
   --ring: oklch(0.705 0.015 286.067);
   --chart-1: oklch(0.85 0.13 165);
   --chart-2: oklch(0.77 0.15 163);
@@ -59,52 +63,56 @@ code {
   --chart-4: oklch(0.6 0.13 163);
   --chart-5: oklch(0.51 0.1 166);
   --radius: 0.625rem;
-  --sidebar: oklch(0.985 0 0);
-  --sidebar-foreground: oklch(0.141 0.005 285.823);
+  --sidebar: oklch(0.978 0.003 248);
+  --sidebar-foreground: oklch(0.254 0.011 254);
   --sidebar-primary: oklch(0.6 0.13 163);
   --sidebar-primary-foreground: oklch(0.98 0.02 166);
-  --sidebar-accent: oklch(0.967 0.001 286.375);
-  --sidebar-accent-foreground: oklch(0.21 0.006 285.885);
-  --sidebar-border: oklch(0.92 0.004 286.32);
+  --sidebar-accent: oklch(0.94 0.006 248);
+  --sidebar-accent-foreground: oklch(0.254 0.011 254);
+  --sidebar-border: oklch(0.881 0.013 244);
   --sidebar-ring: oklch(0.705 0.015 286.067);
   --background: oklch(1 0 0);
-  --foreground: oklch(0.141 0.005 285.823);
+  --foreground: oklch(0.254 0.011 254);
 }
 
-/* Base escura da frota (GitHub, decisão do usuário 2026-11-07; ref app-styles/dark-base.css).
-   Neutros = padrão; --primary*, --ring, --chart-* e --sidebar-primary*/
---sidebar-ring = identidade. */ .dark {
-  --background: oklch(0.176 0.014 258); /* #0d1117 */
-  --foreground: oklch(0.97 0.01 248); /* #f0f6fc */
-  --card: oklch(0.22 0.018 256); /* #151b23 */
-  --card-foreground: oklch(0.97 0.01 248);
-  --popover: oklch(0.22 0.018 256);
-  --popover-foreground: oklch(0.97 0.01 248);
+/* Base escura da frota = as camadas do Escuro suave (decisão do usuário 2026-11-10: nada de
+   preto puro; o antigo "App escuro", GitHub #0d1117/#010409, saiu). Ver
+   `.claude/skills/frontend/references/app-styles/dark-base.css`. Camadas: moldura #151b23 <
+   conteúdo #212830 < card #262c36 < controle #2a313c < hover #2f3742; borda #3d444d; texto
+   #d1d7e0 (10:1), secundário #9198a1. --primary, --ring, --chart-* e --sidebar-primary-*
+   seguem a identidade verde do app. */
+.dark {
+  --background: oklch(0.274 0.018 252);
+  --foreground: oklch(0.877 0.014 258);
+  --card: oklch(0.292 0.02 261);
+  --card-foreground: oklch(0.877 0.014 258);
+  --popover: oklch(0.311 0.022 259);
+  --popover-foreground: oklch(0.877 0.014 258);
   --primary: oklch(0.7 0.15 162);
   --primary-foreground: oklch(0.26 0.05 173);
-  --secondary: oklch(0.274 0.018 252); /* #212830 */
-  --secondary-foreground: oklch(0.97 0.01 248);
-  --muted: oklch(0.274 0.018 252);
-  --muted-foreground: oklch(0.677 0.016 255); /* #9198a1 */
-  --accent: oklch(0.292 0.02 261); /* #262c36 */
-  --accent-foreground: oklch(0.97 0.01 248);
-  --destructive: oklch(0.665 0.205 27); /* #f85149 */
+  --secondary: oklch(0.311 0.022 259);
+  --secondary-foreground: oklch(0.877 0.014 258);
+  --muted: oklch(0.311 0.022 259);
+  --muted-foreground: oklch(0.677 0.016 255);
+  --accent: oklch(0.334 0.022 256);
+  --accent-foreground: oklch(0.877 0.014 258);
+  --destructive: oklch(0.665 0.205 27);
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.384 0.018 255 / 70%); /* #3d444d b3 */
-  --input: oklch(0.384 0.018 255); /* #3d444d */
+  --border: oklch(0.384 0.018 255);
+  --input: oklch(0.42 0.018 255);
   --ring: oklch(0.552 0.016 285.938);
   --chart-1: oklch(0.85 0.13 165);
   --chart-2: oklch(0.77 0.15 163);
   --chart-3: oklch(0.7 0.15 162);
   --chart-4: oklch(0.6 0.13 163);
   --chart-5: oklch(0.51 0.1 166);
-  --sidebar: oklch(0.104 0.019 248); /* #010409 */
-  --sidebar-foreground: oklch(0.97 0.01 248);
+  --sidebar: oklch(0.22 0.018 256);
+  --sidebar-foreground: oklch(0.877 0.014 258);
   --sidebar-primary: oklch(0.77 0.15 163);
   --sidebar-primary-foreground: oklch(0.26 0.05 173);
-  --sidebar-accent: oklch(0.22 0.018 256); /* #151b23 */
-  --sidebar-accent-foreground: oklch(0.97 0.01 248);
-  --sidebar-border: oklch(0.384 0.018 255 / 70%);
+  --sidebar-accent: oklch(0.292 0.02 261);
+  --sidebar-accent-foreground: oklch(0.93 0.012 258);
+  --sidebar-border: oklch(0.384 0.018 255);
   --sidebar-ring: oklch(0.552 0.016 285.938);
 }
 

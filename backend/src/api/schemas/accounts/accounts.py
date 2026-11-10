@@ -5,15 +5,13 @@ from typing import Literal
 from pydantic import BaseModel
 
 # Espelha APP_STYLES em frontend/src/lib/appearance/app-styles.ts (um teste do front amarra os
-# dois por snapshot do array). O prefixo `app-` é o slug do TEMPLATE: app novo renomeia
-# `app-claro`/`app-escuro` para `<slug>-claro`/`<slug>-escuro` aqui, no front e no CSS.
+# dois por snapshot do array). `app-claro`/`app-escuro` saíram em 2026-11-10: Nítido e Escuro
+# suave são o par padrão.
 # Estilo novo entra nos três lugares: este Literal, o catálogo do front e styles/themes/<id>.css.
 AppStyleId = Literal[
-    "app-claro",
     "nitido",
     "grafite",
     "areia",
-    "app-escuro",
     "escuro-suave",
     "carbono",
     "alto-contraste",

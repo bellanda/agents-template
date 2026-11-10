@@ -13,16 +13,27 @@ import { resolve } from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 
 const SRC = resolve(__dirname, "../../..");
-// O par de identidade vive no `:root`/`.dark` do styles.css, sem arquivo próprio.
-const IDENTITY_STYLES = ["app-claro", "app-escuro"];
 const BACKEND_SCHEMA = resolve(SRC, "../../backend/src/api/schemas/accounts/accounts.py");
 
 describe("catálogo de estilos × CSS × backend", () => {
-  it("todo estilo fora do par de identidade tem o CSS importado no styles.css", () => {
+  it("nitido é o padrão e o primeiro; o par de identidade saiu e os 6 estilos existem", () => {
+    const ids: string[] = APP_STYLES.map((style) => style.id);
+    expect(DEFAULT_APP_STYLE).toBe("nitido");
+    expect(ids).toEqual([
+      "nitido",
+      "grafite",
+      "areia",
+      "escuro-suave",
+      "carbono",
+      "alto-contraste",
+    ]);
+    expect(ids).not.toContain("app-claro");
+    expect(ids).not.toContain("app-escuro");
+  });
+
+  it("todo estilo tem o CSS importado no styles.css", () => {
     const indexCss = readFileSync(resolve(SRC, "styles.css"), "utf8");
-    const themed = APP_STYLES.filter(({ id }) => !IDENTITY_STYLES.includes(id));
-    expect(themed).toHaveLength(APP_STYLES.length - IDENTITY_STYLES.length);
-    for (const { id } of themed) {
+    for (const { id } of APP_STYLES) {
       readFileSync(resolve(SRC, `styles/themes/${id}.css`), "utf8"); // existe
       expect(indexCss, id).toContain(`./styles/themes/${id}.css`);
     }
@@ -37,7 +48,6 @@ describe("catálogo de estilos × CSS × backend", () => {
 
   it("estilo escuro e claro carregam o modo certo", () => {
     expect(APP_STYLES.filter((s) => s.mode === "dark").map((s) => s.id)).toEqual([
-      "app-escuro",
       "escuro-suave",
       "carbono",
       "alto-contraste",
@@ -54,23 +64,23 @@ describe("store do estilo", () => {
   });
 
   it("o boot pinta o estilo do cache no <html>", () => {
-    localStorage.setItem("app:app-style:v1", "carbono");
+    localStorage.setItem("app:app-style:v1", "escuro-suave");
     bootAppStyle();
     const root = document.documentElement;
-    expect(root.getAttribute("data-style")).toBe("carbono");
+    expect(root.getAttribute("data-style")).toBe("escuro-suave");
     expect(root.classList.contains("dark")).toBe(true);
   });
 
-  it("sem cache usa o padrão; chave antiga 'dark' migra para app-escuro e some", () => {
+  it("sem cache usa o padrão; chave antiga 'dark' migra para escuro-suave e some", () => {
     bootAppStyle();
     expect(getActiveAppStyle()).toBe(DEFAULT_APP_STYLE);
 
     localStorage.clear();
     localStorage.setItem("vite-ui-theme", "dark");
     bootAppStyle();
-    expect(getActiveAppStyle()).toBe("app-escuro");
+    expect(getActiveAppStyle()).toBe("escuro-suave");
     expect(localStorage.getItem("vite-ui-theme")).toBeNull();
-    expect(localStorage.getItem("app:app-style:v1")).toBe("app-escuro");
+    expect(localStorage.getItem("app:app-style:v1")).toBe("escuro-suave");
   });
 
   it("conta que muda reaplica, mas o mesmo valor velho não desfaz a escolha local", () => {
@@ -80,8 +90,8 @@ describe("store do estilo", () => {
 
     setAccount({ userId: "u1", appStyle: "nitido" });
     expect(getActiveAppStyle()).toBe("nitido");
-    setAccount({ userId: "u1", appStyle: "areia" });
-    expect(getActiveAppStyle()).toBe("areia");
+    setAccount({ userId: "u1", appStyle: "escuro-suave" });
+    expect(getActiveAppStyle()).toBe("escuro-suave");
   });
 
   it("boas-vindas só para conta sem estilo que ainda não escolheu", () => {
