@@ -3,12 +3,11 @@
  *
  * Dialogs, popovers e o hub de Configurações são portados para o `<body>` e já leem os
  * tokens do estilo. Aqui entra só a moldura: a nav do hub de Configurações é uma sidebar e
- * se pinta com a paleta da sidebar. O par de identidade (`<slug>-claro`/`<slug>-escuro`)
- * fica como sempre foi, por isso o `:not`. Importe ANTES dos arquivos de estilo: as regras
+ * se pinta com a paleta da sidebar. Importe ANTES dos arquivos de estilo: as regras
  * empatam em especificidade e vencem na ordem.
  */
 
-:root:not([data-style^="<slug>-"]) [data-settings-nav] {
+:root[data-style] [data-settings-nav] {
   background: var(--sidebar);
   color: var(--sidebar-foreground);
   --foreground: var(--sidebar-foreground);
@@ -19,6 +18,6 @@
 }
 
 /* O sublinhado da aba ativa (variante `line`) acompanha a primária do estilo. */
-:root:not([data-style^="<slug>-"]) [data-slot="tabs-trigger"][data-state="active"]::after {
+:root[data-style] [data-slot="tabs-trigger"][data-state="active"]::after {
   background: var(--primary);
 }

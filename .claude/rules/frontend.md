@@ -82,6 +82,7 @@ Refs sem prefixo = `skills/frontend/references/`.
   - Depois, a tela entra em `frontend/e2e/visual/routes.ts` com dados de pior caso.
   - `bun run qa:visual` (390 iPhone / 820 / 1440; WebKit real com `VISUAL_WEBKIT=1`) limpo, e o agente OLHA cada screenshot e corrige.
   - PROIBIDO entregar seção grande só com vitest/tsgo verdes. Ref `visual-qa.md`.
+- **Filtro de data = padrão da frota** (decisão do usuário 2026-11-09): toda tela com recorte por período tem as mesmas linhas, nesta ordem: Hoje, Ontem, Dia recente, Semana, Semana passada, Mês, Mês passado, Ano, Ano passado, Todos os tempos, Personalizado…. App omite só o que o backend não aceita. "Dia recente" abre o `RecentDayDialog` (últimos 30 dias corridos, clique aplica, viaja como período personalizado de um dia). Ref `dashboard-kpi.md`.
 - **DateTime**: API entrega ISO 8601 com `Z`. Exibição via `Intl.DateTimeFormat` em `lib/utils/dates.ts` (`formatDateTime`, `formatDate`). Null/invalid → `"—"`. **Dia de calendário = dia LOCAL** (2026-11-06): `toLocalDateKey`/`parseLocalDateKey`/`addDaysToDateKey`/`utcToDateTimeLocal`; PROIBIDO `toISOString().slice(0, 10)`/`.split("T")[0]` como "hoje" (dia UTC, já é amanhã das 21h às 24h SP), `new Date("YYYY-MM-DD")` (meia-noite UTC = dia anterior) e `getTimezoneOffset()`/`getUTC*()` fora de `dates.ts`. Trava `src/test/__tests__/timezone-guard.test.ts`. Ref `local-time/` (+ gate `database` → `local-time.md`).
 
 ## TanStack Router

@@ -1,0 +1,39 @@
+/* Base clara da frota (decisão do usuário 2026-11-10: "a gente tirou algo que era grotesco, o full
+ * branco e full preto"). É o `:root, .light` do index.css de TODO app: os neutros da paleta clara
+ * do GitHub, os mesmos do Nítido. Todo estilo claro que não redefine um neutro herda estes.
+ * Só os NEUTROS são padrão: `--primary*`, `--ring`, `--chart-*`, `--sidebar-primary*` e
+ * `--sidebar-ring` continuam os do app (identidade) — copie-os do `:root` atual.
+ *
+ * `.light` junto do `:root`: a miniatura de um estilo claro no seletor precisa dos tokens claros
+ * mesmo com o app inteiro em `.dark`.
+ *
+ * Conteúdo e card brancos, moldura gelo #f6f8fa, controles #f6f8fa, hover #eff2f5, bordas
+ * #d1d9e0. Texto #1f2328 (15,8:1), secundário #59636e (6,1:1 no branco).
+ */
+:root,
+.light {
+  --radius: 0.625rem; /* ou o do app */
+  --background: oklch(1 0 0);
+  --foreground: oklch(0.254 0.011 254); /* #1f2328 */
+  --card: oklch(1 0 0);
+  --card-foreground: oklch(0.254 0.011 254);
+  --popover: oklch(1 0 0);
+  --popover-foreground: oklch(0.254 0.011 254);
+  /* --primary / --primary-foreground: do app */
+  --secondary: oklch(0.978 0.003 248); /* #f6f8fa */
+  --secondary-foreground: oklch(0.254 0.011 254);
+  --muted: oklch(0.978 0.003 248);
+  --muted-foreground: oklch(0.495 0.022 251); /* #59636e */
+  --accent: oklch(0.96 0.005 248); /* #eff2f5 */
+  --accent-foreground: oklch(0.254 0.011 254);
+  /* --destructive / --destructive-foreground: do app */
+  --border: oklch(0.881 0.013 244); /* #d1d9e0 */
+  --input: oklch(0.881 0.013 244);
+  /* --ring / --chart-1..5: do app */
+  --sidebar: oklch(0.978 0.003 248); /* #f6f8fa */
+  --sidebar-foreground: oklch(0.254 0.011 254);
+  /* --sidebar-primary / --sidebar-primary-foreground / --sidebar-ring: do app */
+  --sidebar-accent: oklch(0.94 0.006 248); /* #e8ecef */
+  --sidebar-accent-foreground: oklch(0.254 0.011 254);
+  --sidebar-border: oklch(0.881 0.013 244);
+}

@@ -210,10 +210,11 @@ standalone e são linkados no roteamento (fim do arquivo).
 - [ ] **11. PADRÃO vs IDENTIDADE.** Padroniza (cross-projeto): layout, larguras (1440), enquadramento,
   overlays, grid-vs-stack, mobile-first, `react-icons`, `html { font-size: 17px }`. **NÃO** padroniza
   (por-projeto): font-**family**, **cores**, **estilo shadcn** (baseColor/new-york etc.). Nunca
-  "unifique" marca entre apps. **Exceção decidida (2026-11-07):** os NEUTROS do escuro são padrão
-  (base GitHub `#0d1117`/moldura `#010409`) e todo app tem o seletor de **estilos** (Kailos
-  canônico: catálogo + `data-style` + `ui_preferences.app_style`, 6 estilos genéricos + par de
-  identidade); primária/gráficos seguem identidade. Mesmo dialog: **tamanho da letra** por pessoa
+  "unifique" marca entre apps. **Exceção decidida (2026-11-07, revista 2026-11-10):** os NEUTROS claros e escuros
+  são padrão (`light-base.css` GitHub claro; `dark-base.css` = escada do Escuro suave) e todo app tem o seletor de **estilos** (Kailos
+  canônico: catálogo + `data-style` + `ui_preferences.app_style`; Nítido é o default, o par de
+  identidade saiu e todo estilo é suavizado — claros na base clara do GitHub, escuros na escada do
+  Escuro suave, exceto Alto contraste, decisão 2026-11-10); primária/gráficos seguem identidade. Mesmo dialog: **tamanho da letra** por pessoa
   (`data-font-size`, escala no `<html>`, decisão 2026-11-09), por isso **texto sempre em `rem`, nunca
   `text-[Npx]`**. *deep: `references/app-styles.md` §7–8 + `references/app-styles/*.css` (canônicos).*
 - [ ] **12. Seção nova grande → benchmark antes + QA visual em 3 larguras depois** (decisão
@@ -264,7 +265,7 @@ Padronizadas em 2026-10-01 (código canônico = kailos, salvo onde indicado). N�
 | Equipes (filas humanas do atendente de IA): grid de cards + editor  | `references/queues-editor.md`                     |
 | Horário de funcionamento semanal (grupos de dias com o mesmo horário) | `references/business-hours-editor.md` (+ `business-hours-groups.ts`) |
 | Inbox WhatsApp `/chat` (conversas, janela, envio otimista, SSE)     | `references/whatsapp-inbox.md`                    |
-| Aparência do app (dialog de estilos + tamanho da letra, claro/escuro, base escura GitHub, `data-style`, `data-font-size`) | `references/app-styles.md` (+ `app-styles/*.css`) |
+| Aparência do app (dialog de estilos + tamanho da letra, claro/escuro, bases suavizadas clara/escura, `data-style`, `data-font-size`) | `references/app-styles.md` (+ `app-styles/*.css`) |
 | Tempo real SSE por usuário (patch com `setQueryData`) + push com botões de ação | `references/realtime-and-push-actions.md` |
 | Quadro kanban (dnd-kit, colunas com keyset, lote, SLA ao vivo)      | `references/kanban-board.md`                      |
 | Balão de onboarding "visto uma vez" por usuário (popover ancorado)  | `references/onboarding-balloon.md` (+ `onboarding-balloon.tsx`, `balloon-slot.ts`) |
@@ -320,7 +321,7 @@ grande: `bun run qa:visual` limpo e os screenshots de 390/820/1440 olhados (item
   grupos derivados por helpers puros; validação pt-BR; emporion canônico, kailos portado).
 - `references/app-styles.md` + `references/app-styles/*.css` — estilos visuais por pessoa (kailos
   canônico, frota 2026-11-07): catálogo `APP_STYLES`, store/hook/dialog/prévia, `PATCH
-  /accounts/me/ui-preferences`, base escura GitHub (`dark-base.css`) e 6 estilos genéricos.
+  /accounts/me/ui-preferences`, bases clara/escura suavizadas (`light-base.css`, `dark-base.css`) e os estilos genéricos (Nítido default).
 - `references/whatsapp-inbox.md` — inbox `/chat` do kailos (layout lista/janela, SSE keyed por ORG e
   nunca pelo contato ativo, envio otimista, tema `--wa-*`); nexarena adota sem equipes.
 - `references/realtime-and-push-actions.md` — um SSE por usuário na casca (reconexão com backoff+jitter,
@@ -333,7 +334,7 @@ grande: `bun run qa:visual` limpo e os screenshots de 390/820/1440 olhados (item
 - `references/feedback-states.md` — `EmptyState`, erro≠vazio (`ErrorState`), `NetworkStatusBanner`,
   `ConfirmDialog` único, toasts, skeletons.
 - `references/printing.md` — `PrintSheet` + `Doc*` + `PrintableDocumentDialog` + rota pública por token.
-- `references/dashboard-kpi.md` — `PeriodSelector`/`StatCard`/`ui/chart.tsx` (reference opcional).
+- `references/dashboard-kpi.md` — filtro central de data (padrão da frota: "Dia recente", semana e mês passados) + `PeriodSelector`/`StatCard`/`ui/chart.tsx` (estes opcionais).
 - `references/pwa-mobile.md` — PWA instalado no celular (`minimal-ui` vs standalone e por que o iOS
   ignora; afordância de recarga obrigatória via `invalidateQueries`; `useIsStandalone`/pull-to-refresh
   com as constantes reais; safe-area + `viewport-fit=cover`; metas apple-\*; checklist de manifest).

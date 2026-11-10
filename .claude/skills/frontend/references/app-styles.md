@@ -9,70 +9,72 @@ gerais em todos?". Na mesma data decidiu que o escuro de todo app usa a base do 
 ## 1. PADRÃO vs IDENTIDADE (exceção decidida)
 
 - **Padrão em todos os apps:**
-  - os NEUTROS do escuro (`dark-base.css`): fundo, cards, controles, bordas, texto e moldura;
+  - os NEUTROS das duas bases: `light-base.css` (o `:root, .light`, paleta clara do GitHub) e `dark-base.css` (o `.dark`, as camadas do Escuro suave);
   - o mecanismo de estilos;
-  - os 6 estilos genéricos.
+  - os estilos genéricos do §2, com **Nítido** como padrão.
+- **Decisão do usuário, 2026-11-10** (corrige a leitura de 2026-11-09, que tinha deixado só Nítido e Escuro suave):
+  - SÓ o par de identidade (`<slug>-claro`/`<slug>-escuro`) saiu, trocado por **Nítido** (claro, default) e **Escuro suave** (escuro). Todo o resto do catálogo continua.
+  - Tudo fica suavizado, nas palavras do usuário: "a gente tirou algo que era grotesco, o full branco e full preto". Os claros herdam a base clara do GitHub; os escuros usam a escada do Escuro suave (§3), cada um no seu matiz.
+  - **Exceção:** Alto contraste continua como está, de propósito (é o único de contraste máximo).
 - **Identidade, por app:**
-  - `--primary*`, `--ring`, `--chart-*` e `--sidebar-primary*`;
-  - o claro padrão (`<slug>-claro`);
-  - os estilos de marca. Hoje só o kailos tem: Faixas, Laranja total, Promocar claro, Promocar e Petróleo noturno.
-- O escuro "fosco" antigo (zinc/neutral do shadcn, `oklch(0.141 0.005 285)`) saiu de todos os apps.
-- Quem queria um escuro quente tem o estilo **Carbono**.
+  - `--primary*`, `--ring`, `--chart-*` e `--sidebar-primary*`, no `:root`/`.dark` do `index.css`;
+  - os estilos de marca. Hoje só o kailos tem: Faixas, Laranja total, Promocar claro, Promocar e Petróleo noturno. Eles também seguem a suavização.
+- O escuro "fosco" antigo (zinc/neutral do shadcn, `oklch(0.141 0.005 285)`) saiu de todos os apps, e o GitHub dark puro (`#0d1117`/`#010409`) saiu em 2026-11-10.
 
 ## 2. Catálogo por app
 
 | id | nome | modo | papel |
 | --- | --- | --- | --- |
-| `<slug>-claro` | "<App> claro" | light | **default**, identidade do app (o `:root` do index.css) |
-| `nitido` | Nítido | light | neutros frios do GitHub claro, moldura gelo |
-| `grafite` | Grafite | light | sidebar grafite + pílula da primária. Pule se o claro padrão já tem sidebar escura (akmeo). |
-| `areia` | Areia | light | papel quente |
-| `<slug>-escuro` | "<App> escuro" | dark | base GitHub (`.dark` do index.css) |
-| `escuro-suave` | Escuro suave | dark | GitHub "dimmed" `#212830` |
-| `carbono` | Carbono | dark | preto quente |
-| `alto-contraste` | Alto contraste | dark | GitHub "high contrast" |
+| `nitido` | Nítido | light | **default**, sempre o 1º da lista: neutros frios do GitHub claro, moldura gelo |
+| `grafite` | Grafite | light | sidebar grafite + pílula da primária (todo app, inclusive akmeo desde 2026-11-10) |
+| `areia` | Areia | light | papel quente, texto marrom-escuro |
+| `escuro-suave` | Escuro suave | dark | GitHub "dimmed" `#212830`; a escada de todo escuro |
+| `carbono` | Carbono | dark | carvão quente: a escada do Escuro suave em hue 60 |
+| `alto-contraste` | Alto contraste | dark | GitHub "high contrast"; exceção, não suaviza |
 
-- `<slug>`: kailos, emporion, nexarena, akmeo, promoservice, optimuslar. No template é `app`, e o scaffold de um app novo renomeia.
-- Os ids do kailos são fixos, porque já estão gravados em `users.ui_preferences` de prod.
+- Ordem: claros primeiro (Nítido, Grafite, Areia, depois os de marca), então os escuros (Escuro suave, Carbono, os de marca, Alto contraste). O dialog agrupa em "Claros" e "Escuros".
+- **Quem tinha um estilo que saiu** (`<slug>-claro`, `<slug>-escuro`): `isAppStyleId` recusa o id gravado, o app abre no padrão e o dialog de boas-vindas aparece uma vez. Sem migration e sem mapa de ids antigos.
 - **Regra do catálogo:** o estilo já carrega o modo (não existe "claro + botão escuro").
 - Todo id existe em TRÊS lugares, com um teste que os amarra:
   1. `lib/appearance/app-styles.ts`;
-  2. o arquivo `styles/themes/<id>.css` (exceto o par de identidade, que é o `:root`/`.dark`);
+  2. o arquivo `styles/themes/<id>.css`;
   3. o `AppStyleId` (Literal) do backend.
 
 **`themeColor`** (`<meta name="theme-color">`) é a cor do topo do estilo:
 
 | Estilo | Cor |
 | --- | --- |
-| escuro (identidade) | `#010409` |
 | Nítido | `#f6f8fa` |
-| Escuro suave | `#151b23` |
-| Alto contraste | `#010409` |
-| Carbono | `#0b0a09` |
+| Grafite | o hex do grafite tingido (kailos `#211d1b`) |
 | Areia | `#fcfaf7` |
-| Grafite | o hex do grafite tingido |
-| claro (identidade) | a cor do header do app |
+| Escuro suave | `#151b23` |
+| Carbono | `#1c1a19` |
+| Alto contraste | `#010409` |
 
-## 3. Contrato da base escura (`dark-base.css`)
+## 3. Contrato das bases (`light-base.css` e `dark-base.css`)
 
-Camadas, da mais escura para a mais clara:
+**Claro** (`:root, .light`): conteúdo e card brancos, moldura gelo `#f6f8fa`, hover `#eff2f5`, bordas
+`#d1d9e0`, texto `#1f2328`, secundário `#59636e` (6,1:1). Todo estilo claro que não redefine um
+neutro herda estes; branco puro na moldura e texto `#0a0a0a` ("full branco") não voltam.
 
-| Camada | Token | Hex |
-| --- | --- | --- |
-| moldura | `--sidebar` | `#010409` |
-| conteúdo | `--background` | `#0d1117` |
-| card e popover | `--card` / `--popover` | `#151b23` |
-| controles | `--secondary` / `--muted` | `#212830` |
-| hover | `--accent` | `#262c36` |
+**Escuro** (`.dark`) = a escada do Escuro suave, da mais escura para a mais clara:
 
-- **Header** = moldura. A regra `[data-app-header] { background: var(--sidebar) }` vale no estilo escuro padrão.
-- **Bordas:** `#3d444d` a 70%; o `--input` usa `#3d444d` cheio.
-- **Texto:** `#f0f6fc`. O secundário é `#9198a1`, com 6,5:1 no conteúdo e 5,9:1 no card.
-- **Regra para QUALQUER estilo escuro, novo ou revisto:**
-  - a moldura é mais funda que o conteúdo;
-  - o card se destaca do conteúdo;
-  - o `--muted-foreground` tem ≥ 4,5:1 no card (alvo ~6:1);
-  - a borda é visível sem gritar.
+| Camada | Token | L (OKLCH) | Hex no Escuro suave |
+| --- | --- | --- | --- |
+| moldura | `--sidebar` (+ header) | 0.22 | `#151b23` |
+| conteúdo | `--background` | 0.274 | `#212830` |
+| card | `--card` | 0.292 | `#262c36` |
+| controle e popover | `--secondary` / `--muted` / `--popover` | 0.311 | `#2a313c` |
+| hover | `--accent` | 0.334 | `#2f3742` |
+
+- **Bordas:** 0.384 (`#3d444d`) cheia; o `--input` usa 0.42.
+- **Texto:** 0.877 (`#d1d7e0`, 10:1); secundário 0.677 (`#9198a1`, 5,1:1 no conteúdo).
+- **Header** = moldura (`[data-app-header] { background: var(--sidebar) }` no Escuro suave).
+- **Regra para QUALQUER estilo escuro, novo ou revisto** (decisão 2026-11-10):
+  - usa ESTA escada de luminosidade; só o matiz/croma muda (Carbono = hue 60, os de marca = o matiz da marca, croma baixo nos neutros);
+  - nunca preto profundo (conteúdo abaixo de ~0.26) nem texto branco puro;
+  - o `--muted-foreground` tem ≥ 4,5:1 no card;
+  - exceção única: Alto contraste.
 - **Cor crua de escuro quebra a base.** Exemplos: `dark:bg-zinc-900`, `dark:bg-neutral-950` e hex de fundo no componente. Ao aplicar, varra com `rg "dark:(bg|border)-(zinc|neutral|slate|gray|stone)-"` e troque pelos tokens.
 
 ## 4. Mecanismo (canônico: kailos)
@@ -104,7 +106,7 @@ Camadas, da mais escura para a mais clara:
 ## 5. Gotchas
 
 - **Legado do `ThemeProvider`.** Na 1ª carga sem o cache novo, leia UMA vez a chave antiga (`vite-ui-theme` ou a do app).
-  - `dark` vira `<slug>-escuro`; o resto vira o default.
+  - `dark` vira `escuro-suave`; o resto vira o default.
   - Depois remova a chave antiga.
   - Assim quem já usava escuro não volta ao claro.
 - **Boas-vindas só na casca de trabalho.**
@@ -121,7 +123,8 @@ Camadas, da mais escura para a mais clara:
   - id inválido dá 422;
   - o PATCH não apaga outras chaves de `ui_preferences`.
 - vitest:
-  - catálogo × CSS: todo id não-identidade tem `styles/themes/<id>.css` importado no `index.css`;
+  - catálogo × CSS: todo id tem `styles/themes/<id>.css` importado no `index.css`;
+  - nenhum `<slug>-claro`/`<slug>-escuro` no catálogo e o default é `nitido`;
   - catálogo × backend: lista de ids igual ao Literal (snapshot do array);
   - store: boot pinta o cache, migra a chave legada `dark`, e conta que muda reaplica.
 

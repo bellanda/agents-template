@@ -1,44 +1,39 @@
-/* Base escura da frota (decisão do usuário 2026-11-07: "essa cor de fundo do GitHub").
+/* Base escura da frota = as camadas do Escuro suave (decisões do usuário: 2026-11-07 "essa cor
+ * de fundo do GitHub"; 2026-11-10 "a gente tirou algo que era grotesco, o full branco e full
+ * preto" — o GitHub dark #0d1117/#010409 saiu junto com o par de identidade `<slug>-escuro`).
  *
- * É o `.dark` do index.css de TODO app = o estilo `<slug>-escuro`. Só os NEUTROS são padrão:
- * `--primary`, `--primary-foreground`, `--ring`, `--chart-*`, `--sidebar-primary*` e
- * `--sidebar-ring` continuam os do app (identidade) — copie-os do `.dark` atual.
+ * É o `.dark` do index.css de TODO app. Só os NEUTROS são padrão: `--primary`,
+ * `--primary-foreground`, `--ring`, `--chart-*`, `--sidebar-primary*` e `--sidebar-ring`
+ * continuam os do app (identidade) — copie-os do `.dark` atual.
  *
- * Estrutura em camadas (escuro → claro): moldura (sidebar + header, #010409) < conteúdo
- * (#0d1117) < card/popover (#151b23) < controles (#212830) < hover (#262c36). Bordas #3d444d.
- * Texto #f0f6fc (17:1), secundário #9198a1 (6,5:1 no conteúdo, 5,9:1 no card).
+ * ESCADA (escuro → claro), a mesma em TODO estilo escuro, só o matiz muda (app-styles.md §3):
+ * moldura 0.22 (#151b23, sidebar + header) < conteúdo 0.274 (#212830) < card 0.292 (#262c36)
+ * < controle/popover 0.311 (#2a313c) < hover 0.334 (#2f3742). Borda 0.384 (#3d444d), input 0.42.
+ * Texto 0.877 (#d1d7e0, 10:1), secundário 0.677 (#9198a1, 5,1:1 no conteúdo).
  */
 .dark {
-  --background: oklch(0.176 0.014 258); /* #0d1117 */
-  --foreground: oklch(0.97 0.01 248); /* #f0f6fc */
-  --card: oklch(0.22 0.018 256); /* #151b23 */
-  --card-foreground: oklch(0.97 0.01 248);
-  --popover: oklch(0.22 0.018 256);
-  --popover-foreground: oklch(0.97 0.01 248);
+  --background: oklch(0.274 0.018 252); /* #212830 */
+  --foreground: oklch(0.877 0.014 258); /* #d1d7e0 */
+  --card: oklch(0.292 0.02 261); /* #262c36 */
+  --card-foreground: oklch(0.877 0.014 258);
+  --popover: oklch(0.311 0.022 259); /* #2a313c */
+  --popover-foreground: oklch(0.877 0.014 258);
   /* --primary / --primary-foreground: do app */
-  --secondary: oklch(0.274 0.018 252); /* #212830 */
-  --secondary-foreground: oklch(0.97 0.01 248);
-  --muted: oklch(0.274 0.018 252);
+  --secondary: oklch(0.311 0.022 259);
+  --secondary-foreground: oklch(0.877 0.014 258);
+  --muted: oklch(0.311 0.022 259);
   --muted-foreground: oklch(0.677 0.016 255); /* #9198a1 */
-  --accent: oklch(0.292 0.02 261); /* #262c36 */
-  --accent-foreground: oklch(0.97 0.01 248);
+  --accent: oklch(0.334 0.022 256); /* #2f3742 */
+  --accent-foreground: oklch(0.877 0.014 258);
   --destructive: oklch(0.665 0.205 27); /* #f85149 */
   --destructive-foreground: oklch(0.985 0 0);
-  --border: oklch(0.384 0.018 255 / 70%); /* #3d444d b3 */
-  --input: oklch(0.384 0.018 255); /* #3d444d */
+  --border: oklch(0.384 0.018 255); /* #3d444d */
+  --input: oklch(0.42 0.018 255); /* #474e57 */
   /* --ring / --chart-1..5: do app */
-  --sidebar: oklch(0.104 0.019 248); /* #010409 */
-  --sidebar-foreground: oklch(0.97 0.01 248);
+  --sidebar: oklch(0.22 0.018 256); /* #151b23 */
+  --sidebar-foreground: oklch(0.877 0.014 258);
   /* --sidebar-primary / --sidebar-primary-foreground / --sidebar-ring: do app */
-  --sidebar-accent: oklch(0.22 0.018 256); /* #151b23 */
-  --sidebar-accent-foreground: oklch(0.97 0.01 248);
-  --sidebar-border: oklch(0.384 0.018 255 / 70%);
-}
-
-/* Header na mesma moldura da sidebar, mais fundo que o conteúdo (como o topo do GitHub).
-   Troque <slug> pelo id do estilo escuro do app (kailos-escuro, emporion-escuro…). A 2ª linha
-   pinta a miniatura/prévia do dialog quando a página está em outro estilo. */
-:root[data-style="<slug>-escuro"] [data-app-header],
-.dark[data-style-preview="<slug>-escuro"] [data-app-header] {
-  background: var(--sidebar);
+  --sidebar-accent: oklch(0.292 0.02 261);
+  --sidebar-accent-foreground: oklch(0.93 0.012 258);
+  --sidebar-border: oklch(0.384 0.018 255);
 }

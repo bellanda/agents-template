@@ -1,15 +1,40 @@
 # Dashboard — KPI, período e gráficos (REFERENCE, não obrigatória)
 
 > Reference do gate `frontend`. Abra quando for construir um dashboard **novo** e quiser partir de
-> peças prontas. **Não é padrão obrigatório** (decisão de **2026-10-01**: dinheiro, período/KPI e
-> histórico ficam por projeto — nenhum app existente é migrado para estas peças). Gráficos em si:
-> skill `shadcn` → `rules/charts.md`.
+> peças prontas. KPI, dinheiro e histórico ficam por projeto (decisão de **2026-10-01**). **O filtro
+> de data é a exceção: é padrão da frota** (decisão do usuário **2026-11-09**, seção abaixo).
+> Gráficos em si: skill `shadcn` → `rules/charts.md`.
+
+## Filtro central de data (padrão da frota, 2026-11-09)
+
+"Outros filtros são pontuais de cada tela e app, mas o filtro de data tem que ser padrão de todos."
+Toda tela com recorte por período usa estas linhas, nesta ordem:
+
+Hoje · Ontem · **Dia recente** · Semana · **Semana passada** · Mês · **Mês passado** · Ano · Ano
+passado · Todos os tempos · Personalizado…
+
+- App pode **manter** janelas próprias depois delas (Últimos 7 dias, 90 dias, 12 meses) e **omitir**
+  só o que o backend dele não aceita (limite de janela do emporion, histórico curto do akmeo).
+- **Semana passada** = segunda a domingo fechados, comparada com a semana anterior. **Mês passado** =
+  dia 1 ao último dia, comparado com o mês INTEIRO anterior (nunca "mesmo tamanho para trás": março
+  contra fevereiro erraria o início). Meta de período fechado mede como a do período corrente.
+- **Dia recente** é uma linha normal da lista. Abre `RecentDayDialog`: UMA grade com os últimos 30
+  dias corridos (`recent-day.ts`), atravessando o mês, segunda na 1ª coluna, hoje por último e já
+  marcado. Clicar aplica e fecha, sem botão Aplicar e sem navegar mês; dia mais antigo é
+  "Personalizado…". Não existe chave de backend: o dia viaja como período personalizado de início =
+  fim, e a comparação é o dia anterior. O gatilho mostra "sex., 06/11".
+  App sem período personalizado (akmeo, lista fechada com uma string só) manda `day:YYYY-MM-DD`
+  nessa mesma string, e dia futuro vale como hoje.
+- Sem dependência nova: a grade é `Button` em `grid-cols-7`, não precisa de `react-day-picker`.
+- Dia é sempre dia local (`toLocalDateKey`/`addDaysToDateKey`); chaves comparam como string.
+- Canônicos: `references/recent-day.ts` e `references/recent-day-dialog.tsx`.
 
 ## O que existe (kailos `frontend/src/`)
 
 | Peça                         | Arquivo                                  | Para quê                                                              |
 | ---------------------------- | ---------------------------------------- | --------------------------------------------------------------------- |
 | `PeriodSelector`             | `components/dashboard/PeriodSelector.tsx` | `Select` de período + intervalo personalizado em `FormDialog`         |
+| `RecentDayDialog`            | `components/dashboard/RecentDayDialog.tsx` | Calendário de um dia dos últimos 30 (linha "Dia recente")             |
 | `StatCard`                   | `components/dashboard/StatCard.tsx`       | Card de KPI: rótulo, valor, delta vs período anterior, ícone          |
 | `ui/chart.tsx`               | `components/ui/chart.tsx`                 | Wrapper shadcn de Recharts (`ChartContainer`, `ChartConfig`, tooltip) |
 | Barra de filtros do dashboard | `components/dashboard/GlobalFiltersBar.tsx` | Controles no topo à esquerda, acima das abas (ver `list-screen.md`) |
@@ -18,7 +43,7 @@
 
 ```tsx
 <PeriodSelector
-  value={period}                       // PeriodKey: "today" | "yesterday" | "wtd" | "mtd" | "ytd" | "last_year" | "all" | "custom" | …
+  value={period}                       // PeriodKey: "today" | "yesterday" | "wtd" | "last_week" | "mtd" | "last_month" | "ytd" | "last_year" | "all" | "custom" | …
   start={start} end={end}              // ISO date, só com "custom"
   onChange={({ period, start, end }) => navigate({ search: (p) => ({ ...p, period, start, end }) })}
   variant="default"                    // "title" = trigger sem borda no tamanho do título da página
