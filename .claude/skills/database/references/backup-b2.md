@@ -133,8 +133,15 @@ docker compose run --rm --entrypoint pg_restore -e PGPASSWORD="$POSTGRES_PASSWOR
 docker compose exec -T postgres psql -U <app> -d <app>_restore -c "SELECT count(*) FROM organizations;"
 # 4. Trocar: parar a app (backend/cron), renomear os bancos, subir de novo
 #    ALTER DATABASE <app> RENAME TO <app>_old; ALTER DATABASE <app>_restore RENAME TO <app>;
-# 5. Apagar /backup/restore.dump (e <app>_old quando tiver certeza)
+# 5. LIMPAR no fim (obrigatório, nada fica para trás):
+#    rm /backup/restore.dump  e  DROP DATABASE <app>_old depois de conferido o banco trocado
+#    (ou DROP DATABASE <app>_restore, se foi só para conferir um dump sem trocar)
 ```
+
+Restore, ensaio ou análise com cópia de prod seguem a regra global "Cópia de prod é efêmera"
+(`global/agent-behavior.md`, decisão 2026-11-11): o backup antes de mexer em prod é o `pg-backup now`, nunca
+um `pg_dump` avulso, e toda cópia de trabalho (dump local, container `<app>-prodcopy`, banco auxiliar,
+`/tmp/<app>-*`) é apagada ao terminar a tarefa.
 
 Validado em 2026-10-14: dump de 50 mil linhas → restore num banco novo, contagens e md5 idênticos.
 
