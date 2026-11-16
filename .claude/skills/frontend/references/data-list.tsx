@@ -22,8 +22,8 @@ import type { InfiniteListControls } from "@/hooks/useCollectionList";
 import { cn } from "@/lib/utils";
 import { useCallback, useRef, type MouseEvent, type ReactNode } from "react";
 import type { IconType } from "react-icons";
-import { LuEllipsisVertical, LuTriangleAlert } from "react-icons/lu";
-import { errorMessage } from "@/lib/api/error-message";
+import { LuEllipsisVertical } from "react-icons/lu";
+import { ErrorState } from "@/components/ui/error-state";
 
 /**
  * Papel da coluna no card mobile — é isto que dispensa um segundo renderer.
@@ -43,7 +43,7 @@ export interface DataListColumn<T> {
   role?: DataListColumnRole;
   /** Override SÓ do conteúdo no card (versão curta de uma célula larga). */
   renderCard?: (item: T) => ReactNode;
-  /** Classe do `<td>`/`<th>` no DESKTOP — densidade md→2xl (`"hidden lg:table-cell"`). */
+  /** Classe do `<td>`/`<th>` no DESKTOP — densidade por container: `"hidden @4xl/main:table-cell"` (ver LIST_CONTAINER). */
   className?: string;
   headClassName?: string;
 }
@@ -85,11 +85,15 @@ export interface DataListProps<T> {
   isLoading: boolean;
   isFetching: boolean;
   total: number;
-  page: number;
-  pageSize: number;
-  pageCount: number;
-  /** A página mora na URL e a tela é dona dela — o DataList só pede a troca. */
-  onPageChange: (page: number) => void;
+  /**
+   * Paginação numerada. `page` mora na URL e a tela é dona dela, o DataList só pede a troca.
+   * Opcionais porque o modo infinito (`infinite` presente) não usa nenhum dos quatro: as
+   * sub-listas de aba/painel não passam.
+   */
+  page?: number;
+  pageSize?: number;
+  pageCount?: number;
+  onPageChange?: (page: number) => void;
   /**
    * Presente = modo rolagem contínua (vem no spread do `useCollectionList`): o fim da lista
    * vira sentinela + "Carregar mais" e `page`/`onPageChange` ficam ociosos. Ausente =
@@ -137,6 +141,21 @@ export interface DataListProps<T> {
   onRetry?: () => void;
   className?: string;
 }
+
+/**
+ * O DataList decide tabela x card pela LARGURA DO PRÓPRIO CONTEÚDO (container query), nunca pela
+ * viewport (`md:`): com a sidebar aberta, um tablet de 820px sobra ~615px úteis e uma tabela de 5-6
+ * colunas sai cortada (auditoria 2026-11-13 design-parity-01). O wrapper da lista se declara
+ * `@container/main`, então `@3xl/main:` (48rem) significa "a lista tem >= 48rem" também dentro de
+ * Dialog/Sheet (portal fora do `main` real). As unidades são rem, logo a letra "Muito grande"
+ * (font-size do `html`) sobe o limiar em px sozinha (auditoria font-xl-*).
+ *
+ * Contrato das colunas (`className`): use SÓ variantes de container para densidade, nunca `lg:`/
+ * `xl:` de viewport: `@4xl/main:table-cell` (>= 56rem), `@5xl/main:` (64rem), `@6xl/main:` (72rem).
+ * Coluna de VALOR (total, status, data) nunca é escondida: se não cabe, a tabela vira card, e o
+ * card mostra toda coluna que não seja `role: "hidden"`.
+ */
+const LIST_CONTAINER = "@container/main w-full min-w-0";
 
 /** Quantas linhas de esqueleto na primeira carga. */
 const SKELETON_ROWS = 5;
@@ -206,6 +225,20 @@ function ActionButtons<T>({ actions, item }: { actions: DataListAction<T>[]; ite
   );
 }
 
+/**
+ * Células de texto livre (título + subtítulo do card) quebram linha e partem palavra longa
+ * (e-mail, razão social) em vez de empurrar as colunas de valor para fora do cartão: o `td` é
+ * `whitespace-nowrap` por padrão e, no 1440px, "Papéis"/"Criada em" saíam cortados
+ * (auditoria 2026-11-13 kailos-v1-02, nexarena-v2-01). Valor (total, status, data) segue nowrap.
+ */
+function desktopCellClass<T>(column: DataListColumn<T>, primary: DataListColumn<T>) {
+  const freeText = column === primary || column.role === "secondary";
+  return cn(
+    freeText && "max-w-[22rem] min-w-[9rem] whitespace-normal [overflow-wrap:anywhere]",
+    column.className
+  );
+}
+
 /** "Limpar filtros" substitui a ação do vazio quando o vazio é efeito de filtro ativo. */
 function emptyStateAction({
   isFiltered,
@@ -221,30 +254,6 @@ function emptyStateAction({
     <Button variant="outline" size="sm" onClick={onClearFilters}>
       Limpar filtros
     </Button>
-  );
-}
-
-/**
- * Estado de ERRO da lista — nunca o estado vazio.
- *
- * Sem ele, query que falha (rede fora, 500, 403 numa tela que o gate do front
- * deixou passar) caía em `items = []` e a tela dizia "Nenhum veículo encontrado".
- * O usuário concluía que o estoque estava vazio e seguia em frente; o erro
- * existia só no console. Coleção vazia e coleção que não carregou são fatos
- * diferentes e precisam de telas diferentes.
- */
-function ErrorState({ error, onRetry }: { error: unknown; onRetry?: () => void }) {
-  return (
-    <div className="flex flex-col items-center gap-3 px-6 py-16 text-center" role="alert">
-      <LuTriangleAlert className="text-destructive h-6 w-6" aria-hidden />
-      <p className="text-sm font-medium">Não foi possível carregar esta lista</p>
-      <p className="text-muted-foreground max-w-prose text-xs">{errorMessage(error)}</p>
-      {onRetry && (
-        <Button variant="outline" size="sm" onClick={onRetry}>
-          Tentar novamente
-        </Button>
-      )}
-    </div>
   );
 }
 
@@ -291,7 +300,7 @@ function PageSelectionBox<T>({
  * Corpo compartilhado por `DataList` e `StaticDataList`: a tabela do desktop e a
  * pilha de cards do mobile, a partir da MESMA definição de coluna.
  *
- * O switch é CSS (`hidden md:block` / `md:hidden`), NÃO `useIsMobile()`: o hook
+ * O switch é CSS (`hidden @3xl/main:block` / `@3xl/main:hidden`), NÃO `useIsMobile()`: o hook
  * resolve em `useEffect`, então no celular a tabela pisca no primeiro paint e a
  * subárvore inteira remonta a cada resize cruzando 768px — derrubando o
  * IntersectionObserver junto.
@@ -369,10 +378,10 @@ function ResponsiveRows<T>({
   };
 
   return (
-    <>
+    <div className={LIST_CONTAINER}>
       {/* ── Desktop: tabela (ausente em `variant="grid"`/`"stack"`) ─────── */}
       {!cardsOnly && (
-        <div className="hidden rounded-md border md:block">
+        <div className="hidden rounded-md border @3xl/main:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -412,7 +421,7 @@ function ResponsiveRows<T>({
                     </TableCell>
                   )}
                   {desktopColumns.map((column) => (
-                    <TableCell key={column.id} className={column.className}>
+                    <TableCell key={column.id} className={desktopCellClass(column, primary)}>
                       {column.cell(item)}
                     </TableCell>
                   ))}
@@ -472,15 +481,19 @@ function ResponsiveRows<T>({
                 <div className="min-w-0 flex-1">
                   <div className="truncate font-medium">{cardContent(primary, item)}</div>
                   {secondary.map((column) => (
-                    <div key={column.id} className="text-muted-foreground truncate text-xs">
+                    <div key={column.id} className="text-muted-foreground line-clamp-2 text-xs">
                       {cardContent(column, item)}
                     </div>
                   ))}
                 </div>
                 {badges.length > 0 && (
-                  <div className="flex shrink-0 flex-col items-end gap-1">
+                  // `max-w-[60%] min-w-0`: badge largo (lista de organizações) nunca zera o título
+                  // (nexarena-v1-01): o título fica com >= 40% do cartão e o badge encolhe/quebra.
+                  <div className="flex max-w-[60%] min-w-0 shrink flex-col items-end gap-1">
                     {badges.map((column) => (
-                      <div key={column.id}>{cardContent(column, item)}</div>
+                      <div key={column.id} className="max-w-full min-w-0">
+                        {cardContent(column, item)}
+                      </div>
                     ))}
                   </div>
                 )}
@@ -502,7 +515,7 @@ function ResponsiveRows<T>({
           );
         })}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -521,9 +534,9 @@ function LoadingRows<T>({
 }) {
   const columnCount = columns.length + (hasActions ? 1 : 0);
   return (
-    <div className={cn("space-y-3", className)}>
+    <div className={cn("space-y-3", LIST_CONTAINER, className)}>
       {!cardsOnly && (
-        <div className="hidden rounded-md border md:block">
+        <div className="hidden rounded-md border @3xl/main:block">
           <Table>
             <TableHeader>
               <TableRow>
@@ -561,8 +574,10 @@ function LoadingRows<T>({
 /** Classe do container de cards — compartilhada pelos dois componentes. */
 function cardsClassNameFor(variant: "table" | "grid" | "stack") {
   return variant === "grid"
-    ? "grid grid-cols-1 gap-4 sm:grid-cols-2 xl:grid-cols-3"
-    : cn("space-y-3", variant === "table" && "md:hidden");
+    ? // Colunas pela largura da lista, cada card com no mínimo 17rem: nunca espreme o conteúdo
+      // (EventCard/nexarena-v4-01). `min(100%, 17rem)` evita estourar numa lista mais estreita.
+      "grid grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] gap-4"
+    : cn("space-y-3", variant === "table" && "@3xl/main:hidden");
 }
 
 export interface StaticDataListProps<T> {
@@ -631,7 +646,7 @@ export function StaticDataList<T>({
     );
   }
 
-  if (isError) {
+  if (isError && items.length === 0) {
     return (
       <div className={cn("rounded-md border", className)}>
         <ErrorState error={error} onRetry={onRetry ?? (refetch ? () => refetch() : undefined)} />
@@ -678,9 +693,9 @@ export function DataList<T>({
   isLoading,
   isFetching,
   total,
-  page,
-  pageSize,
-  pageCount,
+  page = 1,
+  pageSize = 1,
+  pageCount = 1,
   onPageChange,
   infinite,
   isFiltered,
@@ -703,12 +718,12 @@ export function DataList<T>({
   // embaixo); com a lista inteira à vista, trocar de página não mexe no scroll.
   const changePage = useCallback(
     (next: number) => {
-      onPageChange(next);
+      onPageChange?.(next);
       topRef.current?.scrollIntoView({ block: "nearest" });
     },
     [onPageChange]
   );
-  // Fora do default o card é a ÚNICA árvore: some o `md:hidden` que o esconderia no
+  // Fora do default o card é a ÚNICA árvore: some o `@3xl/main:hidden` que o esconderia no
   // desktop e a tabela sai do DOM. Esconder a tabela por CSS não bastaria — o React
   // renderiza a subárvore inteira do mesmo jeito (cada `cell` de cada linha roda duas
   // vezes) e todo texto passa a aparecer duplicado para leitor de tela e para teste.
@@ -726,7 +741,9 @@ export function DataList<T>({
     );
   }
 
-  if (isError) {
+  // Só substitui a lista quando não há nada a mostrar: refetch em segundo plano ou
+  // fetchNextPage que falha mantém os dados anteriores, e um soluço de rede não pode apagá-los.
+  if (isError && items.length === 0) {
     return (
       <div className={cn("rounded-md border", className)}>
         <ErrorState error={error} onRetry={onRetry ?? (refetch ? () => refetch() : undefined)} />

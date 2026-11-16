@@ -27,7 +27,7 @@
 ```
 <ListToolbar>        busca + filtros + ordenação + [Ações ▾] (seleção) + botão "Novo…" + ⋮ (slot `menu`)
 <RecentlyOpenedStrip> (opcional) últimas 5 aberturas da tela
-<DataList>           totais no topo + tabela (≥768px) / cards (<768px) + "Carregar mais" OU números de página
+<DataList>           totais no topo + tabela (≥ `@3xl/main`) / cards (abaixo) + "Carregar mais" OU números de página
 <ConfirmDialog>      exclusão
 <XFormDialog>        criar/editar
 ```
@@ -148,8 +148,16 @@ CSS, nunca `useIsMobile()`.
 ## Invariantes
 
 - **Tabela no desktop vira card no mobile.** UMA definição de coluna produz as duas renderizações.
-  Column-collapse (`hidden lg:table-cell`) continua existindo — mas para densidade **acima** de 768px,
-  não como substituto do card.
+  **O switch é pela LARGURA DO CONTAINER, não do viewport** (decisão 2026-11-13, auditoria):
+  o `DataList` é seu próprio `@container/main` (`LIST_CONTAINER`) e troca tabela↔card em `@3xl/main`
+  (48rem), então também troca certo dentro de aba/dialog/sidebar aberta. Densidade de coluna usa as
+  variantes `@4xl/main:`, `@5xl/main:`, `@6xl/main:` (ex.: `hidden @4xl/main:table-cell`) — **nunca
+  `lg:`/`xl:` de viewport**. **PROIBIDO esconder coluna de VALOR** (dinheiro, quantidade, status):
+  se não cabe, vira linha do card; só coluna acessória (notas) usa `role: "hidden"`/column-collapse.
+  O grid de cards é `repeat(auto-fill,minmax(min(100%,17rem),1fr))`; a linha `secondary` do card
+  usa `line-clamp-2` (não `truncate`). Teste compartilhado, idêntico nos 6 apps:
+  `components/ui/data-list-layout.test.tsx`. Cópia canônica: `data-list.tsx`/`list-toolbar.tsx`
+  desta pasta (= kailos).
 - **Rolagem contínua por default, páginas numeradas no ⋮** (`useCollectionList`) — nunca
   `limit: 500` "porque a tabela é pequena". Tela de lista sem `menu={<ListOptionsMenu …/>}` é regressão
   (exceto sub-lista em aba/painel).
@@ -210,7 +218,7 @@ o card inteiro.
 
 | `variant` | Container | Quando |
 | --- | --- | --- |
-| `"table"` *(default)* | tabela ≥768px, card abaixo | Coleção **textual**. É o caso de quase toda tela |
+| `"table"` *(default)* | tabela ≥ `@3xl/main`, card abaixo | Coleção **textual**. É o caso de quase toda tela |
 | `"grid"` | card em grade 1→2→3 colunas, todos os breakpoints | O conteúdo **é visual** (veículo com foto, pedido com miniatura) — espremer a imagem numa célula desperdiça exatamente o que se veio ver |
 | `"stack"` | card full-width empilhado, todos os breakpoints | O item **expande no lugar** (fila de aprovação com documentos, log com payload): não cabe numa linha de tabela nem numa coluna de grade |
 
@@ -221,7 +229,7 @@ coleção textual, sair do default é regressão: a tabela é mais densa e mais 
 
 - **O switch desktop/mobile é CSS**, não `useIsMobile()`. O hook resolve em `useEffect` e devolve
   `undefined` no primeiro render → tabela pisca no celular, e a subárvore inteira remonta a cada resize
-  cruzando 768px, derrubando o listener de scroll do sentinel junto. Custo do CSS: as duas árvores no DOM e
+  cruzando o limiar, derrubando o listener de scroll do sentinel junto. Custo do CSS: as duas árvores no DOM e
   `cell(item)` chamado duas vezes. Em 10–200 linhas carregadas, irrelevante.
 - **Permissão fica no caller** — `actions={[...(can(P.UPDATE) ? [edit] : [])]}`. Os 5 projetos têm
   hooks de permissão diferentes; o componente vendorado não pode acoplar na auth de nenhum.
@@ -467,7 +475,7 @@ Some da tela anterior: `PAGE_SIZE`, o param `page`, a aritmética de `lastPage`,
 - **NUNCA** `useState` pra filtro, busca commitada, sort ou página — é URL (`validateSearch`).
 - **NUNCA** `IntersectionObserver`/`rootMargin`/auto-encadeamento no gatilho do modo rolagem.
 - **NUNCA** tela de lista sem o ⋮ (`ListOptionsMenu`) nem contagem só no rodapé.
-- **NUNCA** `<Table>` sem alternativa em card abaixo de 768px.
+- **NUNCA** `<Table>` sem alternativa em card abaixo de `@3xl/main`, nem coluna de valor escondida por breakpoint.
 - **NUNCA** fixar um modo no código sem deixar o usuário trocar no ⋮ (o código só define o default).
 - **NUNCA** `useCrud` sem `keepPreviousData` no `useList`.
 - **NUNCA** `fetch-all` com `limit: 500` "porque a tabela é pequena" — ela não vai continuar pequena.
@@ -475,3 +483,25 @@ Some da tela anterior: `PAGE_SIZE`, o param `page`, a aritmética de `lastPage`,
 - **NUNCA** barra de seleção/ação em lote entre o toolbar e a lista — é o menu `Ações` no toolbar.
 - **NUNCA** abas por etapa + filtro de status juntos — é um `Select` agrupado, com contagem.
 - **NUNCA** sort key que não esteja no whitelist do backend, nem coluna nullable como sort key.
+
+## Widgets compartilhados (byte-idênticos na frota, com gate de drift)
+
+Estes arquivos são **o mesmo em todo app** (identidade = tokens, nunca o arquivo): `ui/error-state.tsx`
+(+ `.test.tsx`), `ui/confirm-dialog.tsx`, `ui/data-list.tsx`, `ui/data-list-layout.test.tsx`,
+`ui/list-toolbar.tsx`, `ui/entity-picker.tsx` (+ test), `ui/currency-input.tsx` (+ test),
+`hooks/useUnsavedChangesGuard.tsx`, `hooks/useRecentlyOpened.ts`, `lib/realtime/{use-resilient-stream,resilient-stream,entity-changed}.ts` (+ 3 testes; ver `realtime-and-push-actions.md`). A lista e as exceções vivem em
+`shared-widgets/shared-widgets.json` (central); o canônico de cada um é o arquivo de mesmo nome
+nesta pasta `references/` (`useRecentlyOpened.ts` = `use-recently-opened.ts`).
+
+- **Gate:** `rules.py` grava em cada app `frontend/src/test/shared-widgets.manifest.json` (sha256 do
+  canônico) + `frontend/src/test/__tests__/shared-widgets-drift.test.ts`. Roda no `vitest` normal
+  (`check.sh`), sem rede e sem os outros repos; falha dizendo `[app] <arquivo> drifted`. Nunca edite
+  esses dois arquivos no app nem "conserte" o manifest à mão.
+- **Mudar um widget compartilhado:** (1) edite o canônico em `references/`; (2)
+  `python3 rules.py --shared-apply` (copia o canônico para os apps, exceto exceções, e regrava
+  manifests); (3) rode vitest/tsc nos apps. Precisa de prop nova para um app? Entra no canônico
+  para todos, nunca fork. Widget novo na lista = canônico em `references/` + linha em `files` do JSON.
+- **Exceções declaradas** (`exceptions` no JSON, com motivo; não são comparadas): nexarena
+  `ui/data-list.tsx` (variante permitida) e agents-template `ui/error-state.tsx` (ícone lucide até o
+  template ganhar `react-icons`). O template também pode não ter um arquivo (`optional_in`); se ele
+  existir, tem que bater.

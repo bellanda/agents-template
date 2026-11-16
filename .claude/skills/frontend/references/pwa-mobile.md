@@ -102,6 +102,12 @@ Com `viewport-fit=cover`, o shell paga a conta do notch: `padding-top: env(safe-
 no header fixo, `padding-bottom: max(env(safe-area-inset-bottom), .75rem)` em footer/barra de
 ação, `padding-left/right` em conteúdo full-bleed (landscape com notch lateral).
 
+> **Template (2026-11-13):** o agents-template já embarca o kit — `public/sw.js`, `manifest.json`,
+> `lib/pwa/`, `components/ui/app-reload-button.tsx`, `hooks/usePullToRefresh.ts`,
+> `components/pwa/InstallAppButton.tsx` — e o header com safe-area correto: o `SidebarInset` é
+> `h-dvh min-h-0` com filho `flex-1 min-h-0`, nunca `h-[calc(100vh-3rem)]` (com `viewport-fit=cover`
+> o `100vh` ignora a safe-area e o header some sob o notch). App novo herda, não reescreve.
+
 ## 5. Pull-to-refresh próprio
 
 Gesto no scroller do layout (o `<main>`), não no documento. Regras que não são negociáveis:

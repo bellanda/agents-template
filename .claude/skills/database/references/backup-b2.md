@@ -3,8 +3,8 @@
 Padrão da frota desde 2026-10-14. O código está no Git e no OneDrive, e mídia/documentos estão no B2. Na VPS,
 o único dado que não se regenera é o **Postgres**, e este serviço cobre esse buraco. O `.env` NÃO vai para o B2 (decisão
 2026-10-26, depois de cogitar subi-lo cifrado junto dos dumps): o local é copiado de hora em hora para
-`OneDrive/Data (Git Ignored)/<app>/.env` pelo `~/scripts/backup.py`, e o de prod tem cópia manual em
-`.../<app>/.env.prod` sempre que muda (ver `global/agent-behavior.md` → Deploy).
+`OneDrive/Data (Git Ignored)/<app>/.env.age` pelo `~/scripts/backup.py` (criptografado, age), e o de prod tem cópia manual
+criptografada em `.../<app>/.env.prod.age` sempre que muda (ver `global/agent-behavior.md` → Deploy).
 Canônico: `~/code/kailos/config/backup/{Dockerfile,pg_backup.sh}` + serviço `pg-backup` em
 `config/docker/compose.prod.yaml`. Todo app copia os mesmos dois arquivos **sem alteração**; o que muda por
 app vive no compose.
@@ -73,7 +73,7 @@ Passos de cada backup (1 linha JSON de log por passo):
 Por que a ferramenta é o `b2` CLI (binário oficial, versão fixa com sha256, interface congelada `b2v4`) e não
 boto/S3: ele fala a API nativa e trata arquivo grande sozinho (5 GB por PUT, 10 TB por arquivo). Isso evita a
 armadilha do checksum CRC32 `aws-chunked` do boto ≥1.36, que o B2 rejeita (ver `uploads-storage` §9b).
-Por que `FROM postgres:18.4-trixie`: o `pg_dump` tem de ter a mesma major do servidor.
+Por que `FROM postgres:18.7-trixie`: o `pg_dump` tem de ter a mesma major do servidor.
 
 ## Serviço no compose (só `config/docker/compose.prod.yaml`)
 
@@ -114,6 +114,15 @@ docker compose run --rm pg-backup now                      # backup manual (e an
 docker compose logs --tail=50 pg-backup                    # 1 JSON por passo; "event":"done" = sucesso
 docker compose ps pg-backup                                # healthy = sucesso nas últimas 26h
 ```
+
+## Ensaio de restauração (automático, mensal)
+
+Desde 2026-11-15 (auditoria `infra-live-16`): uma vez por mês, logo após o backup agendado, o `pg-backup` baixa o dump
+diário mais novo do B2, restaura em `<db>_rehearsal` no mesmo Postgres, confere que tabelas e `schema_migrations`
+voltaram e apaga o banco auxiliar (sempre, inclusive em falha). Linha de log `rehearsal` (ok) ou `rehearsal_failed`
+(erro; tenta de novo no dia seguinte, sem marcar o backup como falho). Manual: `docker compose run --rm pg-backup rehearse`
+(ou `rehearse-dump <arquivo>` para um dump local). Custa, enquanto roda, cerca do tamanho do banco em disco.
+Teste: `backend/tests/scripts/test_pg_backup_rehearsal.py`.
 
 ## Restore (runbook)
 
@@ -156,7 +165,9 @@ Validado em 2026-10-14: dump de 50 mil linhas → restore num banco novo, contag
   (`"$0" __backup`); sem isso, um passo que falha seguiria até a retenção.
 - O bucket é versionado: `b2 rm` sem `--versions` só esconde, e a versão segue cobrada.
 - O tmpfs `/tmp` precisa de `exec`, porque o binário `b2` se autoextrai ali ("Failed to execv() /tmp/staticx-*").
-- O trap `RETURN` do bash é global depois de setado. Ele tem de se auto-resetar (`trap - RETURN` dentro dele);
-  senão dispara de novo quando o `main()` retorna, fora da função, com a variável não definida, e o `set -u`
-  derruba um backup que já tinha dado certo. Achado no 1º backup real (2026-10-14); o dry run não pegava.
+- A limpeza do dump é um trap `EXIT` (não `RETURN`): o bash NÃO dispara `RETURN` quando o `set -e` aborta o
+  shell, então toda falha (B2 fora do ar, pg_dump parcial) deixava um dump inteiro no volume a cada retry
+  (audit r2-fleet-infra-02, 2026-11-16). `do_backup` e `rehearse_latest_from_b2` só rodam em processo filho
+  (`__backup`, `rehearse`), então `EXIT` é o gancho certo; o dry run faz `trap - EXIT` para manter o dump.
+  `sweep_stale_dumps` apaga `*.dump` com mais de 1 dia (container morto no meio do dump).
 - O `b2 file info` (v4) devolve o tamanho em `.size`, não `.contentLength`.

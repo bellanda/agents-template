@@ -35,6 +35,7 @@ log = structlog.get_logger(__name__)
 - Event = `snake_case_verb_or_noun`. Context = kwargs. NUNCA f-string a mensagem.
   - ✅ `log.info("user_login", user_id=42, method="oauth")`
   - ❌ `log.info(f"user {uid} logged in")`
+- **NUNCA `event=` como kwarg de log** (`log.info("x", event=...)` → `TypeError: multiple values for argument 'event'`, o 1º posicional já é o evento); use outro nome de chave (`event_name`, `kind`). Achado na auditoria 2026-11-13.
 - `log.exception("operation_failed")` dentro de `except`. NUNCA `log.error(str(e))` — perde traceback.
 - Sem file handlers no container. stdout/stderr only. O driver do Docker (journald em prod / json-file rotacionado fora dele) cuida de retenção.
 - `request_id` é contextvar populada pelo `LoggingMiddleware`. Toda linha herda automático.

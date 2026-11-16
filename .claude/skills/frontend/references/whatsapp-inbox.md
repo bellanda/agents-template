@@ -29,8 +29,8 @@
   inferior) fecha a tela; "Chat" fica `disabled` sem conversa selecionada.
 - **Estado de seleção:** `selectedContactId` em `useState` (efêmero); `scope` (`mine|all`) e
   `userId` (filtro de atendente, só com `read_all`) na **URL**; busca com debounce (250ms) em
-  state local. Selecionar zera o badge de não-lidas otimista
-  (`useMarkConversationReadOptimistic`, espelha o side-effect do `GET …/messages` no backend).
+  state local. O badge de não-lidas só zera DEPOIS que o `GET …/messages` deu certo
+  (`useMarkReadAfterFetch` → `useMarkConversationReadOptimistic`; ver "Marcar como lida" abaixo).
 - **Seletor de escopo** ("Minhas / Todas / Conversas de <pessoa>", só com `read_all`): NÃO é `Select`
   (decisão 2026-10-09: a equipe cresce). `ConversationScopePicker` = Popover modal + `Command`
   (`shouldFilter={false}`): busca no topo (sem acento), "Minhas"/"Todas" fixas primeiro, membros em ordem
@@ -325,6 +325,17 @@ fundo), tique azul `#53bdeb`, teal do envio e selo de não lidas `#008069` (bran
 Copiar os hex originais do WhatsApp (`#efeae2`, `#f0f2f5`, `#202c33`…) deixa o chat com cara de outro app —
 emporion e nexarena ficaram assim até 2026-11-07.
 
+## Marcar como lida — só depois do GET (emporion, 2026-11-13; kailos, 2026-11-16)
+
+O backend marca a conversa lida DENTRO do `GET …/conversations/{id}/messages`. Zerar o badge ao
+selecionar (efeito com `selectedContactId` nas deps) escondia mensagem pendente do cliente quando o
+cache estava velho ou o GET falhava. Padrão único: `hooks/useMarkReadAfterFetch.ts`
+(`useMarkReadAfterFetch(contactId, messagesQuery, markRead, rerunOn?)`) — só chama `markRead` com
+`isSuccess && !isFetching`, uma vez por `dataUpdatedAt`; `rerunOn` = `conversations.data`, porque o
+ajuste otimista só age em itens já carregados. Teste: `hooks/__tests__/useMarkReadAfterFetch.test.ts`.
+Canônico = emporion/kailos (copie os dois arquivos); notificações (`NotificationBell`,
+`/notificacoes`) marcam por clique, não ao abrir — não usam este hook. Não vai no template (sem inbox).
+
 ## Anti-padrões
 
 - **NUNCA** `activeContactId`/contato selecionado nas deps do stream (reconecta a cada clique).
@@ -339,4 +350,5 @@ emporion e nexarena ficaram assim até 2026-11-07.
 - **NUNCA** conteúdo de mensagem no evento SSE; **NUNCA** `useIsMobile()` para trocar lista/chat.
 - **NUNCA** `h-[calc(100dvh-Xrem)]` no chat; **NUNCA** botão de enviar desabilitado com anexo e sem texto.
 - **NUNCA** `src` cru em mídia recebida (401) — `useAuthedMedia`; **NUNCA** `Reenviar` de mídia.
+- **NUNCA** `markRead` num `useEffect` só com `selectedContactId` (zera badge sem o GET ter dado certo).
 - **NUNCA** inbox próprio por app — copie o do kailos; diferença legítima é só a presença de equipes.

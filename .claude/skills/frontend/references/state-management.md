@@ -135,8 +135,43 @@ export function useUpdateConversation() {
 Critical:
 
 - `queryKey` inclui TODOS os params variáveis (search, page, filters) — cache key bate exato.
-- `staleTime > 0` — evita refetch instantâneo em re-mount.
 - Invalidate por prefix: `["conversations"]` invalida todas variantes.
+
+### Frescor, invalidação e rascunho — política da frota (decisão do usuário 2026-11-13)
+
+Auditoria 2026-11-13: "preciso dar F5" vinha de `staleTime` 5 min + foco desligado + mutation sem
+invalidação. Canônico no template: `lib/api/query-client.ts` (`createAppQueryClient`,
+`DEFAULT_STALE_TIME_MS`), `lib/api/invalidation.ts`, `lib/api/entity-dependencies.ts`,
+`hooks/useSyncedDraft.ts`.
+
+- **Default = dado fresco**: `staleTime` 30 s, `refetchOnWindowFocus` + `refetchOnReconnect` ligados
+  (só query ATIVA e velha refaz, custo baixo), **mutation NUNCA é repetida sozinha** (retry de POST
+  duplica efeito). Não suba o default global.
+- **Cache longo é escolha consciente** (catálogo estático, vocabulário, permissões): `staleTime`
+  explícito NA query + comentário com o porquê. Sem comentário = bug.
+- **Toda mutation de escrita atualiza o cache**: `onSuccess: () => invalidateEntity(queryClient,
+  orgId, "<entidade>")` (ou `invalidateEntityDependents` quando a tela já faz cirurgia de cache, ou
+  `setQueryData`). A tabela `entity-dependencies.ts` (uma por app) diz quem depende de quem; a
+  mutation nunca escolhe chaves à mão (concluir/avançar negociação ou avaliação = `invalidateEntity`
+  com a entidade). `useCrud` já chama `invalidateEndpointDependents` e invalida as queries irmãs
+  do mesmo endpoint (pending, locations, overdue-count). Exceção (download/export, sem efeito em
+  dado) leva comentário dizendo por que não invalida. Verificação: `rg -n "useMutation\(" src` →
+  cada ocorrência tem `onSuccess` com invalidate/`setQueryData` ou o comentário.
+- **Chave frouxa invalida nada**: hook com chave `["repairs", orgId]` fora do vocabulário da
+  entidade passa batido em `invalidateEntity`; ponha a chave no `keys` da entidade, ou re-chaveie o
+  hook para a cabeça da chave pertencer à entidade que deve ser invalidada (nexarena tinha
+  `["organizations","finance",…]`). Chaves de publicação de portal (`vehiclePublications`,
+  `storePublishOptions`) fora do caminho de `vehicle` exigem entidade `publication` dependente de
+  `vehicle` e de `portal`.
+- **Formulário que parte de query usa `useSyncedDraft`** (`server`, `toDraft`, `draft`, `setDraft`,
+  `entityKey`; `markSaved()` depois de salvar). PROIBIDO `useEffect(() => setForm(query.data), [query.data])`:
+  o refetch de foco apaga o que a pessoa digita. Rascunho sujo nunca é sobrescrito.
+- **Rascunho em `localStorage`**: chave por usuário+org num módulo único de chaves, purgada no logout.
+- **Dashboard que promete tempo real**: assina `entity.changed/dashboard` (ver
+  `realtime-and-push-actions.md`) e mantém `refetchInterval` de segurança de 60 s.
+- **Tela operacional sem canal ao vivo**: `useCollectionList`/`useInfiniteList`/`usePagedList`
+  aceitam `poll` opt-in (`ListPoll`: itens → intervalo em ms, ou `false`), só em primeiro plano.
+  Origem: akmeo (`hooks/useCollectionList.ts`); ainda não propagado ao template/frota.
 
 NUNCA:
 

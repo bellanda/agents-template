@@ -23,7 +23,7 @@ Padrão recomendado para desenvolvimento local. Três serviços: `db`, `migrate`
 ```yaml
 services:
   db:
-    image: postgres:16
+    image: postgres:18.7-trixie
     environment:
       POSTGRES_USER: postgres
       POSTGRES_PASSWORD: dev
@@ -31,7 +31,7 @@ services:
     ports:
       - "5432:5432"
     volumes:
-      - pgdata:/var/lib/postgresql/data
+      - pgdata:/var/lib/postgresql   # PG18+: mount the PARENT dir, never /data (the container refuses to start)
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U postgres -d myapp"]
       interval: 2s
@@ -39,7 +39,7 @@ services:
       retries: 15
 
   migrate:
-    image: ghcr.io/amacneil/dbmate:latest
+    image: ghcr.io/amacneil/dbmate:2.38.1
     command: ["--wait", "up"]
     environment:
       DATABASE_URL: postgres://postgres:dev@db:5432/myapp?sslmode=disable
@@ -132,7 +132,7 @@ Em produção, **não** suba o serviço `migrate` junto com o app. Migration é 
     docker run --rm \
       -v ${{ github.workspace }}/db:/db \
       -e DATABASE_URL="${{ secrets.DATABASE_URL }}" \
-      ghcr.io/amacneil/dbmate:latest \
+      ghcr.io/amacneil/dbmate:2.38.1 \
       --wait up
 
 - name: Deploy app
@@ -156,7 +156,7 @@ spec:
       restartPolicy: Never
       containers:
       - name: dbmate
-        image: ghcr.io/amacneil/dbmate:latest
+        image: ghcr.io/amacneil/dbmate:2.38.1
         args: ["--wait", "up"]
         env:
         - name: DATABASE_URL
@@ -191,7 +191,7 @@ Em prod, prefira **bundlar** as migrations dentro da imagem do migrator (em vez 
 
 ```dockerfile
 # Dockerfile.migrate
-FROM ghcr.io/amacneil/dbmate:latest
+FROM ghcr.io/amacneil/dbmate:2.38.1
 COPY db/migrations /db/migrations
 COPY db/schema.sql /db/schema.sql
 ```
@@ -206,7 +206,7 @@ docker run --rm -e DATABASE_URL=... myapp-migrate:${COMMIT_SHA} --wait up
 Se você quer **uma imagem só** que tem app + dbmate (não recomendado mas às vezes útil para tools/admin containers):
 
 ```dockerfile
-FROM ghcr.io/amacneil/dbmate:latest AS dbmate
+FROM ghcr.io/amacneil/dbmate:2.38.1 AS dbmate
 
 FROM python:3.13-slim AS app
 COPY --from=dbmate /usr/local/bin/dbmate /usr/local/bin/dbmate

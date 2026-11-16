@@ -506,19 +506,26 @@ throttle conta FALHAS por alvo.
 
 | Contador (Valkey)             | Chave                     | Conta quando                      | Usado em                                    |
 | ----------------------------- | ------------------------- | --------------------------------- | ------------------------------------------- |
-| Por IP (senha)                | `rl:login:ip:{ip}`        | senha errada                      | `grant_type=password`                       |
-| Por usuário (senha)           | `rl:login:user:{username}` (minúsculo) | senha errada          | `grant_type=password`                       |
+| Por IP (senha, teto ×4)       | `rl:login:ip:{ip}`        | tentativa de senha reservada (o sucesso devolve a própria reserva) | `grant_type=password`      |
+| Por par IP+usuário (teto = `MAX_LOGIN_ATTEMPTS`) | `rl:login:pair:{ip}:{sha256(username minúsculo)}` | tentativa de senha reservada (sucesso apaga) | `grant_type=password` + gate Turnstile |
+| Por usuário (senha, teto ×5)  | `rl:login:user:{sha256(username minúsculo)}` | tentativa de senha reservada (sucesso apaga) | `grant_type=password`       |
 | IP dos endpoints sem usuário  | `rl:authep:ip:{ip}`       | Google/convite **falhou**         | Google, invites lookup/accept (NÃO refresh) |
 | IP do refresh (teto ALTO)     | `rl:refresh:ip:{ip}`      | refresh **falhou**                | `grant_type=refresh_token` (60/janela)      |
 
 - **Limites:** `security.max_login_attempts` (kailos prod = **5**) por janela de
   `security.login_lockout_duration_minutes` (prod = **15**), ambos no yaml (`config/security.py`). Janela
-  FIXA: `INCR` + `EXPIRE … NX` num pipeline sem transação — o TTL só é setado na primeira falha, então
-  tentar de novo não renova o bloqueio.
-- **Fluxo (`grant_type=password`):** `assert_login_allowed(ip, username)` ANTES de tocar a senha (`MGET` dos
-  dois contadores; qualquer um ≥ limite → `RateLimitError`, **429** "Muitas tentativas de login…") → autentica →
-  `AuthenticationError` ⇒ `record_failed_login` (INCR nos dois) e re-raise → sucesso ⇒ `reset_login_attempts`
-  (`DEL` dos dois). O IP vem de `core/client_ip.client_ip` (`X-Real-IP` posto pelo nginx; NUNCA o primeiro
+  FIXA: `INCR` + `EXPIRE … NX` num ÚNICO MULTI/EXEC (`_incr_with_ttl`, `transaction=True`; audit 2026-11-16: sem
+  transação, uma queda entre os dois deixava contador SEM TTL = bloqueio permanente) — o TTL só é setado na
+  primeira falha, então tentar de novo não renova o bloqueio. Os limitadores de endpoint/refresh leem o
+  contador com `TTL` (`_read_counter`) e rearmam o TTL de um contador achado sem ele.
+- **Fluxo (`grant_type=password`):** RESERVA-ANTES-DE-VERIFICAR (audit 2026-11-15): `assert_login_allowed(ip, username)`
+  faz `INCR` atômico dos três contadores ANTES de tocar a senha e compara o valor devolvido com o teto (> teto →
+  devolve a reserva e `RateLimitError`, **429** "Muitas tentativas de login…"; o 429 sai MESMO que a devolução falhe por timeout do Valkey); devolve a contagem do par ANTES da
+  tentativa (gate do Turnstile). A reserva JÁ É o registro da falha (não existe mais `record_failed_login`):
+  rajada paralela não passa do limite. Turnstile recusado, ou qualquer erro que NÃO seja senha errada (DB fora, 5xx do upstream, cancelamento) ⇒ `release_login_attempt` (rota: `try/finally` com flag, só `AuthenticationError` mantém a reserva como falha). Sucesso ⇒
+  `reset_login_attempts` (`DEL` de par + usuário; devolve só a PRÓPRIA reserva do IP, as falhas do IP ficam: uma
+  conta válida não zera o freio de password spraying). O username entra na chave como sha256 e o form limita a
+  320 chars. O IP vem de `core/client_ip.client_ip` (`X-Real-IP` posto pelo nginx; NUNCA o primeiro
   `X-Forwarded-For`, que o atacante controla e usaria para travar o IP de uma vítima).
 - **Os endpoints sem username** (Google, invites) usam o contador SEPARADO `rl:authep:ip:`
   (`assert_auth_endpoint_allowed` / `record_auth_endpoint_failure`): só FALHA incrementa e sucesso nunca
@@ -530,8 +537,32 @@ throttle conta FALHAS por alvo.
   só auto-DoS. Por isso tem contador PRÓPRIO `rl:refresh:ip:{ip}` com teto ALTO (`MAX_REFRESH_FAILURES = 60`
   por janela; `assert_refresh_allowed` / `record_refresh_failure`) só para abuso extremo. Teste de regressão:
   N+1 refreshes inválidos não tocam `rl:authep` nem bloqueiam Google/convite.
+- **Throttle por PAR (decisão 2026-11-13, core-security-08)**: o limite estrito (`MAX_LOGIN_ATTEMPTS`) vale
+  para o par `rl:login:pair:{ip}:{username}`; os contadores por IP (×4) e por usuário (×5) são tetos MAIS
+  ALTOS contra tentativa distribuída. Antes, 5 senhas erradas de qualquer origem trancavam o dono da conta
+  por 15 min (repetível) e um digitador errando trancava a loja atrás de um IP público compartilhado. O
+  atacante agora só queima o próprio par IP+conta.
+- **Política fail-open do Valkey** (`@valkey_fail_open(default=...)` de `services/cache/valkey_client.py`,
+  nos 7 repos): helper best-effort (denylist de sessão, throttle) com Valkey fora loga
+  `valkey_unavailable_fail_open` e devolve o `default`, nunca vira 500 em toda requisição autenticada nem
+  impede o login. Aceitável porque o access token expira por `exp` e a família de refresh é revogada no
+  Postgres. Exceção de domínio (`RateLimitError`) passa. Controle que NÃO pode degradar aberto não usa o
+  decorator.
+- **Cache de contexto de auth** (`services/auth/auth_context_cache.py`): a invalidação real é o `NOTIFY` do
+  Postgres (`listen_forever`, skill `infra`); o TTL de 30 min (`BACKSTOP_TTL_SECONDS`, era 7 dias) é só rede
+  de segurança para NOTIFY perdido — remover membro da loja deixava o acesso antigo por até 7 dias.
+  Corrida miss-vs-invalidação (audit 2026-11-15 r2-template-shared-01): toda invalidação incrementa um
+  contador de GERAÇÃO (`cache:auth:gen:<uid>`) e deixa um tombstone de 5 s (`cache:auth:tomb:<uid>`) antes do
+  `DEL`; o `SET` do miss/warm roda num script Lua que recusa gravar se a geração mudou desde o miss ou se o
+  tombstone existe. Sem NATS (nunca conectou ou fechou) ou com o `publish` falhando, a ponte
+  (`auth_invalidation_bridge.py`) apaga a entrada direto no Valkey. Valkey fora = fail-open para o banco
+  (`load_auth_context` lê o DB; entrada em cache que não decodifica no `AuthContext` atual — forma antiga — vira miss: apaga, loga warning, lê o DB). `flush_auth_context_cache` (reconexão do listener) incrementa uma ÉPOCA global (`cache:auth:epoch`) e deixa tombstone global de 5 s; o Lua recusa gravar se a época mudou desde o miss, então um load em voo não re-cacheia contexto velho após o flush. Uma invalidação que falha por timeout só é corrigida pelo TTL de 30 min.
 - Contador por usuário significa que atacante pode travar a conta-alvo por 15 min (DoS de login) — aceito
   em troca de barrar credential stuffing distribuído; Google login não é afetado.
+- **IP do cliente** = `core/client_ip.client_ip`: `X-Real-IP` (posto pelo nginx a partir do `$remote_addr`)
+  e, na falta, o ÚLTIMO elemento de `X-Forwarded-For` (o que o nginx anexou); o PRIMEIRO é digitado pelo
+  cliente e nunca é usado. Ler o header em outro lugar é reprovado por `tests/test_client_ip_guard.py`
+  (skill `database` → `references/tenancy/`).
 
 ## 13. Config & secrets
 
@@ -585,6 +616,6 @@ Deixe `refresh_token_expire_days` + os 2 knobs **explícitos nos 3 envs** (não 
 - **NUNCA** login que só limpa no `onSuccess` — access em memória e `queryClient` limpam ANTES da chamada (§12b).
 - **NUNCA** cunhar sessão nova sem revogar a família do cookie anterior (§8b) — família órfã viva no Postgres é a dessincronia browser↔banco.
 - **NUNCA** `persist` em Zustand auth store.
-- **NUNCA** login por senha sem `assert_login_allowed` antes e `record_failed_login`/`reset_login_attempts` depois (§12c); **NUNCA** deixar sucesso de refresh/Google zerar ou contar no contador de senha.
+- **NUNCA** login por senha sem `assert_login_allowed` (reserva) antes e `reset_login_attempts` no sucesso (§12c); **NUNCA** deixar sucesso de refresh/Google zerar ou contar no contador de senha.
 - **NUNCA** redirect manual no 401 — interceptor retenta com refresh primeiro.
 - **NUNCA** refresh token em JSON body — backend strip defensivo + cookie só.

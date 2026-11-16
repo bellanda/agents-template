@@ -9,9 +9,22 @@ Python image pipeline using OpenCV Headless for processing and AVIF for output. 
 
 ## Core Rules
 
-- **Input:** Accept any format via `cv2.imdecode` from bytes (never file path).
+- **Input:** Accept any format via `cv2.imdecode` from bytes (never file path), but through the fleet helper
+  `decode_image_bytes` (`backend/config/uploads.py`, in all 7 repos): it calls `assert_pixel_budget(bytes)`
+  FIRST, decodes with `IMREAD_UNCHANGED` (keeps the alpha channel: a transparent PNG logo became a black
+  square with `IMREAD_COLOR`; decision 2026-11-13) and normalises 16-bit and grayscale to BGR/BGRA 8-bit.
+- **Pixel budget:** `MAX_IMAGE_PIXELS = 50_000_000` (50 MP). `assert_pixel_budget` reads the declared
+  dimensions from the header (PNG/JPEG) and rejects before allocating anything: a 40000x40000 file is a
+  few KB on the wire and GBs in `imdecode` (worker OOM-killed). Formats the header parser does not cover
+  (TIFF, GIF...) are bounded by `OPENCV_IO_MAX_IMAGE_PIXELS=50000000` in the backend `Dockerfile` `ENV`
+  (all 7 have it). Never call `cv2.imdecode`/`Image.open` on user bytes without one of the two.
+- **Alpha:** `decode_image_bytes` may return BGRA. Anything that cannot hold alpha (JPEG, PDF, OCR, a
+  vision model) goes through `flatten_alpha(img)` first (white background by default). AVIF keeps alpha.
 - **Output:** Always AVIF format (superior compression, wide browser support).
-- **Async:** Wrap all sync OpenCV operations in `anyio.to_thread.run_sync`.
+- **Async:** Wrap all sync OpenCV operations in `anyio.to_thread.run_sync(..., limiter=IMAGE_LIMITER)`.
+  `IMAGE_LIMITER = anyio.CapacityLimiter(2)` (`config/uploads.py`) bounds concurrent decode/encode so a
+  burst of uploads cannot hold N full-size bitmaps at once; `cv2.setNumThreads(1)` is set once in the same
+  module (concurrency is the limiter's job, and OpenCV's own pool oversubscribes the CPU).
 
 ## Read by Content (Not Path)
 
@@ -22,7 +35,7 @@ import numpy as np
 def decode_image_from_bytes(image_bytes: bytes) -> np.ndarray:
     """Decode image from raw bytes — works with any format."""
     np_array = np.frombuffer(image_bytes, dtype=np.uint8)
-    image = cv2.imdecode(np_array, cv2.IMREAD_COLOR)
+    image = cv2.imdecode(np_array, cv2.IMREAD_UNCHANGED)  # in the fleet: use decode_image_bytes()
     if image is None:
         raise ValueError("Failed to decode image")
     return image
@@ -80,5 +93,5 @@ async def process_uploaded_image(file: UploadFile) -> bytes:
         resized = resize_image_maintaining_aspect_ratio(image)
         return encode_image_to_avif(resized)
 
-    return await anyio.to_thread.run_sync(_process)
+    return await anyio.to_thread.run_sync(_process, limiter=IMAGE_LIMITER)
 ```

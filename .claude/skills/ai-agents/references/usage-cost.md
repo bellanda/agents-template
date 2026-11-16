@@ -41,7 +41,14 @@ reasoning + custo real). Um `match config.provider` é o único ponto que conhec
   (índice parcial `(tenant_id, created_at)`). kailos/emporion mapeiam `organization_id` → `tenant_id`.
 - One-shot: `LlmResult.cost_usd` + `cost_is_real` para creditar o teto assim que a chamada volta.
 - Checagem de teto: antes de fluxo caro (`spent + estimate > cap`) → recuse com mensagem clara ao usuário;
-  a política do teto (valor, plano) é do app, a medição é do template.
+  a política do teto (valor, plano) é do app, a medição é do template: **`core/agents/ai_budget.py` é o
+  teto canônico único** (`enforce_for_usage` dentro de `llm.complete*`, `ensure_within_budget` no chat;
+  política e valores por app em `chatbot-security.md` Camada 2). Auditoria 2026-11-13 também fixou
+  limites de execução, todos do template: `core/agents/llm_limits.py` (`guarded_call`/`guarded_stream`
+  em volta de toda chamada ao provedor; `settings.agents.max_concurrent_llm` é POR PROCESSO — com N
+  workers o teto real é N×), `core/agents/run_limits.py` (`run_limits_config` + `bounded_events`:
+  deadline do turno inteiro e teto de passos) e `core/agents/checkpoint_retention.py` (poda de
+  checkpoints antigos).
 - Dimensões: `agent_id` (propósito; subagente `:<nome>`), `tenant_id`, `thread_id`, `model_id`. Planeje os
   `agent_id` antes — mudar depois quebra a série histórica.
 

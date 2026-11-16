@@ -18,6 +18,8 @@ paths:
 5. **Visibility** + `metadata.acl`: `public` (UUID4 122 bits é a auth, ~95% dos casos) | `tenant` (org/user check) | `private` (owner only). Em **object storage** o eixo de visibility mapeia em **buckets** (acesso B2/S3 é bucket-wide, sem flag por objeto): `public` → bucket público (URL estável/CDN, anônima) · `tenant`/`private` → bucket privado (presigned, atrás do gate). ⇒ **2 buckets por env**.
 6. **`StorageBackend` Protocol**: `save_bytes` / `delete_file` / `delete_tree` / `build_url` / `presigned_url` / `key_from_url` + flag `is_remote`. Troca local ↔ object storage sem tocar business. Seleção via `settings.storage.backend`. **Hint `public: bool`** em `save_bytes`/`delete_file`/`build_url` roteia o bucket (público vs privado) no backend remoto; o local ignora. `delete_tree` NÃO tem hint (um subtree pode misturar visibilities → limpa ambos os buckets). Serving ramifica em `is_remote`: local → `FileResponse`; remoto → **link privado estável + 302 redirect cacheável** (`get_private_link`: um presign por arquivo por dia no Valkey, B2 devolve `Cache-Control: private, immutable`; presign novo a cada request multiplica o egress do B2 — kailos 2026-10-23, skill §8 item 6).
 7. **Referência**: FK single-instance (logo/banner/avatar) OU join table multi-instance (photos/gallery/docs) → `org_uploads(id)`/`user_uploads(id)`. URL inline solta = PROIBIDO. Coluna **`storage_key`** (relative key, nullable) é o handle canônico para delete/presign — a URL sozinha não basta (presigned expira); `key_from_url` cobre rows legados, sem backfill.
+8. **Imagem**: `save_upload(mode="image")` roda sob `IMAGE_LIMITER` e rejeita canvas > 50 MP (`assert_pixel_budget`); decode só por `decode_image_bytes` (alpha preservado, `flatten_alpha` antes de JPEG/PDF/OCR). Skill `image-processing`.
+9. **Delete por URL**: NUNCA com string de body/JSONB de tenant — o helper recebe `organization_id`, prova a linha em `org_uploads` da org e só apaga o storage DEPOIS do commit. Entidade que possui upload apaga também os bytes (B2) e tem job de purga do soft-delete. Skill `uploads-storage` §5b.
 
 ## Filesystem layout
 
@@ -29,6 +31,8 @@ uploads/users/{user_id}/{domain}/{entity_id}/{slug}-{uuid4}.{ext}
 `{domain}` = constante greppable em `config/uploads.py` (`LOGOS`, `BANNERS`, `PHOTOS`, `DOCUMENTS`, `GALLERY`, …). NUNCA string concat manual de path.
 
 ## Don'ts
+
+- **NUNCA** exportar CSV/XLSX com texto digitado por usuário sem neutralizar fórmula (CSV injection, OWASP): célula string que começa com `= + - @ TAB CR` (número puro exempto) ganha apóstrofo (`safe_cell()`, nexarena `services/registrations/registration_export_service.py`) e o xlsxwriter roda com `strings_to_formulas=False`. Copie o padrão para toda exportação dos outros apps.
 
 - **NUNCA** `anyio.Path(...).write_bytes(...)` direto em route — sempre via `save_upload`.
 - **NUNCA** gravar URL de upload fora de `org_uploads.url`/`user_uploads.url` (inline em JSONB só com row de tracking).

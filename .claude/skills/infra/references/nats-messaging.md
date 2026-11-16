@@ -217,6 +217,27 @@ for msg in msgs:
 - `msg.ack()` — tells JetStream this message was processed. Without ack, it will be redelivered after `ack_wait` (default 30s).
 - In production, set `num_replicas=3` on the stream for HA across a NATS cluster.
 
+### Consumer loop contract for the fleet (audit 2026-11-13)
+
+`services/messaging/consumer_support.py` (template, kailos, akmeo, emporion, promoservice; nexarena
+has it in `core/consumer_support.py`):
+
+- `msgs = await fetch_until_stop(sub, stop_event, batch=N, timeout=FETCH_TIMEOUT_SECONDS)` replaces a
+  bare `sub.fetch(...)` with a short fixed timeout: returns `[]` the moment `stop_event` is set, so
+  shutdown does not wait out the fetch. `tests/scripts/test_runtime_infra_config.py` fails a
+  consumer outside this module that calls `sub.fetch(` or defines a short `FETCH_TIMEOUT_SECONDS`.
+- `await nak_unsettled_inflight()` in `stop_consumers`, AFTER cancelling and awaiting the handler
+  tasks and BEFORE closing the connection: hands back fetched-but-unsettled messages so the next
+  instance gets them immediately instead of after `ack_wait`.
+- A handler that raises settles through `consumer_support.nak_or_exhaust(msg, durable=…,
+  max_deliver=…, nak_delay=…, on_exhausted=hook)` (every app with JetStream consumers and the template since 2026-11-14; deliberate retries such as rate limit or debounce keep their own `nak(delay=…)`) instead of a
+  bare `nak()`: on the last delivery JetStream drops the message silently, so it logs
+  `consumer_exhausted` (subject and count only, never the payload), runs the safety-net hook (dead
+  letter row, reconcile) and TERMs it.
+- A payment-gateway webhook that is dropped after `max_deliver` is NOT resent by Mercado Pago:
+  every app that takes payments needs a sweep over open payments that already have a gateway id
+  (`get_payment` + apply), and the expiry path asks the gateway when its cancel fails.
+
 ### Gotcha: catch `TimeoutError`, not `nats.errors.TimeoutError`
 
 An empty queue is the normal outcome of `fetch()`, so the idle branch of a `run_forever` loop must

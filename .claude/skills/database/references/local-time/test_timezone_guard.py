@@ -22,7 +22,9 @@ and gained 21:00-24:00 SP of the day before its first. Take `dt.date` and build 
 `local_day_bounds_utc`, or `pydantic.AwareDatetime` when the client sends a real instant (ISO with
 an offset) so a naive value is a 422 instead of a silent shift. A flagged line that is correct (a DATE column, a value already converted, a number
 formatted by `to_char`) carries `tz-ok: <why>` in a comment ON THAT LINE (`# tz-ok: …` in Python,
-`-- tz-ok: …` inside SQL).
+`-- tz-ok: …` inside SQL). `AT TIME ZONE 'UTC'` inside date_trunc/EXTRACT/to_char on a stored instant
+is flagged too (it is the UTC day); a cron job or test that uses `current_date`/`date.today()` against
+a long retention window carries `tz-ok: <reason>` as well.
 
 Central source, copied unedited to every app: Config Files/agents/skills/database/references/
 local-time/test_timezone_guard.py.
@@ -46,6 +48,8 @@ THIS_FILE = Path(__file__).resolve()
 CANARY_UTC_OFFSET = dt.timedelta(hours=14)  # Pacific/Kiritimati, no DST
 OK_MARKER = re.compile(r"tz-ok:\s*\S")
 AT_TIME_ZONE = re.compile(r"\bat\s+time\s+zone\b|America/Sao_Paulo", re.IGNORECASE)
+UTC_AT_TIME_ZONE = re.compile(r"\bat\s+time\s+zone\s+'utc'", re.IGNORECASE)
+SAO_PAULO = re.compile(r"America/Sao_Paulo", re.IGNORECASE)
 # `(col AT TIME ZONE $1)` and the `::date` that closes it often sit on adjacent lines.
 LOOKBACK_LINES = 2
 
@@ -97,6 +101,15 @@ def sql_violation(fragment: str, window: str) -> str | None:
     """Why this SQL fragment computes a day in the session zone, or None when it does not."""
     if SESSION_DAY_KEYWORDS.search(fragment):
         return "CURRENT_DATE/LOCALTIME* is the session-zone (UTC) day"
+    if (
+        UTC_AT_TIME_ZONE.search(window)
+        and not SAO_PAULO.search(window)
+        and STORED_INSTANT.search(fragment)
+        and CALENDAR_FUNCTIONS.search(fragment)
+    ):
+        # An explicit 'UTC' passed the old check below and made the bug look fixed (nexarena
+        # 2026-11-13, be-events-05): the bucket is still the UTC day, not the store day.
+        return "date_trunc/EXTRACT/to_char on a stored instant AT TIME ZONE 'UTC' is the UTC day"
     if AT_TIME_ZONE.search(window) or not STORED_INSTANT.search(fragment):
         return None
     for match in CAST_TO_LOCAL.finditer(fragment):

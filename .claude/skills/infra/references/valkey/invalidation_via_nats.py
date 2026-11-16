@@ -60,8 +60,8 @@ class AuthInvalidator:
     async def _on_user_invalidate(self, msg: Msg) -> None:
         user_id = msg.subject.rsplit(".", 1)[-1]
         async with self.client.pipeline(transaction=False) as p:
-            p.delete(f"cache:auth:user:{user_id}")
-            p.delete(f"cache:auth:user:{user_id}:perms")
+            p.delete(f"cache:auth:ctx:{user_id}")
+            p.delete(f"cache:auth:ctx:{user_id}:perms")
             p.delete(f"cache:user:{user_id}:settings")
             await p.execute()
 

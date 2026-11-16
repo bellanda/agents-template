@@ -182,7 +182,7 @@ referência a eles num app → é resíduo, delete (imports mortos incluídos).
    `__root.tsx` a `<Outlet/>` puro.
 4. Mova as rotas autenticadas; o plugin Vite do TanStack reescreve os ids, mas **corrija à mão**
    `Link to=` e `useParams({ from })`.
-5. `bun run routes:gen` então `bunx tsgo --noEmit` — o router tipado acusa todo link velho.
+5. `bun dev` (o plugin Vite do TanStack regenera `routeTree.gen.ts`; não existe script `routes:gen`) então `bunx tsgo --noEmit` — o router tipado acusa todo link velho.
 
 Aplicar a projeto **existente** (esp. um usando `DataProvider` auth Context): `references/migration.md`.
 

@@ -104,7 +104,7 @@ result = await save_upload(
 ```
 
 Critical:
-- `mode="image"` força ext `.avif` e roda OpenCV → resize → encode em thread pool. Quality fixa `AVIF_QUALITY=80`.
+- `mode="image"` força ext `.avif` e roda OpenCV → resize → encode em thread pool sob `IMAGE_LIMITER` (`CapacityLimiter(2)`, `config/uploads.py`) e REJEITA canvas acima de 50 MP (`assert_pixel_budget`, `MAX_IMAGE_PIXELS`) antes de alocar. Quality fixa `AVIF_QUALITY=80`. Detalhe de decode/alpha: skill `image-processing`.
 - `mode="document"` SEM `allowed_mime=` usa `DEFAULT_DOCUMENT_MIME_WHITELIST` (PDF, Office, txt, md, csv, json, rtf). Whitelist customizada substitui.
 - `mode="raw"` NÃO valida MIME nem força ext. Reservar para casos onde o caller já validou ou o tipo é arbitrário (WhatsApp inbound, exports gerados pela app).
 - `*org_dir(id)` → `orgs/{id}/...`; `*user_dir(id)` → `users/{id}/...`. Nunca string concat manual de path.
@@ -258,6 +258,35 @@ Alternativa para domínios sensíveis: pegar URL by URL antes do CASCADE e chama
 
 Bater tudo = sem schema drift (`check_schema.py` valida `OrgUpload`↔`org_uploads`, `UserUpload`↔`user_uploads`).
 
+## 5b. Delete por URL — a posse é provada antes (decisão 2026-11-13)
+
+`delete_file_by_url(url)` apaga o que a string disser. **NUNCA** chame com URL vinda de body, JSONB
+de tenant ou query: um tenant mandaria a URL de arquivo de OUTRA loja. Regras:
+
+- Helper que apaga por URL de JSON controlado pelo tenant (`unregister_*_by_url` e equivalentes)
+  recebe `organization_id` e prova a posse: a chave está sob `orgs/<org>/` E existe linha em
+  `org_uploads` da MESMA org (e, quando o domínio tem tabela de vínculo, o JOIN com a tabela dona).
+  Linha ausente = não apaga, não vaza existência. Modelo kailos: `attachment_service.remove_attachment`,
+  `assessment_photos.delete_orphan_photo_files`.
+- **Storage depois do COMMIT**: apague o objeto só DEPOIS de a transação do DB confirmar (efeito em
+  lista `after_commit`); apagar antes e dar rollback deixa a linha apontando para arquivo morto.
+- **Entidade que possui upload**: todo delete dela apaga os BYTES pela camada de storage (B2 incluso,
+  todas as versões) e há job de purga para linhas soft-deleted; só apagar a linha deixa o arquivo
+  (LGPD) e a conta do bucket crescendo.
+- **Lista JSONB de uploads** acrescentada pelo handler é relida `FOR UPDATE` DEPOIS da escrita lenta no
+  storage, nunca antes (skill `database` → `tenancy-and-writes.md` §2).
+- **Mídia de cliente final** (ex.: foto/áudio que o cliente manda no WhatsApp) é salva `public=False`
+  com visibility `tenant` e servida só pelo gate; o gate exige também a permissão de leitura da
+  conversa (`conversation:read` ou `conversation:read_all` para `entity_type='whatsapp_conversation'`,
+  emporion) além da membership — kailos checa só membership, vale propagar. Cliente web usa
+  `useAuthedMedia`/`getBlob` (Bearer), nunca `<img src>` direto. Compartilhado e copiado sem edição:
+  `private_link.py`, `presigned_url(cache_control=)`. Arquivo referenciado por URL no chat de IA
+  resolve por `services/uploads/upload_access_service.resolve_authorized_upload` (template), nunca por
+  path mandado pelo cliente.
+- **Índice**: coluna `url` de `org_uploads`/`user_uploads` indexada (parcial `deleted_at IS NULL`).
+- **App novo / domínio novo**: `cdn.<domínio>` precisa resolver (CNAME proxied para o host `f<NNN>` do B2
+  + regra de transformação de path) ANTES de aceitar upload público.
+
 ## 7. Visibility e ACL — quando ativar
 
 Default: tudo é `visibility="public"`. UUID4 unguessable (122 bits) é a "auth" e a rota `/uploads/...` serve sem JWT check.
@@ -408,6 +437,7 @@ https://www.backblaze.com/apidocs/s3-upload-part):
 - **B2 público — nunca** `b2_public_base_url` = endpoint S3 cru (`https://s3.<region>...`) em prod/staging: serve sem CDN e paga egress. Use custom domain Cloudflare (`https://cdn.{domain}/file/{project}-{env}-public`; **um CNAME proxied** `cdn.{domain}` → `f<NNN>.backblazeb2.com` serve todos os envs pelo bucket no path). Privado nunca em CDN — presigned-direto.
 - **Serving remoto — nunca** presignar a cada request no gate (URL nova ⇒ zero cache no navegador ⇒ egress B2 multiplicado): link estável por janela via `get_private_link` + 302 com `Cache-Control: private`. Link estável só DEPOIS do gate de auth (é o bearer do arquivo).
 - **Serving remoto — nunca** esquecer `response_model=None` na rota que pode retornar `FileResponse | RedirectResponse` (o union quebra o response model do FastAPI no boot).
+- **Nunca** `delete_file_by_url` com string de body/JSONB de tenant — §5b (posse provada, storage depois do commit).
 - **Nunca** ON DELETE CASCADE em todas as FKs sem pensar — replace pattern requer cascade controlado.
 - **Trigger de `updated_at`** em `org_uploads`/`user_uploads` é gerenciado pelo `update_updated_at_column()` BEFORE UPDATE. NUNCA setar `updated_at` em UPDATE manual.
 - **`avif_quality`** está fixa em 80 (constante `AVIF_QUALITY`). Não parametrizar por call — uniformidade > flexibilidade.

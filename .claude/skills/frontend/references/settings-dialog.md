@@ -173,6 +173,22 @@ entidade-alvo vem 100% do param. App com `organizationStore` (todos hoje) usa o 
   ver don'ts de `overlays.md` (hub→ação efêmera é o caso permitido de Dialog-em-Dialog).
 - `PortalCredentialsDialog`/`InviteLinkDialog` seguem o mesmo molde (abrem por cima, fecham sem tocar na URL).
 
+## Rascunho sujo: `useUnsavedChangesGuard` (kailos 2026-11-13; frota inteira 2026-11-14)
+
+`beforeunload` só cobre F5/fechar a aba; fechar o hub, trocar de seção, mudar de rota ou o Voltar do
+navegador descartava o rascunho de um wizard em silêncio. **Toda aba de settings com `DirtyBottomBar`
+chama `useUnsavedChangesGuard({ when: isDirty, onLeave, ignoreSearchKeys })`** (kailos
+`hooks/useUnsavedChangesGuard.tsx`) e renderiza o nó devolvido (um `ConfirmDialog` "Descartar e
+sair" / "Continuar editando") ao lado da barra. `ignoreSearchKeys` = chaves de search que mudam sem
+sair da tela (passo do wizard na URL); o resto, inclusive `?settings=`, conta como sair. `onLeave`
+limpa o que o rascunho criou no servidor (uploads da sessão).
+
+**`bypass`**: fluxo cujo `onSaved` navega (onboarding avança `?tab=`) lê `when` do último render, que
+ainda diz "sujo" — sem `bypass` pediria para descartar o que acabou de salvar. Crie
+`const savedBypass = useSavedBypass(isDirty)` (zera sozinho quando o rascunho fica limpo), passe
+`bypass: savedBypass` e arme `savedBypass.current = true` imediatamente antes de `onSaved()`.
+Só kailos tem hoje; os outros apps adotam ao ganhar hub com abas editáveis.
+
 ## Don'ts
 
 - **NUNCA** manter rotas-página antigas como redirect/shim — remoção direta.

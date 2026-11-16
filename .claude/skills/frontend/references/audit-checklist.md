@@ -67,6 +67,13 @@ rg -n "location.reload\(\)" frontend/src
 rg -n -B2 "openFileDialog\(\)" frontend/src --glob '!**/ai-elements/**' | rg "preventDefault"
 rg -n "preventDefault" frontend/src/components/ai-elements/prompt-input.tsx
 rg -n "hasAttachments|disabled=\{!.*(input|text)" frontend/src/components/chat
+# frescor e cache (2026-11-13): mutation sem invalidação, form espelhando query, spinner eterno, dinheiro à mão
+rg -n "useMutation\(" frontend/src | rg -v "test"    # cada uma: onSuccess com invalidateEntity/setQueryData (ou comentário do porquê)
+rg -n "staleTime: *[1-9]\d{5,}|refetchOnWindowFocus: *false" frontend/src --glob '!**/*.test.*'   # cache longo sem comentário = bug
+rg -n "useEffect\(.*set\w*\((\w+\.)?data" -A2 frontend/src --glob '!**/*.test.*'   # form copiando query → useSyncedDraft
+rg -n "isLoading \|\| !|\|\| !data\b" frontend/src --glob '!**/*.test.*'   # falha vira spinner eterno → QueryBoundary
+rg -n 'toFixed\(|replace\(",", "\."\)|parseFloat\(' frontend/src --glob '!**/*.test.*'   # dinheiro/quantidade → parseMoney/CurrencyInput
+rg -n "new EventSource|EventSource\(" frontend/src --glob '!**/*.test.*'   # SSE próprio → useResilientStream
 # hosts externos × CSP
 rg -no 'fetch\("https://[a-z0-9.-]+' frontend/src
 rg -n '<script|<iframe|<audio|<video' frontend/src --glob '!**/*.test.*'
@@ -197,6 +204,20 @@ rg -o 'Content-Security-Policy "[^"]*"' config/nginx/snippets/security-headers-b
       mesmo vício → botão "Filtros" `md:hidden` + `FormDialog`, estado de popover por superfície.
 - [ ] **Tira de 3+ seções por rota (`<Button asChild><Link>` + `flex-wrap`) sem forma mobile** →
       `Select` que navega `md:hidden` + `<nav>` `max-md:hidden` (`responsive-tabs.md`).
+
+### Frescor, cache e estados de carga (2026-11-13)
+
+- [ ] **`useMutation` de escrita sem `onSuccess` que atualiza o cache** → `invalidateEntity(queryClient,
+      orgId, "<entidade>")` (`lib/api/invalidation.ts`); se a chave da query não pertence à entidade,
+      re-chaveie o hook ou acrescente a chave em `entity-dependencies.ts` (`state-management.md` §Frescor).
+      Exceção (download/export) leva comentário do porquê. Triagem do prepass: 17 casos no kailos, 14 no
+      nexarena, 5 no emporion, 0 no akmeo; o real era `useForwardToConsignment` (kailos).
+- [ ] **`staleTime` alto / `refetchOnWindowFocus: false` sem comentário** → volte ao default (30 s) ou
+      documente a escolha (catálogo estático).
+- [ ] **`useEffect(() => setForm(query.data))`** → `useSyncedDraft`.
+- [ ] **`if (isLoading || !data)`** → `QueryBoundary` / `ErrorState` com retry (`feedback-states.md`).
+- [ ] **Número em tela por `toFixed`/`toLocaleString`** → `formatDecimal`/`formatCurrencyShort` (`lib/utils/money.ts`, gate 8h).
+- [ ] **Dinheiro por `replace(",", ".")`/`parseFloat`** → `CurrencyInput` + `parseMoney` (gate 8h).
 
 ### Mobile, PWA & CSP
 

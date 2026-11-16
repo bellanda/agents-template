@@ -54,6 +54,27 @@ mensagem normalizada + "Tentar novamente"). Fora de lista, mesmo desenho: ícone
 (`lib/api/network-error.ts`, `isNetworkFailure` — ver `api-and-csp.md`); nunca o texto cru do
 browser ("Load failed").
 
+### `QueryBoundary` — tela de detalhe/seção NUNCA fica em spinner eterno (decisão 2026-11-13)
+
+`if (isLoading || !data) return <Spinner/>` é **PROIBIDO**: query que FALHA tem `isLoading=false` e
+`data=undefined`, então a falha vira "ainda carregando" para sempre, sem mensagem nem retry
+(promoservice, auditoria 2026-11-13). Use `components/ui/query-boundary.tsx` (idêntico em kailos,
+emporion, nexarena, optimuslar, promoservice e template):
+
+```tsx
+<QueryBoundary query={accountQuery} errorTitle="Não foi possível carregar a conta">
+  {(account) => <AccountBody account={account} />}
+</QueryBoundary>
+```
+
+Falha sem dado = `ErrorState` com "Tentar novamente" (`refetch`); 404 = mensagem de não encontrado,
+sem retry; só query realmente pendente mostra `loading` (skeleton neutro por default). Refetch de
+fundo que falha mantém o dado velho na tela (o toast global avisa). Tela que não consegue embrulhar
+o JSX (hooks depois do early return) usa a forma inline `if (query.isError && !query.data) return
+<ErrorState error={query.error} onRetry={() => query.refetch()} />`. akmeo tem a prop opcional
+`onBack` (botão "Voltar" no 404), ainda não no template/frota. Verificação:
+`rg -n "isLoading \|\| !" src` deve vir vazio.
+
 ## Aviso "sem conexão" — `NetworkStatusBanner` + `useOnlineStatus`
 
 ```ts

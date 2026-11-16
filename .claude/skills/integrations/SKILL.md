@@ -1,6 +1,6 @@
 ---
 name: integrations
-description: PORTÃO obrigatório de integrações com plataformas externas de terceiros (hoje Meta — Facebook Login for Business, WhatsApp Business Cloud API, Instagram Graph; cresce com Stripe/Mercado Pago/etc no futuro). INVOCAR ANTES de criar/alterar QUALQUER integração — novo endpoint `/webhooks/meta/{deauthorize,data-deletion}` ou `/webhooks/whatsapp`, `FB.login`/Embedded Signup no frontend, exchange de `code` do Embedded Signup, validação HMAC de webhook (`signed_request`, `X-Hub-Signature-256`), gravação de `facebook_user_id` em `portal_connections`, popular `META_APP_SECRET`/`WHATSAPP_WEBHOOK_VERIFY_TOKEN` (.env) ou `meta_app_id`/`meta_es_config_id` (yaml). INVOCAR TAMBÉM para qualquer ENVIO de mensagem e política de plataforma — janela de serviço de 24h, template (criar/submeter/acompanhar aprovação/enviar), campanha ou disparo em massa, opt-in/opt-out de contato, quality rating e teto do número (agora do portfólio, `whatsapp_business_manager_messaging_limit`), LIGAÇÕES DE VOZ do WhatsApp (Calling API, webhook `calls`, WebRTC no navegador, `pre_accept`/`accept`, quem atende, push tocando, botão de ligação, seção "Ligações"), preparar submissão ao App Review, mexer em prompt de agente de IA que fala com cliente final (disclosure), ou na ORDEM/PRONTIDÃO do setup do módulo WhatsApp + IA (ordem das seções do hub, travar conectar o número ou ligar o atendente antes dos pré-requisitos, `setup-readiness`, atendente inativo/sem linha que não pode chamar o modelo). Checklist de invariantes (1 Meta App por SaaS, HMAC com `compare_digest`, webhook 200 em <10s, opt-in e janela de 24h, nada de segredo/assinatura em log) + roteia pras references profundas. NÃO confundir com o gate `auth` (login do usuário no SaaS) — aqui é integração SaaS↔plataforma externa.
+description: PORTÃO obrigatório de integrações com plataformas externas (hoje Meta — Facebook Login for Business, WhatsApp Business Cloud API, Instagram Graph; depois Stripe/Mercado Pago). INVOCAR ANTES de criar/alterar QUALQUER integração — `/webhooks/meta/{deauthorize,data-deletion}` ou `/webhooks/whatsapp`, `FB.login`/Embedded Signup e exchange de `code`, HMAC de webhook (`signed_request`, `X-Hub-Signature-256`), `facebook_user_id` em `portal_connections`, `META_APP_SECRET`/`WHATSAPP_WEBHOOK_VERIFY_TOKEN`/`meta_app_id`/`meta_es_config_id`. INVOCAR TAMBÉM para ENVIO de mensagem e política de plataforma — janela de 24h, templates, campanha/disparo em massa, opt-in/opt-out, quality rating e teto do número, LIGAÇÕES DE VOZ do WhatsApp (Calling API, webhook `calls`, WebRTC, `pre_accept`/`accept`), App Review, prompt de agente de IA que fala com cliente final (disclosure), e ORDEM/PRONTIDÃO do setup WhatsApp + IA (`setup-readiness`, atendente sem linha). Checklist de invariantes (1 Meta App por SaaS, HMAC com `compare_digest`, webhook 200 em <10s, opt-in e janela de 24h, nada de segredo em log) + roteia pras references. NÃO confundir com o gate `auth` (login do usuário) — aqui é SaaS↔plataforma externa.
 ---
 
 # Integrations — O Portão (plataformas externas)
@@ -95,6 +95,23 @@ também.
   um `beforeunload` que pede confirmação para recarregar. Sem isso o lojista deu F5 em ~23s,
   a página voltou "Desconectado" e o número só apareceu 2s depois. É a primeira impressão do
   app. Canônico em `meta-app-setup.md` §7.
+
+- **Rota que chama provedor externo (Meta/Google/TikTok/gateway) NUNCA segura `Depends(get_conn)` durante a chamada**:
+  `Depends(get_conn_scope)` e `async with scope()` só nas fases de DB (skill `database` → `tenancy-and-writes.md` §3).
+  Todo caminho que FECHA acesso (desconectar, desautorizar, desativar, liberar, apagar) libera os claims e cancela
+  `agent_actions` abertas. `ad_accounts.synced_at` / `external_sources.synced_at` é o lease do cron: claim ou
+  refresh de snapshot não escreve nele. Efeito de portal/fila disparado dentro de transação de rota roda só
+  DEPOIS do COMMIT (lista `after_commit`).
+- **Gateway de pagamento (Mercado Pago): webhook descartado após `max_deliver` NÃO é reenviado.** Todo app com
+  pagamento tem varredura de pagamentos abertos que já têm id no gateway (`get_payment` + aplicar) e, se o cancel
+  falhar no caminho de expiração, pergunta ao gateway o estado real. Varredura que engole exceção precisa de backoff
+  persistido + lista de exclusão por ciclo (linha envenenada trava a fila). Consumer JetStream falha via
+  `nak_or_exhaust` (skill `infra`).
+- **Consulta de terceiro por CPF** (modo carrinho): exige relacionamento aceito, responde igual para CPF
+  desconhecido e não vinculado, e limita tentativas falhas por usuário.
+- **Mídia que o cliente final manda no WhatsApp** é salva privada (`public=False`, visibility `tenant`) e o gate de
+  arquivo exige também `conversation:read` ou `conversation:read_all` (`entity_type='whatsapp_conversation'`,
+  emporion; kailos só membership). Skill `uploads-storage` §5b.
 
 ## Invariantes de política (quando o produto manda mensagem)
 

@@ -268,11 +268,13 @@ export function ListToolbar({
     // are usable, so the viewport-`md` inline controls wrapped into 2-3 rows (kailos CRM Lista,
     // optimuslar admin lists). `@3xl` = 48rem (~816px at the 17px root) of content. A ListToolbar
     // outside `@container/main` (portal/Dialog/Sheet) always gets the collapsed variant.
+    // Row vs. column also follows `@3xl/main` (was viewport `sm:`): at 820px with the sidebar open and
+    // the XL font the row layout overflowed the page (audit 2026-11-13 kailos-v4-01).
     // UMA linha: busca + filtros + ordenação ancorados à ESQUERDA, ações à DIREITA. A versão
     // anterior jogava filtros/ordenação numa 2ª linha com a ordenação em `ml-auto` — sem busca,
     // a tela virava duas ilhas empilhadas à direita ("Mais recentes" embaixo dos botões) com a
     // esquerda vazia.
-    <div className={cn("flex flex-col gap-3 sm:flex-row sm:items-start", className)}>
+    <div className={cn("flex flex-col gap-3 @3xl/main:flex-row @3xl/main:items-start", className)}>
       {(hasSearch || hasCollapsible) && (
         // Sem busca, abaixo de 768px o grupo só teria controles escondidos: some inteiro para
         // não deixar o `gap` da coluna como espaço fantasma acima das ações.
@@ -287,7 +289,7 @@ export function ListToolbar({
               value={search}
               onCommit={onSearchChange}
               placeholder={searchPlaceholder ?? "Buscar…"}
-              className="sm:min-w-56 sm:flex-1"
+              className="@3xl/main:min-w-56 @3xl/main:flex-1"
             />
           )}
 
@@ -322,7 +324,7 @@ export function ListToolbar({
         // esquerda não existe ou está escondido.
         <div
           className={cn(
-            "flex items-center gap-2 sm:ml-auto sm:justify-end @max-3xl/main:flex-nowrap @3xl/main:flex-wrap",
+            "flex items-center gap-2 @max-3xl/main:flex-nowrap @3xl/main:ml-auto @3xl/main:flex-wrap @3xl/main:justify-end",
             !actions && !menu && !mobileActions && "@3xl/main:hidden"
           )}
         >

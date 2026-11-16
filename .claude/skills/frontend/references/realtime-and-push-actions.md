@@ -18,6 +18,43 @@
   deixa um buraco). Resync = refetch só das queries ATIVAS.
 - Token reativo (`useSyncExternalStore(subscribeAccessToken, ...)`): rotação de token reabre o stream.
 
+### Stream resiliente e `entity.changed` — contrato da frota (decisão 2026-11-13)
+
+**Arquivos compartilhados e com gate de drift** (2026-11-16): `lib/realtime/use-resilient-stream.ts`, `resilient-stream.ts`, `entity-changed.ts` e seus testes (`__tests__/resilient-stream.test.ts`, `use-resilient-stream.test.tsx`, `entity-changed.test.ts`) são byte-idênticos em kailos/nexarena/emporion/template; o canônico é o arquivo de mesmo nome em `references/`. Mudou? Edite lá + `rules.py --shared-apply`; nunca a cópia do app. Código de negócio (nomes de entidade, handlers, `stream-registry.ts`, `*-handlers.ts`) fica em arquivos do app que passam parâmetros/registram handlers. akmeo/promoservice/optimuslar não têm camada realtime: exceção declarada no JSON (não aplicável, não criar os arquivos).
+
+Todo hook de SSE do app usa `lib/realtime/use-resilient-stream.ts` (`useResilientStream({accessToken,
+getAccessToken, streamKey, enabled, open, onResync, refreshToken})`, motor em `resilient-stream.ts`,
+leitor em `sse-reader.ts` `readSseBody(body,{onData,onActivity})`). PROIBIDO `EventSource`/`fetch` +
+loop de reconexão próprio. O que ele garante (e que reimplementação à mão perde): watchdog de 45 s
+sem NENHUM byte (heartbeat conta) reabre; voltar de aba oculta por mais de 30 s reabre; todo reopen
+dispara `onResync`; callbacks de tentativa velha são ignorados (sem evento duplicado depois de
+reconectar); 401/403 pedem `refreshToken` single-flight.
+
+- **`entity.changed`** `{entity, org_id, ids}` é SINAL, nunca conteúdo (`lib/realtime/
+  entity-changed.ts`): `registerEntityQueries(entity, …)` invalida as queries da entidade com
+  `coalescedInvalidate` (1 por segundo) e **todo `entity` registrado tem um `registerResync`
+  correspondente** (reconexão ou frame `batch` do `FrameLimiter` perdem eventos; sem resync a tela
+  fica velha — aprovações do kailos foram corrigidas assim).
+- **`ids` é só dica e se perde** (audit 2026-11-15): o `FrameLimiter` une os `ids` por (entity, org) (teto 50; acima disso ou sem ids vira `ids: []`) e o `coalesce()` do cliente entrega à rodada final a UNIÃO dos ids da janela (`undefined` se algum evento veio sem ids). O handler NUNCA retorna cedo com ids vazios: ids vazios = "qualquer coisa da entidade mudou", invalide amplo. Reabrir o stream por troca de token conta como RECONEXÃO (`resyncOnFirstOpen` no hook): resync na primeira abertura do loop reiniciado.
+- **Dashboard que promete tempo real** assina `entity.changed/dashboard` (backend
+  `register_entity_recipients` com `dashboard:read`; front handler chama `invalidateOrgDashboard`) e
+  mantém `refetchInterval` de segurança de 60 s.
+- **Backend** (`services/realtime/entity_events.py`): mudança no servidor visível a OUTROS usuários
+  (aprovação, entrega de kit, OS movida por outro mecânico, webhook, rotina) emite
+  `publish_entity_changed(user_ids, entity, org_id, ids, exclude_user_id=ator)` **depois do COMMIT**;
+  no kailos `announce_entity_changed(...)` adia para o coletor `after_commit`. Destinatários = a
+  MESMA regra de leitura do endpoint REST. Quem decide o que cada usuário recebe é o momento da
+  publicação, não a rota do stream (kailos `/whatsapp/stream` é só membership, 2026-11-13:
+  `whatsapp:read` saiu da rota).
+- **Filtro de frame na rota** do SSE (ex.: manter só `order.*`) DEVE repassar o frame `batch` do
+  `FrameLimiter` (`BATCH_FRAME`); filtrar o `batch` esconde o pedido de resync do cliente.
+- **`event_bus.publish_org` tem UM consumidor** (stream de pedidos do emporion, que repassa só
+  `order.*`). Qualquer outro evento usa `publish_many(stream_recipients(...))` ou
+  `publish_entity_changed`; emporion trava com `tests/whatsapp/test_stream_targeting.py` (varre src e
+  agents) — o template pode carregar o mesmo guard. Visibilidade restrita por papel (cozinha/entregador
+  só veem o próprio quadro) mora em UMA função (`order_state_machine.order_visible_to`) reusada por
+  lista, detalhe e SSE.
+
 ## 2. Evento pequeno -> `setQueryData`, não invalidar lista
 
 `lib/realtime/crm-handlers.ts` (`crm.attendance.updated`): o frame carrega só metadados

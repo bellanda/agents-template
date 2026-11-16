@@ -27,6 +27,11 @@ migrations) vivem na rule `backend.md`; aqui está a profundidade.
 - [ ] **5. Backup / restore** — mexe no serviço `pg-backup`, em retenção, em restore ou em `down -v`/migração
   arriscada em prod? → **`references/backup-b2.md`**.
 
+- [ ] **6. Tenancy, escrita concorrente, conexão** — rota nova que recebe id em body/path, grava
+  saldo/parcela/lista JSONB, faz SSE/stream, chama provedor externo lento, faz POST que não pode
+  duplicar, ou delete que verifica dependentes → **`references/tenancy-and-writes.md`** (guardas
+  executáveis em `references/tenancy/`).
+
 ## Invariantes não negociáveis (sempre)
 
 - SQL **sempre** parametrizado `$1, $2` — **NUNCA** f-string (SQL injection). **Único carve-out**:
@@ -39,11 +44,23 @@ migrations) vivem na rule `backend.md`; aqui está a profundidade.
 - UPDATE parcial = verbose explícito + COALESCE — **NUNCA** dynamic SET clause.
 - JSONB passa `dict`/`list` direto (pool codec orjson) — **NUNCA** `orjson.loads/dumps` manual.
 - Repository retorna `dict`/`list[dict]`/scalar — **NUNCA** Pydantic (service faz `model_validate`).
-- **NUNCA** índice em coluna PK (já existe). FK **SEMPRE** com índice (leftmost de algum índice).
+- **NUNCA** índice em coluna PK (já existe). FK **SEMPRE** com índice (leftmost de algum índice;
+  índice parcial só conta com predicado `IS NOT NULL`; FK de autoria `*_by` é isenta; imposto por
+  `scripts/check_fk_indexes.py` + `tests/test_fk_indexes.py`). Coluna `url` das tabelas de upload
+  também é indexada (parcial em `deleted_at IS NULL`).
+- **Tenancy (decisão 2026-11-13)**: todo id vindo de body/path é provado da org do chamador antes do
+  uso; SQL em tabela com `organization_id` (ou filha dela por FK) filtra por ele na mesma instrução,
+  em qualquer módulo do backend, ou leva `tenant-ok: <motivo específico>`;
+  `tests/test_tenancy_guard.py` impõe (detalhe em `tenancy-and-writes.md` §1).
+- **Rota com `StreamingResponse`/SSE NUNCA segura `Depends(get_conn)`**: `get_conn_scope` (ou
+  `pool.acquire()` curto); idem rota que espera provedor externo. Postgres `LISTEN` só por
+  `listen_forever`. `get_conn` é autocommit: ledger+saldo e baixa de parcela em `conn.transaction()`
+  com `FOR UPDATE`.
 - Tabela com soft delete → `UNIQUE` é partial `WHERE deleted_at IS NULL`.
 
 ## References
 
+- `references/tenancy-and-writes.md` — tenancy, escrita concorrente, conexão de stream, índice de FK, `Idempotency-Key`; guardas em `references/tenancy/`.
 - `references/local-time.md` — datas e fuso: instante UTC × DIA da loja, `core/timezone.py`, trava `test_timezone_guard.py` + canário UTC+14 (arquivos em `references/local-time/`).
 - `references/backup-b2.md` — backup diário do Postgres no B2 (serviço `pg-backup`, retenção, restore, quando migrar para físico/PITR).
 

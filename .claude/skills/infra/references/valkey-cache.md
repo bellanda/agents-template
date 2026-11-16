@@ -59,7 +59,7 @@ Critical:
 ```python
 async with client.pipeline(transaction=False) as p:
     for user_id in user_ids:
-        p.get(f"cache:auth:user:{user_id}")
+        p.get(f"cache:auth:ctx:{user_id}")
     raw_values = await p.execute()
 results = [orjson.loads(v) if v else None for v in raw_values]
 ```
@@ -76,16 +76,17 @@ Critical:
 ```python
 async def increment_view(client: Valkey, post_id: str) -> int:
     key = f"counter:post:{post_id}:views"
-    new_value = await client.incr(key)
-    if new_value == 1:
-        await client.expire(key, 3600)        # only set TTL on first hit
+    pipe = client.pipeline(transaction=False)
+    pipe.incr(key)
+    pipe.expire(key, 3600, nx=True)           # TTL only if the key has none (first hit, or healing)
+    new_value, _ = await pipe.execute()
     return new_value
 ```
 
 Critical:
 
 - `INCR` is atomic — multiple clients incrementing the same key never lose updates.
-- Only set `EXPIRE` on the first hit (when `INCR` returns 1) — re-applying TTL every hit reduces accuracy under load. If the key was removed by eviction, the next `INCR` returns 1 and you get a fresh TTL.
+- Use `EXPIRE ... NX` on every hit, not `if new_value == 1: expire(...)` — NX sets the TTL only while the key has none, so the window is fixed (hits never extend it) AND a key that lost its TTL (crash/timeout between `INCR` and `EXPIRE`) heals on the next hit instead of living forever; a throttle counter without TTL is a permanent lockout. If the key was removed by eviction, the next `INCR` returns 1 and gets a fresh TTL. (`login_throttle.py` does exactly this.)
 
 ## 5. Sliding Window Rate Limit (sorted set)
 
@@ -133,11 +134,28 @@ async def auth_invalidator(client: Valkey, nats):
     async def handler(msg):
         user_id = msg.subject.rsplit(".", 1)[-1]
         async with client.pipeline(transaction=False) as p:
-            p.delete(f"cache:auth:user:{user_id}")
-            p.delete(f"cache:auth:user:{user_id}:perms")
+            p.delete(f"cache:auth:ctx:{user_id}")
+            p.delete(f"cache:auth:ctx:{user_id}:perms")
             await p.execute()
     await nats.subscribe("app.auth.invalidate.user.>", cb=handler)
 ```
+
+### Contract for the fleet (audit 2026-11-13)
+
+- **Fail-open for best-effort helpers**: decorate session denylist / throttle / dedupe helpers with
+  `@valkey_fail_open(default=...)` (`services/cache/valkey_client.py`, in all 7 repos). Valkey down →
+  `valkey_unavailable_fail_open` warning + `default`, never a 500 on every authenticated request.
+  Domain exceptions (`RateLimitError`) are not in `VALKEY_UNAVAILABLE` and pass through. A control
+  that must NOT degrade open does not use the decorator.
+- **Postgres NOTIFY as the invalidation bus** (auth/permission cache): the consumer is
+  `listen_forever(CHANNEL, on_notify, dsn=DIRECT_DSN, on_resync=flush_fn)` (`core/pg_listener.py`,
+  6 apps). A bare `LISTEN` + sleep dies silently (prod has `idle_session_timeout = 10min`); the helper
+  disables the timeout on its session, health-checks every 30 s, reconnects with backoff and calls
+  `on_resync` on every RECONNECT (NOTIFYs sent while away are lost, so the cache they would have
+  cleared is flushed). Needs the direct DSN (PgBouncer transaction mode has no LISTEN). Because the
+  TTL is only the backstop for a lost NOTIFY, keep it short (auth context: 30 min, was 7 days).
+- Any route or fetcher that waits on slow external HTTP, and every SSE route, borrows the DB
+  connection per phase (`get_conn_scope`), see skill `database` → `tenancy-and-writes.md` §3.
 
 Critical:
 
@@ -215,7 +233,7 @@ Critical:
 ```
 <purpose>:<domain>:<entity>:<id>[:<facet>]
 
-cache:auth:user:42                 ← cached auth_context for user id 42
+cache:auth:ctx:42                 ← cached auth_context for user id 42 (one entry per user_id, all memberships)
 cache:org:abc-uuid:roles           ← roles for org abc-uuid
 cache:event:evt-uuid               ← event row JSON
 counter:post:42:views              ← view counter
@@ -234,7 +252,7 @@ Critical:
 
 | Category                 | Typical TTL | Reason                                                  |
 | ------------------------ | ----------- | ------------------------------------------------------- |
-| auth_context             | 60 s        | Short to limit role-change propagation delay            |
+| auth_context             | 30 min      | Backstop only; staleness is closed by NOTIFY→NATS invalidation |
 | org_config / settings    | 300 s       | Mid-frequency mutation, paired with event invalidation  |
 | listings / dashboards    | 3600 s      | Heavy read, computed nightly or on demand               |
 | feature flags            | 30 s        | Fast rollout/rollback                                   |
@@ -246,7 +264,7 @@ Critical:
 - **No `KEYS *`** in hot path. Use SCAN.
 - **No `decode_responses=True`** globally. Keep bytes; decode at boundary with orjson.
 - **No long Lua scripts** (>1ms). They block the server's main loop.
-- **No raw JWT or PII as key segments.** Hash with SHA-256 truncated to 32 chars: `key = f"cache:auth:tok:{hashlib.sha256(token).hexdigest()[:32]}"`.
+- **No raw JWT or PII as key segments.** Auth context is keyed by `user_id` (never by token); any other secret-derived key: hash with SHA-256 truncated to 32 chars.
 - **No Valkey for messaging** (Pub/Sub is fire-and-forget like NATS core, but you already have NATS — keep boundaries clean).
 - **No JetStream-replacement attempts.** Persistent durable streams stay in NATS JetStream.
 - **No cross-service events through Valkey.** That's NATS's job.
@@ -309,4 +327,4 @@ Working code em `valkey/`:
 - `cache_aside.py` — full cache-aside example with decorator wrapper.
 - `sliding_window_rate_limit.py` — production-grade rate limit with sorted set.
 - `invalidation_via_nats.py` — auth invalidation consumer pattern.
-- `auth_context_cache.py` — caching FastAPI auth dependency with TTL + invalidation.
+- Auth context cache: NOT a sample here. The real, byte-identical module is `<agents>/shared-backend/canonical/auth_context_cache.py` (key `cache:auth:ctx:<user_id>`, 30-min backstop TTL, invalidation via PG NOTIFY → NATS, generation/tombstone race guard). Never copy-edit it in an app (`rules/backend.md`).

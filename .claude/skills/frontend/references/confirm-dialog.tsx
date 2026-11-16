@@ -1,6 +1,5 @@
-// ConfirmDialog — canonical source (reference do gate frontend).
-// Cross-project standard (gate frontend, ref overlays.md). Vendored por projeto em
-// components/ui/confirm-dialog.tsx. Requer o primitivo shadcn `ui/alert-dialog.tsx`.
+// Cross-project standard (gate frontend, ref overlays.md + confirm-dialog.tsx).
+// Requires the shadcn `ui/alert-dialog.tsx` primitive.
 import {
   AlertDialog,
   AlertDialogCancel,
@@ -11,6 +10,7 @@ import {
   AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import { Button } from "@/components/ui/button";
+import type * as React from "react";
 
 interface ConfirmDialogProps {
   open: boolean;
@@ -25,6 +25,10 @@ interface ConfirmDialogProps {
    *  fecha sozinho enquanto `busy` — feche via `onOpenChange(false)` no `onSuccess`. */
   busy?: boolean;
   pendingLabel?: string;
+  /** Trava só o botão de confirmar (ex.: exigir digitar a placa); cancelar segue livre. */
+  confirmDisabled?: boolean;
+  /** Conteúdo extra abaixo da descrição (ex.: textarea do motivo do cancelamento). */
+  children?: React.ReactNode;
   onConfirm: () => void;
 }
 
@@ -33,8 +37,7 @@ interface ConfirmDialogProps {
  * AlertDialog (sem dismiss por click-fora, força uma escolha). NUNCA confirme delete
  * com tira inline, accordion, button-swap na linha, `window.confirm` ou Dialog ad-hoc.
  *
- * Padrão de uso em lista: um único ConfirmDialog no nível do container, controlado
- * pelo item selecionado.
+ * Em lista: um único ConfirmDialog no container, controlado pelo item selecionado.
  *   const [toDelete, setToDelete] = useState<Doc | null>(null);
  *   <ConfirmDialog
  *     open={!!toDelete}
@@ -59,6 +62,8 @@ export function ConfirmDialog({
   destructive = false,
   busy = false,
   pendingLabel,
+  confirmDisabled = false,
+  children,
   onConfirm,
 }: ConfirmDialogProps) {
   return (
@@ -67,10 +72,15 @@ export function ConfirmDialog({
         <AlertDialogHeader>
           <AlertDialogTitle>{title}</AlertDialogTitle>
           {description && <AlertDialogDescription>{description}</AlertDialogDescription>}
+          {children}
         </AlertDialogHeader>
         <AlertDialogFooter>
           <AlertDialogCancel disabled={busy}>{cancelLabel}</AlertDialogCancel>
-          <Button variant={destructive ? "destructive" : "default"} disabled={busy} onClick={onConfirm}>
+          <Button
+            variant={destructive ? "destructive" : "default"}
+            disabled={busy || confirmDisabled}
+            onClick={onConfirm}
+          >
             {busy ? (pendingLabel ?? "Processando...") : confirmLabel}
           </Button>
         </AlertDialogFooter>

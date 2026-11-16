@@ -70,6 +70,9 @@ Regra escrita sem trava depende de o agente lembrar.
      `tests/` e `db/migrations/*.sql`.
    - Reprova operação de calendário em instante sem `AT TIME ZONE`, e `datetime` sem fuso em
      `Query(...)` de rota.
+   - Reprova também `AT TIME ZONE 'UTC'` dentro de `date_trunc`/`EXTRACT`/`to_char` sobre instante
+     gravado (é o dia UTC; nexarena 2026-11-13) e `current_date`/`date.today()` de cron/teste contra
+     janela de retenção longa sem motivo.
    - Linha correta leva `tz-ok: <porquê>` (`# tz-ok:` em Python, `-- tz-ok:` dentro do SQL).
 2. **Canário de fuso**: a suíte roda com o processo pytest e o Postgres de teste em
    `Pacific/Kiritimati` (UTC+14). Lá a data local difere da de São Paulo das 07h às 24h. O bug

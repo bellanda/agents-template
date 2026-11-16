@@ -36,6 +36,13 @@ o checklist roteia.
   no boundary; **sempre** TTL (`ex=`); **NUNCA** `KEYS *` (use `scan_iter`); namespace por prefixo de propósito.
 - NATS: `timeout` obrigatório em Request-Reply; `durable=` em consumer que sobrevive a restart; `msg.ack()`
   explícito em JetStream; reconnect/drain em produção.
+- Runtime em prod (guardas por app, `tests/scripts/test_runtime_infra_config.py`; `scripts/fleet_drift.py
+  --apps <repos> [--json] [--strict]` do template compara os arquivos do manifest): orçamento de memória e
+  workers no teto (`APP_LIMIT_CAP_MB`, `MAX_GRANIAN_WORKERS` — ajuste só quando o orçamento mudar de
+  propósito; kailos hoje 8400 MB); `compose.yaml` base NÃO declara `logging` nos serviços da app (vale o
+  `compose.prod.yaml` com journald; rule `logs.md`); serviço que não serve rota (agent-worker, cron-worker)
+  tem healthcheck por heartbeat (toca um arquivo, o healthcheck confere a idade; akmeo `compose.yaml`).
+  Streams/SSE e `LISTEN` seguem o contrato de `database` → `tenancy-and-writes.md` §3 e `valkey-cache.md` §6.
 - Decisão: comece minimal (NATS sozinho cobre messaging+KV+queue até ~500k msg/s). Some Kafka/Celery/
   Temporal **só com sinal concreto** — NUNCA "pra não migrar depois".
 
@@ -43,5 +50,6 @@ o checklist roteia.
 
 - `references/decision-map.md` — mapa do ecossistema (quando cada ferramenta brilha/fica pra trás) — antes era `distributed-infrastructure`.
 - `references/nats-messaging.md` — os 5 patterns NATS com nats-py (delivery guarantees, código async).
+- `references/postgres-tiers.md` — tiers de memória do `prod.conf` (shared-16gb / dedicated-16gb); não há gerador, o arquivo é por repo.
 - `references/due-queue.md` — motor de tempo `DueQueue` (kailos canônico): Valkey acorda / Postgres decide, lease+CAS, reconcile, after-commit, testes.
 - `references/valkey-cache.md` — patterns de cache/throttle com valkey-py → código working em `references/valkey/`.

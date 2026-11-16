@@ -57,6 +57,7 @@ Todo teste que envolve tempo tem dois lados: o **dado** (a data semeada) e o **r
 ## Velocidade da suíte — paralela por padrão (decisão 2026-10-13)
 
 - **pytest roda em paralelo** (`pytest-xdist`, `-n min(nproc, 8)` no `check.sh`; `--serial`/`PYTEST_WORKERS=0` = escape). Kailos: 4.682 testes de ~15 min para ~2 min.
+- **Mesma major de produção nos testes** (2026-11-15): o Postgres de teste vem do `backend/tests/compose.yml` com a MESMA tag do `compose.yaml` (só o kailos tem a trava `tests/test_infra_versions.py`, que confere as tags de compose/backup/nginx; o template tem `backend/tests/scripts/test_infra_pins.py` (tabela única `PINS` de postgres/valkey/nats/dbmate/pgbouncer/bun/nginx/python: qualquer tag fora da tabela falha); nos demais apps nada trava: bump de major = conferir `tests/compose.yml` à mão). O Valkey de teste é o binário `valkey-server` do host, um por worker: tem de ser da major de produção (hoje 9.x em `~/.local/bin/valkey-server`, extraído da imagem `valkey/valkey:<tag>`; o do apt é 7.2 e não vale). Subiu a major no compose → troque o binário no mesmo trabalho.
 - **Banco por worker**: o controller do xdist roda `dbmate up` UMA vez em `test_<app>_template`; cada worker clona `CREATE DATABASE test_<app>_<gwN> TEMPLATE …` (Valkey socket e app yaml também por worker, sufixo idempotente). Teste que commita de verdade em conexão própria é seguro porque o banco é do worker. NUNCA hardcode nome/DSN do banco de teste — importe `TEST_DATABASE_DSN` do `tests.conftest`.
 - **Uma conexão por processo**: `db_conn` reusa a conexão da sessão (`_shared_test_connection()`), cada teste numa transação com rollback + `conn.reset()`; reconecta se o teste a fechou. Abrir conexão por teste (~18ms de SCRAM+fork) era mais da metade do tempo da suíte.
 - **Postgres de teste** (`tests/compose.yml`): `autovacuum=off` (com ele, estatísticas do template/clones viravam o plano e um cenário longo travava — 3/5 runs paralelos estouravam), `fsync=off`, `synchronous_commit=off`, `full_page_writes=off`, `max_connections=300`. Só no DB efêmero de teste.
@@ -81,6 +82,27 @@ Todo teste que envolve tempo tem dois lados: o **dado** (a data semeada) e o **r
   estado antigo no NATS real antes. Atualizar durable = `add_consumer` com o mesmo nome (é o
   update no servidor); `update_consumer` não existe.
 - Reutiliza fixtures shared (client, auth, base data). Sem recriar setup pesado por arquivo.
+
+## Guardas estáticas e fixtures da frota (2026-11-13)
+
+Copiadas sem edição do central (`skills/database/references/tenancy/` e `local-time/`) para todo
+backend (exceto `test_tenancy_guard.py` em app sem `organization_id` no schema, como optimuslar: ele dá SKIP
+se o schema não tem tabela de tenant, então ali o arquivo não existe): `test_tenancy_guard.py` (todo `.py` de `src`/`cron`/`pipelines`/`agents`/`scripts`: SQL em tabela
+com `organization_id` ou em filha dela por FK filtra por ela ou leva `tenant-ok: <motivo específico>`), `test_client_ip_guard.py`,
+`test_timezone_guard.py`, `core/test_streaming_routes_no_get_conn.py`; por app também
+`tests/scripts/test_runtime_infra_config.py` (ajuste `APP_LIMIT_CAP_MB`/`MAX_GRANIAN_WORKERS` quando o
+orçamento mudar de propósito) e `tests/test_fk_indexes.py`. Guarda vermelha = corrija o código; allowlist
+só com motivo e dono.
+
+- **Concorrência real** (duas requisições disputando o mesmo saldo/parcela) usa fixture com dado
+  COMMITADO e conexão do pool por request (promoservice `tests/conftest.py` `race_env`, limpa org e
+  usuário no teardown); o `client` padrão fixa uma conexão com rollback e não enxerga a corrida.
+- **`updated_at` antigo em tabela `agent_*`**: o trigger BEFORE UPDATE reseta o valor; envelheça com
+  `session_replication_role = replica` (`tests/helpers/aging.py`).
+- **Handler dentro de task group do anyio**: exceção de domínio chega embrulhada em `ExceptionGroup`;
+  capture com `except*` (skill `anyio-concurrency`), senão o `except` específico nunca casa.
+- **Cron com constante Python**: o cron job que precisa de uma constante do `api.*` a espelha em
+  `cron/settings.py` (a imagem do cron não tem `api`).
 
 ## Structure
 
@@ -121,6 +143,8 @@ Todo teste que envolve tempo tem dois lados: o **dado** (a data semeada) e o **r
   testing-library) · `css: false`. Plugin tanstackRouter com `routeFileIgnorePattern: "__tests__"`.
 - Script `"test": "vitest run"`; entra no `check.sh` como step antes do build.
 - Imports explícitos de `"vitest"` (`describe, it, expect, vi`) mesmo com `globals: true`.
+- **vitest 5** marca o teste como falho quando um mock `vi.fn()` devolve promise REJEITADA, mesmo que o app trate o erro. Teste que rejeita request usa função comum como stub (ver kailos `routes/__tests__/public-routes.test.tsx`).
+- **Guardas de frontend na frota**: `data-list-layout.test.tsx` (idêntico nos 6 apps), `lib/api/__tests__/no-raw-fetch.test.ts`, `ios-input-zoom.test.ts`, `timezone-guard.test.ts`, `pwa-contract.test.ts`.
 
 ## Onde moram
 

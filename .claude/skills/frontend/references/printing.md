@@ -53,7 +53,8 @@ doc, **o código canônico vence** — atualize esta tabela.
   folha) · `tr`, `.print-keep-together`, `img` com `break-inside: avoid` · `.print-page-break
   { break-before: page }`.
 - **Cabeçalho**: marca da org (`OrgBrand`, logo `h-12 w-32`) + CNPJ à esquerda, `documentInfo` à
-  direita. `title`/`subtitle` (opcionais) sob o cabeçalho, `titleAlign="center"` para contrato/termo.
+  direita; o `<header>` é `flex flex-wrap … gap-x-4 gap-y-2` e o bloco da direita `max-w-full min-w-0
+  [overflow-wrap:anywhere]` (2026-11-13: nome/CNPJ/nº longos estouravam a folha A4 em vez de quebrar). `title`/`subtitle` (opcionais) sob o cabeçalho, `titleAlign="center"` para contrato/termo.
   **Rodapé de UMA linha** (`print-footer`, só o nome da org) — o rodapé nativo do navegador desenha na
   mesma faixa e não é suprimível por CSS; repetir logo+nome ali dobra a massa disputando espaço.
 - **Assinaturas** = slot `footer` (`mt-auto pt-10`, `print-keep-together`) com **`DocSignatures`**:

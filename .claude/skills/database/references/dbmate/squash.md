@@ -174,7 +174,7 @@ A estratégia é a mesma do squash: gerar uma migration baseline a partir do sch
 ```bash
 brew install dbmate
 # ou: npm install --save-dev dbmate
-# ou: docker pull ghcr.io/amacneil/dbmate:latest
+# ou: docker pull ghcr.io/amacneil/dbmate:2.38.1
 ```
 
 #### Passo 2 — Configurar `.env`

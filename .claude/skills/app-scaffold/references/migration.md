@@ -29,7 +29,7 @@ files + `useAuth.ts` from kailos.
 1. **Auth modules.** Copy `lib/api/access-token-store.ts`, `lib/auth/auth-store.ts`, `hooks/useAuth.ts`, `lib/api/context.tsx` from kailos; gate `RouterProvider` on `authStore.ready` in `main.tsx`.
 2. **Route split.** Add `_authenticated.tsx` (pathless; or `app/route.tsx`) with the single `beforeLoad` guard + `<SidebarLayout>`. Reduce `__root.tsx` to bare `<Outlet/>`. Move authenticated route files under it.
 3. **Fix references.** The TanStack Router Vite plugin rewrites `createFileRoute` ids on file move, but **`Link to=`, `redirect({ to })`, `navigate({ to })`, and `useParams({ from })` must be updated by hand**. `bunx tsgo --noEmit` flags every stale one.
-4. **Regenerate + verify.** `bun run routes:gen`, then `bunx tsgo --noEmit`, then `bun run build`.
+4. **Regenerate + verify.** `bun dev` once (the TanStack Vite plugin regenerates `routeTree.gen.ts`; there is no `routes:gen` script), then `bunx tsgo --noEmit`, then `bun run build`.
 
 ## Per-project notes
 

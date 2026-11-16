@@ -15,7 +15,7 @@
 ## Identidade: seam única
 
 Toda rota de chat/threads/uploads faz `ctx = Depends(get_auth_context)` →
-`{"user_id","client_id","tenant_id","roles"}`. **`user_id`/`tenant_id` NUNCA do body.** Trocar auth =
+`{"user_id","client_id","tenant_id","roles"}`. **`user_id`/`tenant_id` NUNCA do body, e o chat NUNCA lê caminho de arquivo mandado pelo cliente** (anexo é resolvido por id/URL provada da org via `services/uploads/upload_access_service.resolve_authorized_upload`, nunca por path no corpo). Trocar auth =
 trocar `resolve_identity` (verificação JWT real, `AuthenticationError`). `tenant_id` = `organization_id`
 do token nos apps (no template = `user_id`). Fluem para `configurable.tenant_id` (middleware de
 instruções), metadata do `usage_recorder` e `chat_history`. Rotas de gestão usam permissões do app
@@ -36,6 +36,12 @@ instruções), metadata do `usage_recorder` e `chat_history`. Rotas de gestão u
 
 - Cliente cancelou → `CancelledError` capturado, marcador `_Interrompido pelo usuário._` e **save destacado**
   (`_spawn_detached`) que sobrevive ao cancelamento: turno parcial em `chat_history` (upsert `ON CONFLICT`).
+- O save do histórico é **destacado e disparado ANTES dos `yield` de fechamento** do stream e absorve
+  `CancelledError`: o cliente que desconecta no último chunk cancelava o gerador antes do save (template
+  já faz; o kailos tinha divergido).
+- **A rota que devolve `StreamingResponse` NUNCA segura `Depends(get_conn)`** (usa `get_conn_scope`,
+  abre conexão só nas fases de DB): chat de horas prende uma conexão do pool. Guarda
+  `tests/core/test_streaming_routes_no_get_conn.py` (skill `database` → `tenancy-and-writes.md` §3).
 - Checkpoint já persistiu o estado do grafo a cada passo — recuperável se o cliente cair.
 - WhatsApp: desligar agente/handoff → `transition(state="human_handling")` + evento + `handoff_summary`
   (`integrations` → `human-handoff-queues.md`). Debounce/superseded via Valkey (gate `infra`).

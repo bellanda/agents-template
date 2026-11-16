@@ -226,12 +226,12 @@ Regra: **NÃO introduza lógica nova nos shims.** Sempre escreva em `settings.*`
 # compose.yaml (base, versionado)
 services:
   postgres:
-    image: postgres:18
+    image: postgres:18.7-trixie
     environment:
       POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}   # ← OK, vem do .env
       # POSTGRES_DB: ${POSTGRES_DB}              ← PROIBIDO, é env-aware
     volumes:
-      - postgres_data:/var/lib/postgresql/data
+      - postgres_data:/var/lib/postgresql   # PG18+: mount the PARENT dir, never /data (the container refuses to start)
 
   api:
     build: ./backend

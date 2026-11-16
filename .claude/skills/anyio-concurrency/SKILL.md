@@ -151,6 +151,8 @@ except* ConnectionError as eg:
 
 Sem `except*`, um `try: ... except ValueError` só pega `ExceptionGroup` em si — você perde acesso à lista individual.
 
+**Handler/rota que roda dentro de um task group (decisão 2026-11-13):** o grupo embrulha a exceção de domínio, então `except NotFoundError:` específico nunca casa. Capture com `except*` (ou desembrulhe com `exceptiongroup`/`eg.split`) antes de traduzir para HTTP; teste cobre o caminho de erro DENTRO do grupo.
+
 ## Background tasks — não use `create_task` em handler
 
 ```python

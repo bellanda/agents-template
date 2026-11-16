@@ -53,8 +53,13 @@ standalone e são linkados no roteamento (fim do arquivo).
   página). Logo+banner = empilhado full-width (nunca `sm:grid-cols-2`). *deep: `references/grid-vs-stack.md`.*
 - [ ] **4. State placement.** 5 níveis: local (`useState`) · URL (`useSearch` p/ filtros/pagination/
   tab) · server (TanStack Query p/ TODA API data — NUNCA duplicar em store/Context) · deep UI
-  (Context com `value` memoizado) · outside React (Zustand p/ token/orgId lidos fora de hook). *deep:
-  `references/state-management.md`.*
+  (Context com `value` memoizado) · outside React (Zustand p/ token/orgId lidos fora de hook).
+  **Frescor (decisão 2026-11-13):** default = dado fresco (`createAppQueryClient`: `staleTime` 30 s,
+  refetch ao focar/reconectar, mutation nunca repetida sozinha); cache longo só consciente
+  (`staleTime` explícito + comentário); TODA mutation de escrita atualiza o cache via
+  `invalidateEntity` (`lib/api/invalidation.ts` + `entity-dependencies.ts` do app); form que parte de
+  query usa `useSyncedDraft`, NUNCA `useEffect(setForm(query.data))`. *deep:
+  `references/state-management.md` §Frescor.*
 - [ ] **5. React 19 idioms.** `use()`/`useActionState`/`useOptimistic`/Form Actions; `ref` como prop
   (sem `forwardRef`); `<Context value>` (sem `.Provider`); metadata inline. **NUNCA `useEffect +
   fetch`** (é TanStack Query) nem `useEffect + setState` p/ derived (é `useMemo`). *deep: skill
@@ -165,14 +170,26 @@ standalone e são linkados no roteamento (fim do arquivo).
   texto mascarado. Máscara nova = um caso em `getMaskOptions` + `unmaskValue` de
   `lib/utils/masks.ts` (+ `formatX`, `isValidCNPJ`, `isValidPlate`, `unmaskPlate`), nunca regex solta
   no call site. Canônico = kailos (`lib/utils/masks.ts` + `ui/masked-input.tsx`); os outros apps
-  sincronizam com ele (placa entra em todos). Dinheiro **não** é máscara compartilhada (por projeto).
+  sincronizam com ele (placa entra em todos). Dinheiro **não** é máscara: valor, quantidade e percentual
+  digitam em `CurrencyInput` (`ui/currency-input.tsx`) e convertem com `parseMoney`/`parseDecimalBR`
+  de `lib/utils/currency.ts` (decisão 2026-11-13: `replace(",", ".")` perde o separador de milhar —
+  "1.234,56" vira 1.234). PROIBIDO `replace(",", ".")` e `parseFloat` de input de usuário no call
+  site; verificação `rg -n 'replace\(",", "\."\)' src`.
+  **Exibir número/dinheiro = `lib/utils/money.ts`** (padrão 2026-11-16, nasceu no optimuslar): `formatDecimal(value, digits)`
+  (pt-BR, casas fixas, "0,874"; null/NaN → "—"; um `Intl.NumberFormat` por precisão) e
+  `formatCurrencyShort(value)` (eixo/legenda "R$ 1,5M" / "R$ 850K"). PROIBIDO `toFixed`/`toLocaleString`/
+  `Intl.NumberFormat` solto em tela (ponto decimal, sem milhar, locale do browser); valor que volta para
+  input/backend (`toDecimalInput`, `amount.toFixed(2)` de payload) é a exceção. Mesmo arquivo+teste
+  (`money.test.ts`) em todo app; formatters de moeda/contagem do app (`formatBrl`, `formatInteger`…) ficam no
+  mesmo `money.ts`. Verificação `rg -n 'toFixed\(' src --glob '!*.test.*'`.
   **Telefone tem módulo próprio** (padrão 2026-10-29): digitar = `PhoneInput` (`ui/phone-input.tsx`),
   exibir = `formatPhone` de `lib/utils/phone.ts` em TODA tela (nunca o valor cru; o `formatPhone`
   antigo de `masks.ts` saiu), validar = `phoneFieldError`, link = `whatsAppUrl`/`telUrl`. A API
   devolve o canônico ("5535991107807") → skill `integrations` → `references/phone-numbers.md`.
 - [ ] **8i. Estados de feedback — um componente por situação.** Vazio → **`EmptyState`**
   (`ui/empty-state.tsx`; o mesmo do `DataList`; nunca "Nenhum…" em `<p>` solto); **query que falhou
-  ≠ vazio** (`ErrorState` + "Tentar novamente"; `RouteErrorFallback` p/ rota); sem rede →
+  ≠ vazio** (`ErrorState` + "Tentar novamente"; `RouteErrorFallback` p/ rota); tela de detalhe/seção
+  usa `QueryBoundary` — `if (isLoading || !data)` é PROIBIDO (falha vira spinner eterno); sem rede →
   `NetworkStatusBanner` (+ `useOnlineStatus`) montado UMA vez no shell — faixa, nunca toast, nunca
   desloga; confirmação destrutiva → **`ConfirmDialog` único** (`AlertDialog` cru PROIBIDO fora de
   `ui/`); resultado de ação → toast sonner (`richColors`); **erro na tela = `notifyError(título,
@@ -204,7 +221,10 @@ standalone e são linkados no roteamento (fim do arquivo).
   **"Instalar app" obrigatório em app real, SÓ no menu do usuário (rodapé da sidebar, área
   logada — nunca login/landing/header)**: `beforeinstallprompt` capturado no boot + dialog de
   passos no iOS/iPadOS, dialog irmão do `DropdownMenu`. `sw.js` push-only (sem `fetch`/cache)
-  registrado no boot; cache offline só com pedido explícito. **Atualização pós-deploy obrigatória** (`version.json` no-store + watcher + `UpdateBanner`; exceção ao
+  registrado no boot; cache offline só com pedido explícito. **O template já traz o kit PWA**
+  (`public/sw.js` + `manifest.json`, `lib/pwa/`, `components/ui/app-reload-button.tsx`,
+  `hooks/usePullToRefresh.ts`, `components/pwa/InstallAppButton.tsx`) e o header com safe-area
+  (`h-dvh` no `SidebarInset`, nunca `100vh - 3rem`): app novo herda, não reescreve. **Atualização pós-deploy obrigatória** (`version.json` no-store + watcher + `UpdateBanner`; exceção ao
   "nunca `location.reload()`" só p/ trocar bundle): `references/pwa-mobile.md` §8. *deep: `references/pwa-mobile.md` §6
   + `references/install-prompt.ts`/`pwa-platform.ts`/`install-app-button.tsx` (canônicos).*
 - [ ] **11. PADRÃO vs IDENTIDADE.** Padroniza (cross-projeto): layout, larguras (1440), enquadramento,
