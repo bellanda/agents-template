@@ -46,7 +46,8 @@ COPY --from=builder --chown=app:app /app/.venv /app/.venv
 COPY --chown=app:app . /app/
 
 # /app/uploads is shadowed by the bind mount at runtime (host ownership wins).
-RUN install -d -o app -g app -m 0750 /app/uploads
+RUN install -d -o app -g app -m 0750 /app/uploads \
+ && install -d -o app -g app -m 0750 /app/upload-staging
 
 # PYTHONPATH mirrors the wheel layout (hatch sources: src/api → `api`; config/agents at root).
 # With uv --no-install-project these names resolve only via source roots on sys.path:

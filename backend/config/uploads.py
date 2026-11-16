@@ -27,7 +27,7 @@ import unicodedata
 import uuid
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Literal
+from typing import BinaryIO, Literal
 
 import anyio
 import cv2
@@ -460,6 +460,44 @@ def validate_document_mime(
 
 # ---------- public API ----------
 
+# raw/document above this are copied to disk in a thread (`save_fileobj`) instead of read as bytes.
+STREAM_THRESHOLD_BYTES = 16 * 1024 * 1024
+COPY_BUFFER_BYTES = 1024 * 1024
+
+
+def declared_size(file: UploadFile) -> int:
+    """Size without reading the body: ``file.size`` (multipart/staged) or seek-to-end."""
+    if file.size is not None:
+        return file.size
+    handle = file.file
+    position = handle.tell()
+    size = handle.seek(0, 2)
+    handle.seek(position)
+    return size
+
+
+def _default_limit(mode: str) -> int:
+    if mode == "image":
+        return api_config.IMAGE_MAX_BYTES
+    if mode == "document":
+        return api_config.DOCUMENT_MAX_BYTES
+    return api_config.FILE_MAX_BYTES
+
+
+async def save_fileobj(destination: Path, fileobj: BinaryIO) -> None:
+    """Stream an open binary file to ``destination`` (1 MiB at a time, in a worker thread).
+
+    Local-disk counterpart of ``storage.save_fileobj`` in apps with object storage: a 500 MB
+    video must never become ``bytes``.
+    """
+
+    def copy() -> None:
+        fileobj.seek(0)
+        with destination.open("wb") as target:
+            shutil.copyfileobj(fileobj, target, COPY_BUFFER_BYTES)
+
+    await anyio.to_thread.run_sync(copy)
+
 
 async def save_upload(
     file: UploadFile,
@@ -479,7 +517,8 @@ async def save_upload(
 
     Modes
     -----
-    raw      : bytes as-is. Ext from filename. Optional ``max_bytes``.
+    raw      : bytes as-is. Ext from filename. ``max_bytes`` defaults to ``FILE_MAX_BYTES``;
+               above 16 MiB the file is streamed to disk, never held in memory.
     image    : decode → optional resize per ``image_profile`` → AVIF.
                Ext forced to ``.avif``. ``max_bytes`` defaults to
                ``api_config.IMAGE_MAX_BYTES``.
@@ -496,14 +535,19 @@ async def save_upload(
         whitelist = allowed_mime if allowed_mime is not None else DEFAULT_DOCUMENT_MIME_WHITELIST
         validate_document_mime(file, whitelist)
 
-    content = await file.read()
-    raw_size = len(content)
+    # Size BEFORE reading: a 500 MB file must be refused (or streamed) without ever becoming bytes.
+    raw_size = declared_size(file)
+    limit = max_bytes or _default_limit(mode)
+    if raw_size > limit:
+        subject = "Imagem" if mode == "image" else "Arquivo"
+        raise BadRequestError(detail=f"{subject} maior que o limite ({limit // (1024 * 1024)} MB).")
     width: int | None = None
     height: int | None = None
     mime_type: str | None = file.content_type or None
+    content: bytes | None = None
 
     if mode == "image":
-        limit = max_bytes or api_config.IMAGE_MAX_BYTES
+        content = await file.read()
         content, width, height = await anyio.to_thread.run_sync(
             process_image_sync, content, image_profile, limit, limiter=IMAGE_LIMITER
         )
@@ -513,28 +557,26 @@ async def save_upload(
         target_ext = ext or ext_from_name(file.filename or "", file.content_type)
         if target_ext and not target_ext.startswith("."):
             target_ext = f".{target_ext}"
-        if mode == "document":
-            limit = max_bytes or api_config.DOCUMENT_MAX_BYTES
-            if raw_size > limit:
-                raise BadRequestError(
-                    detail=f"Arquivo maior que o limite ({limit // (1024 * 1024)} MB)."
-                )
-        elif max_bytes is not None and raw_size > max_bytes:
-            raise BadRequestError(
-                detail=f"Arquivo maior que o limite ({max_bytes // (1024 * 1024)} MB)."
-            )
+        if raw_size <= STREAM_THRESHOLD_BYTES:
+            content = await file.read()
 
     name_source = fixed_name or base_name or file.filename or "file"
     stem = Path(safe_filename(name_source)).stem
     fname = generate_upload_filename(stem, target_ext)
     fp = base / fname
-    await anyio.Path(fp).write_bytes(content)
+    if content is None:
+        # Above the threshold: stream straight from the (staged or spooled) file.
+        await save_fileobj(fp, file.file)
+        stored_size = raw_size
+    else:
+        await anyio.Path(fp).write_bytes(content)
+        stored_size = len(content)
 
     return UploadResult(
         url=url_path(*path_parts, fname),
         filename=fname,
         mime_type=mime_type,
-        size_bytes=len(content),
+        size_bytes=stored_size,
         width=width,
         height=height,
     )
@@ -588,6 +630,7 @@ __all__ = [
     "ImageProfile",
     "UploadResult",
     "assert_pixel_budget",
+    "declared_size",
     "decode_data_url_image",
     "decode_image_bytes",
     "delete_directory",
@@ -602,6 +645,7 @@ __all__ = [
     "org_dir",
     "process_image_sync",
     "safe_filename",
+    "save_fileobj",
     "save_image_bytes",
     "save_upload",
     "slugify",

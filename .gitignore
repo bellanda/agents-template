@@ -8,6 +8,7 @@ data
 # src/api/models/uploads/ and tests/uploads/.
 /uploads/
 /backend/uploads/
+/backend/upload-staging/
 ssl
 
 # core files

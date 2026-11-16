@@ -188,6 +188,46 @@ async def test_upload_is_tracked_for_its_owner_and_deduplicated(client, db_conn,
         shutil.rmtree(user_dir, ignore_errors=True)
 
 
+async def test_upload_accepts_file_upload_id_for_a_big_file_staged_in_chunks(
+    client, db_conn, fake_registry, tmp_path, monkeypatch
+):
+    """Regression 2026-11-16: a 10 MB file reaches the route as staged chunks, never one request."""
+    fake_registry({MODEL: {"name": "Echo", "capabilities": {}}})
+    monkeypatch.setattr(api_config, "UPLOAD_STAGING_DIR", tmp_path)
+    user = {"x-user-id": "upl-staged-user"}
+    user_dir = Path(api_config.UPLOADS_DIR) / "users" / "upl-staged-user"
+    content = b"A" * (10 * 1024 * 1024)
+    try:
+        created = await client.post(
+            "/api/v1/upload-sessions",
+            headers=user,
+            json={"filename": "grande.txt", "mime_type": "text/plain", "size_bytes": len(content)},
+        )
+        assert created.status_code == 201, created.text
+        session = created.json()
+        for offset in range(0, len(content), session["chunk_bytes"]):
+            put = await client.put(
+                f"/api/v1/upload-sessions/{session['id']}?offset={offset}",
+                headers=user,
+                content=content[offset : offset + session["chunk_bytes"]],
+            )
+            assert put.status_code == 200, put.text
+
+        res = await client.post(
+            "/api/v1/uploads",
+            headers=user,
+            data={"file_upload_id": session["id"]},
+            params={"session_id": "th-staged"},
+        )
+
+        assert res.status_code == 200, res.text
+        assert res.json()["size"] == len(content)
+        stored = next((user_dir / "chat" / "threads" / "th-staged").iterdir())
+        assert stored.stat().st_size == len(content)
+    finally:
+        shutil.rmtree(user_dir, ignore_errors=True)
+
+
 # --------------------------------------------------------------------------- agent config
 
 

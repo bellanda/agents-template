@@ -1,4 +1,6 @@
+import os
 import tomllib
+from pathlib import Path
 
 from config import paths
 
@@ -28,9 +30,24 @@ class APIConfig:
     UPLOADS_HTTP_PREFIX: str = f"{API_V1_PREFIX}/uploads"
     UPLOADS_DIR.mkdir(parents=True, exist_ok=True)
 
-    # Per-file size caps (bytes).
-    IMAGE_MAX_BYTES: int = 10 * 1024 * 1024  # 10 MB
-    DOCUMENT_MAX_BYTES: int = 20 * 1024 * 1024  # 20 MB
+    # Per-FILE limits (decision 2026-11-16). nginx caps each REQUEST at 20 MB and Cloudflare at
+    # 100 MB / ~100 s, so a file above UPLOAD_CHUNK_BYTES travels in chunks through
+    # `/api/v1/upload-sessions` (services/uploads/upload_sessions.py); the limit per FILE lives here.
+    # Images are decoded in RAM (50 MP budget) so they stay small; anything that is only STORED
+    # (video, PDF, zip...) may be big because it is streamed to disk, never held in memory.
+    IMAGE_MAX_BYTES: int = 20 * 1024 * 1024  # 20 MB
+    FILE_MAX_BYTES: int = 500 * 1024 * 1024  # 500 MB
+    DOCUMENT_MAX_BYTES: int = FILE_MAX_BYTES
+    UPLOAD_CHUNK_BYTES: int = 8 * 1024 * 1024  # 8 MiB per PUT; must stay well under nginx's 20M
+    # Chunk staging area. NOT /tmp (64 MB tmpfs) and NOT UPLOADS_DIR (bind mount, root-owned on
+    # some hosts): in Docker it is the named volume `upload-staging`.
+    UPLOAD_STAGING_DIR: Path = Path(
+        os.getenv("UPLOAD_STAGING_DIR", str(paths.BASE_DIR / "upload-staging"))
+    )
+    UPLOAD_STAGING_DIR.mkdir(parents=True, exist_ok=True)
+    # What the AI is willing to READ (MarkItDown / base64 inline in the prompt). A big PDF may be
+    # stored (FILE_MAX_BYTES) but is never loaded whole into RAM for the model.
+    AI_ATTACHMENT_MAX_BYTES: int = 20 * 1024 * 1024  # 20 MB
 
     # Per-thread caps. Counts files currently present in the thread directory —
     # idempotent uploads (same sha256) don't bump the counter.

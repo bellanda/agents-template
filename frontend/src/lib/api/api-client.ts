@@ -8,6 +8,7 @@ import {
   isNetworkError,
   rawNetworkErrorMessage,
 } from "./network-error";
+import { ChunkUploadError, stageLargeFormFile, type ChunkTransport } from "./chunked-upload";
 import type { ApiError, ApiResponse, BackendAdapter } from "./types";
 
 /**
@@ -48,10 +49,11 @@ type QueryParams = Record<string, string | number | boolean | undefined>;
  */
 function sendMultipart(
   url: string,
-  body: FormData,
+  body: FormData | Blob,
   accessToken: string | null,
   method: UploadMethod,
-  onProgress?: (percent: number) => void
+  onProgress?: (percent: number) => void,
+  chunk?: { onBytes?: (loaded: number) => void }
 ): Promise<MultipartResult> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -59,10 +61,13 @@ function sendMultipart(
     xhr.withCredentials = true;
     xhr.responseType = "text";
     if (accessToken) xhr.setRequestHeader("Authorization", `Bearer ${accessToken}`);
-    // No Content-Type on purpose: the browser must generate multipart/form-data WITH the boundary.
+    // Multipart: no Content-Type on purpose, the browser must generate it WITH the boundary.
+    // Raw chunk (chunked-upload.ts): octet-stream.
+    if (chunk) xhr.setRequestHeader("Content-Type", "application/octet-stream");
 
     let lastPercent = -1;
     xhr.upload.onprogress = (event) => {
+      if (chunk?.onBytes) chunk.onBytes(event.loaded);
       if (!onProgress || !event.lengthComputable || event.total === 0) return;
       const percent = Math.min(100, Math.round((event.loaded / event.total) * 100));
       // Progress events fire many times per percent: only forward real changes.
@@ -293,35 +298,104 @@ export class ApiClient {
    * `onProgress` gets an integer 0-100 of the BODY sent: 100 means "bytes are on the wire", not
    * "server finished" (the UI should switch to an indeterminate "Processando..."). After a 401 +
    * refresh the body is sent again and progress restarts from 0.
+   *
+   * Chunked staging (decision 2026-11-16): a `file` field above 8 MiB is first sent in chunks
+   * to `/upload-sessions` (`chunked-upload.ts`) and the endpoint receives `file_upload_id`
+   * instead, so every request stays under nginx's 20 MB. `direct: true` skips that (PUBLIC,
+   * unauthenticated call sites: the session endpoints need auth) and the file must then fit
+   * `DIRECT_MAX_BYTES`. During staging `onProgress` tracks chunk bytes; the tiny final request
+   * is reported as 100.
    */
   async upload<T = any>(
     url: string,
-    body: FormData,
-    options: { method?: UploadMethod; onProgress?: (percent: number) => void } = {}
+    form: FormData,
+    options: {
+      method?: UploadMethod;
+      onProgress?: (percent: number) => void;
+      direct?: boolean;
+      signal?: AbortSignal;
+    } = {}
   ): Promise<ApiResponse<T>> {
     const fullUrl = `${this.adapter.baseURL}${url}`;
     const method = options.method ?? "POST";
     let requestId: string | null = null;
+    let body = form;
     try {
+      if (!options.direct) {
+        body = await stageLargeFormFile(form, this.chunkTransport(), {
+          signal: options.signal,
+          onProgress: (sent, total) =>
+            options.onProgress?.(Math.min(99, Math.floor((sent / total) * 100))),
+        });
+        if (body !== form) options.onProgress?.(100);
+      }
+      const onFinalProgress = body === form ? options.onProgress : undefined;
       let response = await sendMultipart(
         fullUrl,
         body,
         this.currentToken(),
         method,
-        options.onProgress
+        onFinalProgress
       );
       if (response.status === 401 && (await refreshSession())) {
         const renewed = this.currentToken();
         if (renewed) {
-          options.onProgress?.(0);
-          response = await sendMultipart(fullUrl, body, renewed, method, options.onProgress);
+          onFinalProgress?.(0);
+          response = await sendMultipart(fullUrl, body, renewed, method, onFinalProgress);
         }
       }
       requestId = response.requestId;
       return this.settleResponse<T>(response.status, response.ok, response.data, {});
     } catch (error: any) {
-      throw this.toApiError(error, requestId);
+      throw this.toApiError(this.mapChunkError(error), requestId);
     }
+  }
+
+  /** Session creation / chunk verdicts (413 too big, 429 too many open sessions, 4xx) become
+   * ordinary `ApiError`s, so the caller maps them like any other upload failure. */
+  private mapChunkError(error: any): any {
+    if (!(error instanceof ChunkUploadError)) return error;
+    const failure = { response: { status: error.status, data: { detail: error.message } } };
+    return this.adapter.transformError
+      ? this.adapter.transformError(failure)
+      : this.defaultErrorTransform(failure);
+  }
+
+  /**
+   * Transport for `chunked-upload.ts` built on this client's own auth: JSON through `request()`
+   * (Bearer + refresh-on-401, raw snake_case body, no camelCase on the reply), chunk PUT through
+   * XHR for byte progress with one refresh-and-retry on 401. Both resolve for any HTTP status and
+   * reject only when no verdict arrived (network).
+   */
+  chunkTransport(): ChunkTransport {
+    return {
+      json: async (method, path, body) => {
+        try {
+          const res = await this.request(
+            path,
+            { method, body: body === undefined ? undefined : JSON.stringify(body) },
+            { skipCaseTransform: true }
+          );
+          return { status: res.status ?? 200, body: res.data };
+        } catch (error: any) {
+          // status 0 = NETWORK_ERROR: no verdict, let the caller retry.
+          if (!error?.status) throw error;
+          return { status: error.status, body: { detail: error.message } };
+        }
+      },
+      putChunk: async (path, chunk, onBytes) => {
+        const fullUrl = `${this.adapter.baseURL}${path}`;
+        let response = await sendMultipart(fullUrl, chunk, this.currentToken(), "PUT", undefined, {
+          onBytes,
+        });
+        if (response.status === 401 && (await refreshSession())) {
+          response = await sendMultipart(fullUrl, chunk, this.currentToken(), "PUT", undefined, {
+            onBytes,
+          });
+        }
+        return { status: response.status, body: response.data };
+      },
+    };
   }
 
   async post<T = any>(

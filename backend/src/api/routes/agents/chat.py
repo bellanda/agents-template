@@ -100,7 +100,7 @@ def _data_url_to_text(url: str, media_type: str) -> str:
         return ""
     # Same ceiling as a real upload: an inline data URL otherwise bypasses the size gate of
     # routes/uploads.py and forces an unbounded decode + MarkItDown parse (DoS).
-    max_encoded = (api_config.DOCUMENT_MAX_BYTES // 3 + 1) * 4
+    max_encoded = (api_config.AI_ATTACHMENT_MAX_BYTES // 3 + 1) * 4
     if len(encoded) > max_encoded:
         log.warning("data_url_document_oversize", encoded_len=len(encoded), limit=max_encoded)
         return ""
@@ -251,6 +251,18 @@ async def _extract_user_content(
                 if not url.startswith("data:"):
                     async with scope() as db:
                         local_path = await resolve_authorized_upload(db, url, owner_user_id)
+                if local_path is not None:
+                    stored_size = (await anyio.Path(local_path).stat()).st_size
+                    if stored_size > api_config.AI_ATTACHMENT_MAX_BYTES:
+                        # Stored fine (uploads go up to FILE_MAX_BYTES), never read whole into RAM.
+                        limit_mb = api_config.AI_ATTACHMENT_MAX_BYTES // (1024 * 1024)
+                        filename = part.get("filename") or part.get("name") or local_path.name
+                        document_chunks.append(
+                            f'\n\n[O arquivo "{filename}" foi enviado, mas é grande demais para '
+                            f"a IA ler (máximo de {limit_mb} MB para leitura). Envie uma versão "
+                            "menor ou só as páginas necessárias.]\n"
+                        )
+                        continue
                 if media_type.startswith("image/") or ptype == "image":
                     if local_path is not None:
                         effective_media = media_type or (

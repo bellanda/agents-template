@@ -18,7 +18,10 @@
     "frontend/src/lib/realtime/entity-changed.ts": "99f85a419401dd8e8876194e711ffd266baba7054e5af668e461bbbe4acd5a65",
     "frontend/src/lib/realtime/__tests__/resilient-stream.test.ts": "47aa42be7af21edd1293c7cb2ec367e23c35268853c1b00f9502df53bd97c905",
     "frontend/src/lib/realtime/__tests__/use-resilient-stream.test.tsx": "6b7ba47e8fae08886ce4ad8b14d8563fc7e826b472bfc84276c67794e3bfafd1",
-    "frontend/src/lib/realtime/__tests__/entity-changed.test.ts": "3a58c1cda6e0d4e61236565a157c9cc3852fe8e14846a6bff8d944a88b71f982"
+    "frontend/src/lib/realtime/__tests__/entity-changed.test.ts": "3a58c1cda6e0d4e61236565a157c9cc3852fe8e14846a6bff8d944a88b71f982",
+    "frontend/src/lib/api/upload-limits.ts": "f88a21e8d05f3e866d05164303b6fa23cd788d4602cbc274f18f248cb9252ea7",
+    "frontend/src/lib/api/chunked-upload.ts": "d599483c31d88c1d87d4c5bda90d285dd7ce5371d804362dac4586d483afd5e5",
+    "frontend/src/lib/api/__tests__/chunked-upload.test.ts": "270a018914d9d4e8ae3f62af5a3a195f5cc45a58f6cfb06b21831849983ac61c"
   },
   "exceptions": {},
   "optional": "the template ships a minimal subset; a shared file it does not have is fine, but if present it must match"

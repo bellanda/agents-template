@@ -1,4 +1,6 @@
 import { apiFetch } from "./api/client";
+import { fastApiAdapter } from "./api/adapters";
+import { ApiClient } from "./api/api-client";
 import { httpStatusFallbackMessage } from "./api/network-error";
 
 const API_BASE = "/api/v1/agents";
@@ -429,65 +431,52 @@ export async function uploadFile(
   const queryString = params.toString();
   const url = queryString ? `${UPLOADS_BASE_URL}?${queryString}` : UPLOADS_BASE_URL;
 
-  let response: Response;
+  // `ApiClient.upload` stages a file above 8 MiB in chunks (`/upload-sessions`) and sends
+  // `file_upload_id` instead of `file`; the open-identity stub rides along as the bearer.
+  const client = new ApiClient(fastApiAdapter, { fallbackToken: () => userId });
   try {
-    response = await apiFetch(url, { method: "POST", body: formData }, { userId });
+    const res = await client.upload<{
+      url: string;
+      filename: string;
+      mediaType: string;
+      size: number;
+    }>(url, formData);
+    return res.data;
   } catch (cause) {
-    throw new UploadError({
-      code: "network",
-      filename: file.name,
-      mediaType: file.type || "application/octet-stream",
-      message: cause instanceof Error ? cause.message : "Network error while uploading file.",
+    throw toUploadError(cause, file, modelId);
+  }
+}
+
+/** `ApiClient` throws `ApiError`s: the backend error body (when it is not a plain string) is in
+ * `details`, a transport failure has status 0 and falls through to the "network" code. */
+function toUploadError(cause: unknown, file: File, modelId?: string): UploadError {
+  const apiError = cause as { status?: number; message?: string; details?: unknown };
+  const status = apiError?.status ?? 0;
+  const body = apiError?.details;
+  const detail =
+    body && typeof body === "object" && "detail" in body
+      ? (body as { detail: BackendErrorDetail | string | undefined }).detail
+      : undefined;
+
+  if (status !== 0 && detail && typeof detail === "object" && !Array.isArray(detail)) {
+    const code =
+      normalizeUploadCode(detail.code) ?? (status === 413 ? "too_large" : "unsupported_type");
+    return new UploadError({
+      code,
+      filename: detail.filename || file.name,
+      mediaType: detail.media_type || file.type || "application/octet-stream",
+      maxBytes: detail.max_bytes,
+      modelId: detail.model_id || modelId,
+      message: defaultUploadMessage(code, detail, file.name),
     });
   }
 
-  if (!response.ok) {
-    let detail: BackendErrorDetail | string | undefined;
-    try {
-      const body = (await response.json()) as { detail?: BackendErrorDetail | string };
-      detail = body.detail;
-    } catch {
-      detail = undefined;
-    }
-
-    if (detail && typeof detail === "object") {
-      const code =
-        normalizeUploadCode(detail.code) ??
-        (response.status === 413 ? "too_large" : "unsupported_type");
-      throw new UploadError({
-        code,
-        filename: detail.filename || file.name,
-        mediaType: detail.media_type || file.type || "application/octet-stream",
-        maxBytes: detail.max_bytes,
-        modelId: detail.model_id || modelId,
-        message: defaultUploadMessage(code, detail, file.name),
-      });
-    }
-
-    const fallbackCode: UploadErrorCode =
-      response.status === 413
-        ? "too_large"
-        : response.status === 415
-          ? "unsupported_type"
-          : "network";
-    throw new UploadError({
-      code: fallbackCode,
-      filename: file.name,
-      mediaType: file.type || "application/octet-stream",
-      message: typeof detail === "string" ? detail : httpStatusFallbackMessage(response.status),
-    });
-  }
-
-  const data = (await response.json()) as {
-    url: string;
-    filename: string;
-    media_type: string;
-    size: number;
-  };
-  return {
-    url: data.url,
-    filename: data.filename,
-    mediaType: data.media_type,
-    size: data.size,
-  };
+  const fallbackCode: UploadErrorCode =
+    status === 413 ? "too_large" : status === 415 ? "unsupported_type" : "network";
+  return new UploadError({
+    code: fallbackCode,
+    filename: file.name,
+    mediaType: file.type || "application/octet-stream",
+    message: apiError?.message || httpStatusFallbackMessage(status),
+  });
 }

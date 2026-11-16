@@ -11,12 +11,14 @@ from api.core.agents.checkpoint_retention import run_retention_loop
 from api.core.agents.checkpointer import close_checkpointer, init_checkpointer
 from api.core.logging import get_logger, setup_logging, shutdown_logging
 from api.middlewares.logging_middleware import LoggingMiddleware
+from api.routes.files.upload_sessions import router as upload_sessions_router
 from api.routes.observability import client_logs_router
 from api.routes.realtime import router as realtime_router
 from api.services.agents.registry import get_agents_registry, reload_agents_registry
 from api.services.cache import close_valkey, init_valkey
 from api.services.messaging import close_nats, connect_nats
 from api.services.messaging.consumers import start_consumers, stop_consumers
+from api.services.uploads.upload_sessions import sweep_expired_sessions
 from config.api import api_config
 from config.database import close_asyncpg_pool, get_pool, init_asyncpg_pool
 from config.settings import settings
@@ -45,6 +47,12 @@ async def lifespan(app: FastAPI):
         await start_consumers()
     except Exception:
         log.exception("nats_connect_failed")
+
+    # Chunked-upload sessions abandoned before the restart (TTL 6 h).
+    try:
+        await sweep_expired_sessions()
+    except Exception:
+        log.exception("upload_sessions_sweep_failed")
 
     # 3. Initialize checkpointer (Postgres)
     await init_checkpointer()
@@ -108,6 +116,9 @@ api_router.include_router(agents_router)
 api_router.include_router(client_logs_router)
 api_router.include_router(realtime_router)
 api_router.include_router(uploads_router, prefix="/uploads", tags=["Uploads"])
+# Chunked uploads (`/api/v1/upload-sessions`): files above 8 MiB travel in pieces because nginx
+# caps each request at 20 MB. NOT under `/uploads/*` — that prefix is the file gate.
+api_router.include_router(upload_sessions_router)
 app.include_router(api_router)
 
 # Serve persisted attachments. Mounted AFTER the API router so the POST handler

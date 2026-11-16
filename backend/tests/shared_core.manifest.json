@@ -1,7 +1,9 @@
 {
   "repo": "agents-template",
   "files": {
-    "backend/src/api/services/cache/valkey_client.py": "fc1db70efa6a978a005b693ac4063750be30abec227bb8d25c0194a6c14f7c98"
+    "backend/src/api/services/cache/valkey_client.py": "fc1db70efa6a978a005b693ac4063750be30abec227bb8d25c0194a6c14f7c98",
+    "backend/src/api/services/uploads/upload_sessions.py": "bb2a8b7a4c4bce222615754b416afce963439ebef6aad3ca98d8682c0f860bac",
+    "backend/tests/uploads/test_upload_sessions.py": "b80fff93c24ecb043ccca102236e7b739ee1652515d1d68deebcd14811541eca"
   },
   "exceptions": {}
 }

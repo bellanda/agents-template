@@ -21,15 +21,17 @@ import hashlib
 import mimetypes
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, BinaryIO
 
+import anyio
 from asyncpg.connection import Connection
-from fastapi import APIRouter, Depends, File, HTTPException, Query, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, UploadFile
 
 from api.core.exceptions import BadRequestError
 from api.models.uploads.upload_jsonb import UploadKind, UploadVisibility
 from api.models.uploads.user_upload import UserUpload
 from api.repositories.uploads.user_upload_repository import user_upload_repository
+from api.routes.files.upload_sessions import staged_file
 from api.services.agents.registry import get_agents_registry
 from api.services.auth import get_auth_context
 from config.api import api_config
@@ -37,6 +39,7 @@ from config.database import get_conn
 from config.uploads import (
     DEFAULT_DOCUMENT_MIME_WHITELIST,
     USERS,
+    declared_size,
     save_upload,
     slugify,
 )
@@ -50,6 +53,8 @@ ENTITY_CHAT_SESSION = "chat_session"
 
 # Document mime patterns (everything else with these prefixes counts as "doc"
 # for per-thread quota purposes).
+HASH_CHUNK_BYTES = 1024 * 1024
+
 DOC_MIME_PREFIXES = ("application/", "text/")
 
 # Mime prefixes that are not "documents" (those go through MarkItDown without a
@@ -72,6 +77,16 @@ def _max_bytes_for(media_type: str) -> int:
     if media_type.startswith("image/"):
         return api_config.IMAGE_MAX_BYTES
     return api_config.DOCUMENT_MAX_BYTES
+
+
+def _sha256_hex(fileobj: BinaryIO) -> str:
+    """SHA256 of an open file in 1 MiB chunks; rewinds so ``save_upload`` reads from the start."""
+    digest = hashlib.sha256()
+    fileobj.seek(0)
+    while chunk := fileobj.read(HASH_CHUNK_BYTES):
+        digest.update(chunk)
+    fileobj.seek(0)
+    return digest.hexdigest()
 
 
 def _safe_segment(value: str | None) -> str | None:
@@ -221,7 +236,7 @@ def _find_dedup_match(thread_dir: Path, digest: str) -> Path | None:
 
 @router.post("")
 async def create_upload(
-    file: UploadFile = File(...),
+    file: UploadFile = Depends(staged_file),
     model_id: str | None = Query(default=None),
     session_id: str | None = Query(default=None),
     ctx: dict = Depends(get_auth_context),
@@ -250,8 +265,9 @@ async def create_upload(
                 },
             )
 
-    payload = await file.read()
-    size = len(payload)
+    # Size BEFORE reading: a staged 500 MB file must never become `bytes` (the sha256 below is
+    # computed in streaming chunks, `save_upload` streams it to disk).
+    size = declared_size(file)
     if size == 0:
         raise HTTPException(status_code=400, detail="Empty file")
 
@@ -280,16 +296,13 @@ async def create_upload(
                 },
             )
 
-    # Reset cursor — save_upload faz ``await file.read()`` de novo abaixo.
-    await file.seek(0)
-
     # Owner sempre vem da sessão — nunca de um param do cliente.
     owner_user_id: str = ctx["user_id"]
     safe_user = str(owner_user_id)
     safe_thread = _safe_segment(session_id)
 
     # Dedup via SHA256: se já existe na thread, retorna a URL existente sem rewrite.
-    digest = hashlib.sha256(payload).hexdigest()
+    digest = await anyio.to_thread.run_sync(_sha256_hex, file.file)
     dedup_hit: Path | None = None
     if safe_thread:
         thread_dir = _thread_dir_for(safe_user, safe_thread)

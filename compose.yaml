@@ -186,9 +186,13 @@ services:
       # settings._apply_env_overrides).
       VALKEY_SOCK_PATH: /run/valkey/valkey.sock
       NATS_URL: nats://nats:4222
+      # Chunked uploads (/api/v1/upload-sessions): disco, nunca o /tmp de 64 MB.
+      UPLOAD_STAGING_DIR: /app/upload-staging
     volumes:
       - ./config/app/${ENVIRONMENT}.yaml:/app/app.yaml:ro
       - ./backend/uploads:/app/uploads
+      # Volume NOMEADO (herda o dono `app` da imagem); o bind de uploads é root nos hosts de prod.
+      - upload-staging:/app/upload-staging
       - valkey-sock:/run/valkey:ro
     networks:
       - internal
@@ -255,6 +259,7 @@ volumes:
   valkey-data:
   valkey-sock:
   natsdata:
+  upload-staging:
 
 networks:
   internal:
