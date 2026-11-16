@@ -1,7 +1,7 @@
 # =============================================================================
 # STAGE 1 — Vite bundle via Bun
 # =============================================================================
-FROM oven/bun:1.3.14-slim AS builder
+FROM oven/bun:1.4.4-slim AS builder
 
 WORKDIR /app
 
@@ -24,7 +24,7 @@ RUN bun run build
 # =============================================================================
 # STAGE 2 — nginx serving the bundle + reverse proxy to the backend
 # =============================================================================
-FROM nginx:1.29.8-trixie AS nginx-runtime
+FROM nginx:1.30.6-trixie AS nginx-runtime
 
 COPY --from=builder /app/dist /usr/share/nginx/html
 

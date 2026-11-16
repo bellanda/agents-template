@@ -3,6 +3,7 @@ import { QueryClientProvider } from "@tanstack/react-query";
 
 import { UpdateBanner } from "@/components/app-version/UpdateBanner";
 import { Toaster } from "@/components/ui/sonner";
+import { DataProvider } from "@/lib/api/context";
 import { createAppQueryClient } from "@/lib/api/query-client";
 import { useAppVersionWatcher } from "@/lib/app-version/use-app-version-watcher";
 
@@ -17,7 +18,9 @@ function RootComponent() {
   const { updatePending, secondsLeft, reloadNow } = useAppVersionWatcher();
   return (
     <QueryClientProvider client={queryClient}>
-      <Outlet />
+      <DataProvider>
+        <Outlet />
+      </DataProvider>
       <Toaster />
       {updatePending && <UpdateBanner secondsLeft={secondsLeft} onUpdate={reloadNow} />}
     </QueryClientProvider>

@@ -4,6 +4,7 @@ import { createRoot } from "react-dom/client";
 import { bootAppStyle } from "./lib/appearance/app-style-store";
 import { bootFontSize } from "./lib/appearance/font-size";
 import { installClientErrorCapture } from "./lib/observability/client-logger";
+import { initInstallPrompt } from "./lib/pwa/install-prompt";
 import { router } from "./router";
 
 import "./styles.css";
@@ -14,6 +15,9 @@ installClientErrorCapture();
 // Pinta o estilo do cache (ou migra o tema antigo) antes do 1º render: sem flash de claro/escuro.
 bootAppStyle();
 bootFontSize();
+
+// PWA: captura o `beforeinstallprompt` (dispara uma vez, cedo) e registra o sw.js de instalabilidade.
+initInstallPrompt();
 
 const rootElement = document.getElementById("root");
 if (!rootElement) throw new Error("Root element not found");

@@ -12,6 +12,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import type { FileUIPart, UIMessage } from "ai";
 import { DefaultChatTransport } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { apiFetch } from "@/lib/api/client";
 import { notifyError } from "@/lib/api/notify";
 
 const STREAM_THROTTLE_MS = 32;
@@ -73,9 +74,15 @@ export function useChatSession({
     () =>
       new DefaultChatTransport({
         api: "/api/v1/agents/chat/completions",
-        // Identity flows via the X-User-Id header (backend get_auth_context),
-        // never the request body. Swap for `Authorization: Bearer` with real auth.
-        headers: (): Record<string, string> => (userId ? { "X-User-Id": userId } : {}),
+        // Identity flows via `Authorization: Bearer` (backend get_auth_context), never the request
+        // body. `apiFetch` attaches the session token (userId stub when there is no session) and
+        // renews the session once on 401 (audit 2026-11-13 template-gap-03).
+        fetch: (input, init) =>
+          apiFetch(
+            typeof input === "string" ? input : input instanceof URL ? input.href : input.url,
+            init,
+            { userId }
+          ),
         body: () => ({
           model: agentIdRef.current,
           agent_name: agentName || agentIdRef.current,

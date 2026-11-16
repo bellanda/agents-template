@@ -2,8 +2,22 @@
 <html lang="pt-BR" class="light" data-style="app-claro">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <!-- viewport-fit=cover: a viewport passa a incluir as faixas do notch e do home indicator; o
+         shell devolve a margem com env(safe-area-inset-*). interactive-widget=resizes-content: o
+         teclado virtual encolhe o conteúdo em vez de sobrepô-lo (par do FormDialog). -->
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1.0, viewport-fit=cover, interactive-widget=resizes-content"
+    />
     <meta name="theme-color" content="#ffffff" />
+    <!-- Sem estas, "Adicionar à Tela de Início" no iOS abre o app dentro do Safari com barra de
+         endereço. Todo app real troca o título abaixo pelo nome da marca (contrato PWA da frota). -->
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Agents Template" />
+    <link rel="apple-touch-icon" href="/logo192.png" />
+    <link rel="manifest" href="/manifest.json" />
     <title>Agents Template</title>
   </head>
 

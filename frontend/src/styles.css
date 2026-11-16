@@ -22,6 +22,9 @@
 
 body {
   @apply m-0;
+  /* PWA instalado: o iOS faz rubber-band no documento inteiro e isso parece um pull-to-refresh que
+     nunca recarrega. `contain` prende o overscroll ao scroller tocado (`pwa-mobile.md` §4). */
+  overscroll-behavior-y: contain;
   font-family:
     -apple-system, BlinkMacSystemFont, "Segoe UI", "Roboto", "Oxygen", "Ubuntu", "Cantarell",
     "Fira Sans", "Droid Sans", "Helvetica Neue", sans-serif;

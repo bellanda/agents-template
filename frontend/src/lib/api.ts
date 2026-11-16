@@ -1,3 +1,4 @@
+import { apiFetch } from "./api/client";
 import { httpStatusFallbackMessage } from "./api/network-error";
 
 const API_BASE = "/api/v1/agents";
@@ -158,22 +159,13 @@ export interface ThreadMessage {
 
 // ── API Functions ──────────────────────────────────────────────────────────────
 
-/**
- * Identity header consumed by the backend `get_auth_context` seam.
- * Replace `useUserId` with real auth and this carries the resolved id; with a
- * real token backend, send `Authorization: Bearer` here instead.
- */
-function userHeaders(userId?: string): Record<string, string> {
-  return userId ? { "X-User-Id": userId } : {};
-}
-
 interface RawAgentModel extends Omit<AgentModel, "suggestions" | "capabilities"> {
   suggestions?: unknown;
   capabilities?: Partial<AgentCapabilities>;
 }
 
 export async function fetchAgents(): Promise<AgentModel[]> {
-  const res = await fetch(`${API_BASE}`);
+  const res = await apiFetch(`${API_BASE}`);
   if (!res.ok) throw new Error("Failed to fetch agents");
   const data = (await res.json()) as { data?: RawAgentModel[] };
   const rows = data.data ?? [];
@@ -188,9 +180,11 @@ export async function fetchThreads(agentId?: string, userId?: string): Promise<T
   const params = new URLSearchParams();
   if (agentId) params.append("agent_id", agentId);
   const queryString = params.toString();
-  const res = await fetch(`${API_BASE}/threads${queryString ? `?${queryString}` : ""}`, {
-    headers: userHeaders(userId),
-  });
+  const res = await apiFetch(
+    `${API_BASE}/threads${queryString ? `?${queryString}` : ""}`,
+    {},
+    { userId }
+  );
   if (!res.ok) throw new Error("Failed to fetch threads");
   const data = await res.json();
   return data.threads ?? [];
@@ -200,9 +194,7 @@ export async function fetchThreadMessages(
   threadId: string,
   userId?: string
 ): Promise<ThreadMessage[]> {
-  const res = await fetch(`${API_BASE}/threads/${threadId}`, {
-    headers: userHeaders(userId),
-  });
+  const res = await apiFetch(`${API_BASE}/threads/${threadId}`, {}, { userId });
   if (!res.ok) throw new Error("Failed to fetch thread messages");
   const data = await res.json();
   return data.messages ?? [];
@@ -217,10 +209,7 @@ export async function prefetchThreadMessages(threadId: string, userId?: string):
 }
 
 export async function deleteThread(threadId: string, userId?: string): Promise<void> {
-  const res = await fetch(`${API_BASE}/threads/${threadId}`, {
-    method: "DELETE",
-    headers: userHeaders(userId),
-  });
+  const res = await apiFetch(`${API_BASE}/threads/${threadId}`, { method: "DELETE" }, { userId });
   if (!res.ok) throw new Error("Failed to delete thread");
 }
 
@@ -253,14 +242,15 @@ async function requestAgentConfig<T>(
   userId: string | undefined,
   init?: { method: "PUT" | "POST"; body?: unknown }
 ): Promise<T> {
-  const res = await fetch(`${API_BASE}/${path}`, {
-    method: init?.method ?? "GET",
-    headers: {
-      ...userHeaders(userId),
-      ...(init?.body !== undefined ? { "Content-Type": "application/json" } : {}),
+  const res = await apiFetch(
+    `${API_BASE}/${path}`,
+    {
+      method: init?.method ?? "GET",
+      headers: init?.body !== undefined ? { "Content-Type": "application/json" } : {},
+      body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
     },
-    body: init?.body !== undefined ? JSON.stringify(init.body) : undefined,
-  });
+    { userId }
+  );
   if (!res.ok) {
     let message = httpStatusFallbackMessage(res.status);
     try {
@@ -432,7 +422,7 @@ export async function uploadFile(
   const formData = new FormData();
   formData.append("file", file);
 
-  // Owner vem da sessão (header X-User-Id / Bearer), nunca de param do cliente.
+  // Owner vem da sessão (Bearer), nunca de param do cliente.
   const params = new URLSearchParams();
   if (modelId) params.set("model_id", modelId);
   if (sessionId) params.set("session_id", sessionId);
@@ -441,11 +431,7 @@ export async function uploadFile(
 
   let response: Response;
   try {
-    response = await fetch(url, {
-      method: "POST",
-      body: formData,
-      headers: userHeaders(userId),
-    });
+    response = await apiFetch(url, { method: "POST", body: formData }, { userId });
   } catch (cause) {
     throw new UploadError({
       code: "network",

@@ -21,7 +21,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 import { ExternalLink, Pencil, Save, Sparkles } from "lucide-react";
-import { memo, useMemo, useState } from "react";
+import { memo, useEffect, useMemo, useState } from "react";
 
 const STEPS = [
   "Clique em Montar com o ChatGPT e responda as perguntas dele sobre o seu negócio.",
@@ -80,6 +80,12 @@ interface InstructionsCardProps {
   description?: string;
   /** `note` is the optional publish note shown in the version history (undefined = none). */
   onSave: (markdown: string, note: string | undefined) => void;
+  /**
+   * Reports whether the card holds an unsaved draft (editing and text differs from `markdown`), so
+   * the parent can mount `useUnsavedChangesGuard`. Reports false on unmount (a save remounts the
+   * card through its `key`).
+   */
+  onDirtyChange?: (dirty: boolean) => void;
 }
 
 /**
@@ -98,6 +104,7 @@ export function InstructionsCard({
   title = "Instruções do agente",
   description = "O que o agente precisa saber sobre o negócio e como ele deve falar. Este texto é somado ao comportamento-base do agente.",
   onSave,
+  onDirtyChange,
 }: InstructionsCardProps) {
   const hasSaved = markdown.trim().length > 0;
   const [editing, setEditing] = useState(!hasSaved && !readOnly);
@@ -106,6 +113,12 @@ export function InstructionsCard({
 
   const tooLong = draft.length > maxChars;
   const canSave = !saving && !tooLong && draft.trim().length > 0 && draft !== markdown;
+
+  const dirty = editing && draft !== markdown;
+  useEffect(() => {
+    onDirtyChange?.(dirty);
+    return () => onDirtyChange?.(false);
+  }, [dirty, onDirtyChange]);
 
   const cancel = () => {
     setDraft(markdown);

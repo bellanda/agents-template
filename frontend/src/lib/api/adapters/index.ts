@@ -1,0 +1,1 @@
+export { fastApiAdapter } from "./fastapi";

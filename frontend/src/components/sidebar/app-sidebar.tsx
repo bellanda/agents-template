@@ -10,6 +10,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
+import { UserMenu } from "@/components/sidebar/user-menu";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -224,17 +225,7 @@ export function AppSidebar() {
       <SidebarFooter className="p-3">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton className="h-10 items-center gap-2 rounded-none px-2">
-              <div className="bg-muted flex size-7 items-center justify-center rounded-full text-xs font-medium">
-                DU
-              </div>
-              <div className="flex flex-1 flex-col leading-tight">
-                <span className="truncate text-xs font-medium">Default User</span>
-                <span className="text-muted-foreground truncate text-[0.625rem]">
-                  default@example.com
-                </span>
-              </div>
-            </SidebarMenuButton>
+            <UserMenu name="Default User" email="default@example.com" />
           </SidebarMenuItem>
         </SidebarMenu>
       </SidebarFooter>
