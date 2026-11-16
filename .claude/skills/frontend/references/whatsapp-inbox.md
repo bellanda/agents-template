@@ -263,6 +263,13 @@ atrás de `ConfirmDialog` (a IA volta a responder o cliente). Invalida conversa 
   largura total; sem `ui/drawer`). Opções com `accept` próprio: Documento, Fotos e vídeos (múltipla, até 30),
   **Câmera** (`capture`, só touch), Áudio; ações em diálogo: Localização (GPS atual), Pedir localização,
   Contato. Cada opção tem seu `<input>` escondido FORA do popover e o `.click()` roda síncrono no gesto.
+- **Anexo grande e tetos da Meta** (2026-11-16, vídeo de 38 MB do iPhone tomava 413): o envio vai por
+  `client.upload` (progresso), e arquivo > 8 MiB sobe em chunks (`file-upload.md` § Arquivo grande).
+  **Vídeo** > 8 MiB: sessão → `POST /whatsapp/media/prepare` (converte em background para H.264 ≤ 16 MB,
+  bitrate pela duração; > ~5 min recusa antes) → consultar a sessão a cada 2 s → enviar com
+  `file_upload_id`; a bolha otimista mostra "Enviando N%" e depois "Convertendo vídeo…". Tetos no anexo
+  (fail-fast no `Composer`): imagem 20 MB (o servidor recomprime para JPEG ≤ 5 MB da Meta), vídeo 500 MB,
+  documento 100 MB (Meta), áudio 16 MB (Meta).
 - **Mural/álbum** (`77a7373`, `8227a74`): seleção múltipla → faixa de miniaturas, legenda na primeira,
   envio sequencial na ordem, todas otimistas; casamento otimista↔servidor 1:1 (fotos iguais sem legenda
   apagavam o spinner das outras). Viewer: tira de miniaturas **centralizada** sob a foto, atual com anel.

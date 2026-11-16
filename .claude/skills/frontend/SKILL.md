@@ -93,7 +93,10 @@ standalone e são linkados no roteamento (fim do arquivo).
   **Progresso real de envio**: `ApiClient.upload(url, form, { onProgress })` (XHR) +
   `useUploadMutation({ mutationFn: (vars, onProgress) => … })` → `{ …mutation, progress: number|null }`
   alimenta `<UploadProgress value>` (100% = "Processando..."); `useFileUpload` segue sendo o
-  **validador puro** (tipo/tamanho → `UploadError` pt-BR). Dois fluxos de título (slot predefinido vs
+  **validador puro** (tipo/tamanho → `UploadError` pt-BR). **Arquivo > 8 MiB vai em chunks sozinho**
+  (`ApiClient.upload` → `lib/api/chunked-upload.ts`, request ≤ 20 MB por causa do nginx/Cloudflare);
+  tetos em `lib/api/upload-limits.ts` (imagem 20 MB, resto 500 MB); rota pública = `{ direct: true }`
+  (decisão 2026-11-16). Dois fluxos de título (slot predefinido vs
   captura inline). **Criar com arquivos pendentes** (entidade ainda sem id — variante do nexarena):
   arquivos ficam em state local no form de criação e sobem em sequência após o `create` devolver o id.
   Preview `DocumentPreviewDialog`; delete via `ConfirmDialog`. Componentes apresentacionais

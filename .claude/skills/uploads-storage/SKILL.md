@@ -422,6 +422,63 @@ https://www.backblaze.com/apidocs/s3-upload-part):
 - **Pasta `backups/` na raiz do bucket privado é reservada** ao serviço `pg-backup` (fora do `b2_key_prefix`
   `prod/`/`staging/`). Código da app nunca grava nem apaga lá. Ver skill `database` → `references/backup-b2.md`.
 
+## 9c. Arquivo grande do usuário: sessão em chunks (padrão da frota 2026-11-16)
+
+**Por quê.** Os 6 domínios passam pela Cloudflare (proxy laranja): **100 MB por request** e **~100 s** para a
+origem responder (senão 524). O nginx (app + gateway) corta em **20 MB por request de propósito** — nenhuma
+rota aceita corpo grande. Incidente: vídeo de 20 s do iPhone (38 MB) no inbox do kailos → 413; atrás dele havia
+mais três travas (tmpfs `/tmp` de 64 MB no backend, `await file.read()` + `put_object` único com worker morto
+acima de 700 MB RSS, transcode dentro do request).
+
+**Limites (backend `config/api.py` = fonte; front `lib/api/upload-limits.ts` espelha):**
+
+| O quê | Teto |
+|---|---|
+| Request (nginx/Cloudflare) | 20 MB — não mexer |
+| Arquivo > `UPLOAD_CHUNK_BYTES` (8 MiB) | sessão em chunks de 8 MiB |
+| Imagem | `IMAGE_MAX_BYTES` 20 MB |
+| Vídeo/PDF/documento/áudio que só é guardado | `FILE_MAX_BYTES` 500 MB (`DOCUMENT_MAX_BYTES = FILE_MAX_BYTES`; `raw` usa como teto padrão) |
+| Arquivo lido inteiro na RAM (import xlsx/csv, extrato, OFX, GPX, som/voz) | teto próprio pequeno (5–20 MB) |
+| Rota pública sem login | direta, ≤ 18 MB (`direct: true` no cliente) |
+| WhatsApp saída (Meta) | imagem ≤ 5 MB (recomprime JPEG), vídeo ≤ 16 MB (converte), documento ≤ 100 MB, áudio ≤ 16 MB |
+
+**Protocolo** (estilo tus, sem dependência nova; prefixo próprio porque `/api/v1/uploads/*` é o gate de arquivos):
+- `POST /api/v1/upload-sessions` `{filename, mime_type, size_bytes}` → 201 `{id, chunk_bytes, offset, expires_at}`;
+  413 acima do teto da categoria (`image/*` → imagem, resto → arquivo); 429 acima da cota (10 sessões / 2 GB por usuário).
+- `PUT /api/v1/upload-sessions/{id}?offset=N` corpo cru ≤ `chunk_bytes`, gravado em append com `fcntl.flock`
+  (vários workers) → `{offset}`; 409 `{detail, offset}` = cliente ressincroniza; chunk repetido = idempotente;
+  passou do declarado = 400 e descarta.
+- `GET …/{id}` → `{id, offset, size_bytes, state, error}` com `uploading|complete|processing|ready|failed`.
+- `DELETE …/{id}` → 204.
+- Rota de domínio: `file_upload_id` no lugar de `file` via `make_staged_or_direct_file(user_key_dep)` — devolve
+  `StagedUploadFile` (com `.path`, abre o artefato `prepared` quando existe) e só descarta a sessão se a rota deu certo
+  (erro = sessão fica para o "Tentar de novo"). Lista de arquivos (`files`) segue direta (imagens já reduzidas no cliente).
+  - **Ordem dos parâmetros:** `file: UploadFile = Depends(staged_file)` vem DEPOIS da dependência de permissão
+    (`require_*`/`Depends(require_event_permission(...))`). O FastAPI resolve as dependências na ordem declarada e
+    a do arquivo responde 400 sem arquivo — antes da permissão, o papel negado recebe 400 em vez de 403 (matriz de
+    permissões do nexarena pegou, 2026-11-16).
+  - **Lista que precisa de arquivo grande** (anexos de OS com vídeo): a rota aceita também UM arquivo via
+    `optional_staged_file` e o front manda um arquivo por request (`client.upload` com `file`), em sequência.
+    Lista que fica direta e pode passar de 20 MB somados (KYC) ganha teto por arquivo ≤18 MB + checagem da SOMA
+    no front (`DIRECT_MAX_BYTES`) — nunca o 413 cru do nginx.
+  - **Campos do FormData com o nome EXATO do backend** (snake_case) quando a chamada vai por `client.upload`:
+    o XHR não transforma chave (o `request()` sim). camelCase ali = 422 sempre (form de organizador do nexarena,
+    0 pedidos em prod até 2026-11-16).
+- **Staging** em `UPLOAD_STAGING_DIR/{user}/{id}/` (`meta.json` + `data` + `prepared`), volume nomeado
+  `upload-staging:/app/upload-staging` criado no Dockerfile com dono `app` (o bind `./backend/uploads` é root em
+  alguns hosts). TTL 6 h; varredura ao criar sessão e no startup. Fora do Valkey (`allkeys-lru` despeja estado).
+- **Processamento pesado** (transcode) roda em background sobre a sessão: `processing → ready|failed`, o cliente
+  consulta o `GET` a cada 2 s. Nunca dentro do request (524 da Cloudflare). Ex.: WhatsApp `POST /whatsapp/media/prepare`.
+- **Destino:** `save_upload` checa `file.size` antes de ler; `raw`/`document` > 16 MiB vão por
+  `StorageBackend.save_fileobj` (B2: `upload_fileobj` + `TransferConfig` 16 MiB × 2, checksum `when_required`;
+  local: `copyfileobj` em thread). Envio para terceiro (Meta) a partir do arquivo local (`CurlMime(local_path=)`),
+  nunca baixando de volta do B2 para a RAM.
+
+**Fonte canônica (byte-idêntica na frota):** backend `services/uploads/upload_sessions.py` + teste
+(`shared-backend/`), frontend `lib/api/chunked-upload.ts` + `lib/api/upload-limits.ts` + teste (`shared-widgets/`).
+Por app fica só o adaptador: montar o router com a auth do app, a sweep no lifespan, o `ApiClient.upload` chamando
+`stageLargeFormFile` com o transporte do app e as rotas de domínio usando a dependência.
+
 ## 10. Pitfalls
 
 - **Nunca** `orjson.loads`/`orjson.dumps` manual sobre `metadata` JSONB — asyncpg + Pydantic já resolvem.

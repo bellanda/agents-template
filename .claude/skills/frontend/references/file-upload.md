@@ -155,6 +155,27 @@ const uploadLogo = useUploadMutation({
 - Backend multipart sem mudança. Upload que NÃO é multipart (PUT presigned direto ao storage) usa o
   mesmo XHR com `upload.onprogress` — a regra é "progresso real via XHR", nunca barra falsa por timer.
 
+## Arquivo grande — chunks automáticos no `ApiClient.upload` (padrão da frota 2026-11-16)
+
+Os 6 domínios passam pela Cloudflare (100 MB/request, ~100 s de resposta) e o nginx corta em **20 MB por
+request de propósito**. Incidente: vídeo de 38 MB no inbox do kailos → 413 ("O envio ficou grande demais…").
+
+- **Limites** = `lib/api/upload-limits.ts` (canônico, shared-widgets): `IMAGE_MAX_BYTES` 20 MB,
+  `FILE_MAX_BYTES` 500 MB (vídeo/PDF/documento/áudio que só é guardado), `CHUNK_BYTES` 8 MiB. Dropzone de
+  imagem usa `IMAGE_MAX_BYTES`, de documento `FILE_MAX_BYTES` (o antigo `DOCUMENT_MAX_BYTES` de 20 MB saiu).
+  Import lido inteiro no servidor (xlsx/csv/OFX/GPX/som) mantém teto próprio pequeno.
+- **`ApiClient.upload` faz sozinho:** campo `file` > `CHUNK_BYTES` → `stageLargeFormFile`
+  (`lib/api/chunked-upload.ts`, canônico) sobe em chunks para `/upload-sessions` (retoma pelo `GET`,
+  ressincroniza no 409, 3 tentativas por chunk) e troca `file` por `file_upload_id`. O call site não muda;
+  o `onProgress` cobre os chunks + o request final. O transporte (auth/refresh/erros) é injetado pelo
+  `client.ts` de cada app (`ChunkTransport`), por isso o módulo canônico não importa o client.
+- **`{ direct: true }`** em rota PÚBLICA sem login (sessão exige usuário) — teto do dropzone ≤ 18 MB.
+- Processamento longo no servidor (transcode) **não** fica no request final: o fluxo é sessão →
+  endpoint de preparo (202) → consultar `GET /upload-sessions/{id}` a cada 2 s até `ready|failed` → enviar
+  com `file_upload_id`. A UI mostra "Enviando N%" e depois "Convertendo…"/"Processando…". Ex.: vídeo do
+  inbox WhatsApp (`whatsapp-inbox.md`).
+- Backend: skill `uploads-storage` §9c.
+
 ## Redução no navegador — `compressImage(s)` (`lib/utils/image-compress.ts`)
 
 Foto de celular moderno passa de 10 MB (limite de entrada do backend) e o backend a reduz para 1920px
