@@ -15,7 +15,7 @@ cd frontend && E2E_PORT=5191 bun run qa:visual     # pick a free port
 Filter to the routes you touched: `bun run qa:visual -- --grep vehicle-sale` (any Playwright arg
 works; a filtered run keeps the other routes' previous findings in the report).
 
-Projects: `visual-mobile` (iPhone 15 emulation 390x844 (Chromium; `VISUAL_WEBKIT=1` for real WebKit)), `visual-tablet` (820x1180), `visual-desktop`
+Projects: `visual-mobile` (installed app, `navigator.standalone`, as the store's phones run it; iPhone 15 emulation 390x844 (Chromium; `VISUAL_WEBKIT=1` for real WebKit)), `visual-tablet` (820x1180), `visual-desktop`
 (1440x900, sidebar open). One run ~ routes x 3 (see runtime in the delivery note).
 
 ## Output (`frontend/test-results/visual/`, gitignored)
@@ -27,7 +27,8 @@ Projects: `visual-mobile` (iPhone 15 emulation 390x844 (Chromium; `VISUAL_WEBKIT
   screen alone hides everything below the fold.
 - `report.md` / `report.json` - findings `{ routeId, viewport, severity, kind, selector, detail }`.
   - **hard** (fails the test): `document-overflow`, `main-overflow`, `past-viewport`,
-    `dialog-off-screen`, `dialog-footer-off-screen`, `console-error`, `page-error`.
+    `dialog-off-screen`, `dialog-footer-off-screen`, `header-wraps` (phone: the shell header's
+    controls must share one row), `console-error`, `page-error`.
   - **warn** (report only): `small-touch-target` (<36px, mobile, measured with `pointer: coarse` emulated, like a real phone; it is applied right before the checks because a full-page screenshot resets it), `overlapping-siblings`
     (header/toolbar row), `text-clipped-no-ellipsis`, `tablist-wraps`.
 

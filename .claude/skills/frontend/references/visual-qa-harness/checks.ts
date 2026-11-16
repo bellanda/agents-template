@@ -227,6 +227,30 @@ function collectInPage(args: { isMobile: boolean; minTouch: number; overlapTol: 
       });
     }
   }
+
+  // 8. Shell header on two rows (hard, phone only): every control of `[data-app-header]`
+  // shares one line. With `flex-wrap` and a 14rem title basis, the installed app's reload
+  // button pushed the bell and "⋮" under the sidebar trigger (2026-11-16). Desktop may wrap
+  // on purpose (page actions next to a long title), so only phones are held to one row.
+  const header = document.querySelector<HTMLElement>("[data-app-header]");
+  if (args.isMobile && header && isVisible(header)) {
+    const controls = Array.from(header.querySelectorAll<HTMLElement>("button, a[href]")).filter(
+      isVisible
+    );
+    const middles = controls.map((c) => {
+      const r = c.getBoundingClientRect();
+      return r.top + r.height / 2;
+    });
+    const spread = controls.length > 1 ? Math.max(...middles) - Math.min(...middles) : 0;
+    if (spread > args.minTouch / 2) {
+      out.push({
+        severity: "hard",
+        kind: "header-wraps",
+        selector: selectorOf(header),
+        detail: `header controls span ${Math.round(spread)}px vertically (one row expected)`,
+      });
+    }
+  }
   return out;
 }
 

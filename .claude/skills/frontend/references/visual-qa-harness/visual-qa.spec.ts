@@ -35,6 +35,23 @@ async function emulateCoarsePointer(page: Page) {
   });
 }
 
+/**
+ * Phones run the app installed from the home screen (PWA), and installed mode adds controls to
+ * the shell header (the reload button, `useIsStandalone`). Shooting the phone as a browser tab
+ * hid the 2026-11-16 bug: the installed app wrapped the bell and the "⋮" onto a 2nd header row.
+ * `navigator.standalone` is the iOS signal the app reads; the instance property shadows the
+ * prototype getter in both Chromium and WebKit.
+ */
+async function emulateInstalledApp(page: Page) {
+  await page.addInitScript(() => {
+    try {
+      Object.defineProperty(navigator, "standalone", { value: true, configurable: true });
+    } catch {
+      // A browser with a locked own property keeps its own value; the shot is still valid.
+    }
+  });
+}
+
 const MAX_SCROLL_SHOTS = 4;
 
 /**
@@ -84,6 +101,7 @@ for (const route of ROUTES) {
     const viewport = testInfo.project.name.replace(/^visual-/, "");
     const isMobile = viewport === "mobile";
     const runtimeFindings = watchRuntimeErrors(page, route.id, viewport);
+    if (isMobile) await emulateInstalledApp(page);
 
     if (LIVE) await loginLive(page);
     else await installVisualMocks(page, route.data ?? "worst");
