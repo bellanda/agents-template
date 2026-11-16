@@ -4,7 +4,10 @@
 
 # core folders
 data
-uploads
+# Anchored (audit 2026-11-13): a bare `uploads` also ignored src/api/services/uploads/,
+# src/api/models/uploads/ and tests/uploads/.
+/uploads/
+/backend/uploads/
 ssl
 
 # core files

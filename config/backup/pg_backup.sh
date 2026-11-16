@@ -4,6 +4,8 @@
 # Subcommands:
 #   run                 (default) loop every 60s; once per local day at/after BACKUP_HOUR_LOCAL do a backup
 #   now                 run one backup immediately into predeploy/, exit 0/1 (manual + "backup before deploy")
+#   rehearse            restore the newest daily/ dump from B2 into <db>_rehearsal, check it, drop it
+#                       (automatic once a month after the scheduled run; `rehearse-dump FILE` = local file)
 #   healthcheck         exit 1 if the last success is older than 26h (container-start grace, see below)
 #   select-expired N    stdin: names, one per line -> stdout: what retention deletes (testable)
 #   monthly-due YYYY-MM stdin: monthly/ names -> exit 0 if that month has no copy yet (testable)
@@ -56,6 +58,7 @@ DUMP_DIR="$BACKUP_DIR/dump"
 STARTED_FILE="${STARTED_FILE:-/tmp/pg_backup.started}"
 HEARTBEAT_FILE="$STATE_DIR/last_success_epoch"
 LAST_DATE_FILE="$STATE_DIR/last_success_date"
+LAST_REHEARSAL_MONTH_FILE="$STATE_DIR/last_rehearsal_month"
 
 # One JSON line per step. jq builds the JSON so file names / messages are always escaped correctly.
 log_step() { # event status [file] [bytes] [seconds] [message]
@@ -147,6 +150,12 @@ retain_prefix() { # prefix keep_count newest_name
   done <<<"$expired"
 }
 
+# Dumps left by a killed container (docker kill / deploy mid-dump) never reach the EXIT trap. A dry-run dump
+# is kept on purpose for restore tests, so only files older than a day are swept.
+sweep_stale_dumps() {
+  find "$DUMP_DIR" -maxdepth 1 -name '*.dump' -mmin +1440 -delete 2>/dev/null || true
+}
+
 do_backup() { # kind: scheduled | predeploy
   local kind="$1" started stamp day dump_file daily_key weekly_key bytes t0
   started=$(date +%s)
@@ -154,10 +163,13 @@ do_backup() { # kind: scheduled | predeploy
   day=$(date +%F)
   mkdir -p "$STATE_DIR" "$DUMP_DIR"
   dump_file="$DUMP_DIR/$BACKUP_APP-$stamp.$$.dump"
-  # The RETURN trap is global once set: it must reset itself, or it fires again when main() returns,
-  # outside this function, where $dump_file is unbound (set -u) → exit 1 after a successful "done"
-  # (found on the first real run, 2026-10-14; the dry run never hit it because it clears the trap).
-  trap 'rm -f "$dump_file"; trap - RETURN' RETURN
+  sweep_stale_dumps
+  # EXIT trap, not RETURN (audit 2026-11-15 r2-fleet-infra-02): bash does not fire RETURN traps when
+  # `set -e` aborts the shell, so every failed run (B2 outage, partial pg_dump, size mismatch) leaked a
+  # full dump on the volume, one per retry. do_backup only ever runs in its own `__backup` child process,
+  # so EXIT is the right hook. Expanded now: the trap fires after this function's locals are gone.
+  # shellcheck disable=SC2064
+  trap "rm -f '$dump_file'" EXIT
 
   t0=$(date +%s)
   PGPASSWORD="${POSTGRES_PASSWORD:-}" pg_dump -Fc --compress=zstd \
@@ -171,8 +183,8 @@ do_backup() { # kind: scheduled | predeploy
 
   if [[ "$BACKUP_DRY_RUN" == "1" ]]; then
     log_step dry_run ok "$(basename "$dump_file")" "$bytes" "$(($(date +%s) - started))" "B2 skipped"
-    # Dry run keeps the dump so it can be restore-tested; opt out of the RETURN cleanup.
-    trap - RETURN
+    # Dry run keeps the dump so it can be restore-tested; opt out of the EXIT cleanup.
+    trap - EXIT
     return 0
   fi
 
@@ -232,6 +244,69 @@ upload_predeploy() { # dump_file stamp bytes
   retain_prefix "$PREDEPLOY_PREFIX" "$KEEP_PREDEPLOY" "$key"
 }
 
+run_sql() { # database sql
+  PGPASSWORD="${POSTGRES_PASSWORD:-}" psql -X -At -v ON_ERROR_STOP=1 \
+    -h "${PGHOST:-/var/run/postgresql}" -U "${POSTGRES_USER:?}" -d "$1" -c "$2"
+}
+
+# Restore rehearsal (audit infra-live-16, 2026-11-15): a dump that was never restored is a hope, not a
+# backup. Restores DUMP into the scratch database <db>_rehearsal on the same server, checks that tables
+# and migrations came back, and always drops the scratch database (EXIT trap: this runs in its own
+# child process, see run_once). Costs roughly the size of the database in disk while it runs.
+rehearse_dump() { # dump_file
+  local dump_file="$1" scratch_db="${POSTGRES_DB:?}_rehearsal" t0 restored_tables live_tables migrations
+  [[ -s "$dump_file" ]] || { echo "rehearse-dump: '$dump_file' is missing or empty" >&2; return 2; }
+  t0=$(date +%s)
+  run_sql postgres "DROP DATABASE IF EXISTS \"$scratch_db\" WITH (FORCE)" >/dev/null
+  run_sql postgres "CREATE DATABASE \"$scratch_db\"" >/dev/null
+  # shellcheck disable=SC2064  # expand scratch_db now: the trap fires after this function's locals are gone
+  trap "run_sql postgres 'DROP DATABASE IF EXISTS \"$scratch_db\" WITH (FORCE)' >/dev/null" EXIT
+  PGPASSWORD="${POSTGRES_PASSWORD:-}" pg_restore --no-owner --exit-on-error \
+    -h "${PGHOST:-/var/run/postgresql}" -U "$POSTGRES_USER" -d "$scratch_db" "$dump_file"
+  restored_tables=$(run_sql "$scratch_db" "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")
+  live_tables=$(run_sql "$POSTGRES_DB" "SELECT count(*) FROM pg_tables WHERE schemaname = 'public'")
+  migrations=$(run_sql "$scratch_db" "SELECT count(*) FROM schema_migrations")
+  if ((restored_tables == 0 || migrations == 0)); then
+    echo "rehearsal: restore came back empty (tables=$restored_tables migrations=$migrations)" >&2
+    return 1
+  fi
+  # live_tables is logged, not compared: a deploy between the dump and the rehearsal may add/drop tables.
+  log_step rehearsal ok "$(basename "$dump_file")" "$(stat -c %s "$dump_file")" "$(($(date +%s) - t0))" \
+    "tables=$restored_tables live_tables=$live_tables migrations=$migrations"
+}
+
+# Rehearses what is actually STORED: downloads the newest daily/ dump of this app from B2.
+rehearse_latest_from_b2() {
+  local newest dump_file
+  b2_setup
+  newest=$(b2 ls --json -r "b2://$B2_PRIVATE_BUCKET/$DAILY_PREFIX/" | jq -r '.[].fileName' \
+    | grep -E "^${DAILY_PREFIX}/${BACKUP_APP}-.*\.dump\$" | sort | tail -n 1 || true)
+  [[ -n "$newest" ]] || { echo "rehearsal: no dump of $BACKUP_APP under $DAILY_PREFIX/" >&2; return 1; }
+  mkdir -p "$DUMP_DIR"
+  sweep_stale_dumps
+  dump_file="$DUMP_DIR/rehearsal.$$.dump"
+  # Runs in the `rehearse` child process: the EXIT trap also covers a failed download under errexit.
+  # shellcheck disable=SC2064
+  trap "rm -f '$dump_file'" EXIT
+  b2 file download --no-progress "b2://$B2_PRIVATE_BUCKET/$newest" "$dump_file" >/dev/null
+  # Child process, so errexit stays on inside rehearse_dump (bash drops it on the left of `||`).
+  "$0" rehearse-dump "$dump_file" || return 1
+}
+
+# Once per calendar month, right after a successful scheduled backup. A failed rehearsal is logged as an
+# error and retried on the next day's run; it never marks the backup itself as failed.
+rehearse_if_new_month() {
+  local month last=""
+  month=$(date +%Y-%m)
+  [[ -f "$LAST_REHEARSAL_MONTH_FILE" ]] && last=$(<"$LAST_REHEARSAL_MONTH_FILE")
+  [[ "$last" != "$month" ]] || return 0
+  if "$0" rehearse; then
+    echo "$month" >"$LAST_REHEARSAL_MONTH_FILE"
+  else
+    log_step rehearsal_failed error "" 0 0 "restore rehearsal failed; the stored dump may not be restorable"
+  fi
+}
+
 # do_backup runs in a child process: bash ignores `set -e` inside anything on the left of `||`, so a
 # subshell would silently continue past a failed step (and then delete things). The child keeps errexit.
 run_once() { # kind
@@ -259,7 +334,11 @@ run_loop() {
   log_step start ok "" 0 0 "hour=$BACKUP_HOUR_LOCAL tz=$TZ dry_run=$BACKUP_DRY_RUN"
   while true; do
     if is_due && (($(date +%s) >= next_attempt)); then
-      if ! run_once scheduled; then next_attempt=$(($(date +%s) + RETRY_BACKOFF_SECONDS)); fi
+      if run_once scheduled; then
+        [[ "$BACKUP_DRY_RUN" == "1" ]] || rehearse_if_new_month
+      else
+        next_attempt=$(($(date +%s) + RETRY_BACKOFF_SECONDS))
+      fi
       # Dry-run never records a success date; avoid re-dumping every tick.
       if [[ "$BACKUP_DRY_RUN" == "1" ]]; then date +%F >"$LAST_DATE_FILE"; fi
     fi
@@ -287,12 +366,17 @@ main() {
     monthly-due) monthly_due "${2:?usage: monthly-due YYYY-MM}" ;;
     healthcheck) check_health ;;
     __backup) require_env BACKUP_APP POSTGRES_USER POSTGRES_DB; do_backup "${2:?usage: __backup scheduled|predeploy}" ;;
+    rehearse-dump) require_env POSTGRES_USER POSTGRES_DB; rehearse_dump "${2:?usage: rehearse-dump FILE}" ;;
+    rehearse)
+      require_env BACKUP_APP POSTGRES_USER POSTGRES_DB B2_PRIVATE_BUCKET B2_PRIVATE_KEY_ID B2_PRIVATE_APP_KEY
+      rehearse_latest_from_b2
+      ;;
     run | now)
       require_env BACKUP_APP POSTGRES_USER POSTGRES_DB
       [[ "$BACKUP_DRY_RUN" == "1" ]] || require_env B2_PRIVATE_BUCKET B2_PRIVATE_KEY_ID B2_PRIVATE_APP_KEY
       if [[ "$cmd" == "now" ]]; then run_once predeploy; else run_loop; fi
       ;;
-    *) echo "unknown command '$cmd' (run | now | healthcheck | select-expired N | monthly-due YYYY-MM)" >&2; exit 2 ;;
+    *) echo "unknown command '$cmd' (run | now | rehearse | rehearse-dump FILE | healthcheck | select-expired N | monthly-due YYYY-MM)" >&2; exit 2 ;;
   esac
 }
 

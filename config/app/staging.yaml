@@ -57,6 +57,11 @@ agents:
   llm_max_retries: 3
   # In-process memo of tenant agent instructions (seconds); saves invalidate this worker.
   tenant_config_ttl_seconds: 30
+  # Monthly AI spend cap per tenant, USD (core/agents/ai_budget.py). 0 = no cap.
+  monthly_budget_usd_per_tenant: 50
+  # Per-turn bounds: LangGraph recursion_limit and wall-clock timeout of one chat turn.
+  agent_recursion_limit: 25
+  agent_turn_timeout_seconds: 150
 
 vite:
   # VITE_* defaults (build-time). On Docker, compose.<env>.yaml > nginx.build.args decides the

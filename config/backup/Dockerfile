@@ -3,7 +3,7 @@
 # and this image already ships them. Why the b2 CLI and not boto/S3: it speaks the B2 native API and
 # handles large-file multipart on its own (dumps grow to GB/TB), and it avoids the boto>=1.36 CRC32
 # aws-chunked trailer that B2 rejects.
-FROM postgres:18.4-trixie
+FROM postgres:18.7-trixie
 
 # b2 CLI standalone binary, pinned. `b2v4-linux` = the frozen v4 command interface shipped inside the
 # 5.0.0 release, so a future major bump of `b2` cannot silently change the commands pg_backup.sh uses.

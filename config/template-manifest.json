@@ -1,0 +1,13 @@
+{
+  "_doc": "Files that must stay aligned between this template and the fleet apps. Read by backend/scripts/fleet_drift.py (audit 2026-11-13 template-gap-09). Globs are relative to each repo root. Identity (colors, logos, names, business content) never belongs here.",
+  "track": [
+    "backend/src/api/services/messaging/consumer_support.py",
+    "backend/src/api/core/timezone.py",
+    "backend/src/api/core/phones.py",
+    "config/nginx/snippets/*.conf",
+    "config/host/*",
+    "config/backup/*",
+    "backend/scripts/check_fk_indexes.py",
+    "frontend/src/lib/utils/masks.ts"
+  ]
+}
