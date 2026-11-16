@@ -27,7 +27,7 @@
 ```
 <ListToolbar>        busca + filtros + ordenação + [Ações ▾] (seleção) + botão "Novo…" + ⋮ (slot `menu`)
 <RecentlyOpenedStrip> (opcional) últimas 5 aberturas da tela
-<DataList>           totais no topo + tabela (≥ `@3xl/main`) / cards (abaixo) + "Carregar mais" OU números de página
+<DataList>           totais no topo + tabela (≥ 24–48rem pelo nº de colunas) / cards (abaixo) + "Carregar mais" OU números de página
 <ConfirmDialog>      exclusão
 <XFormDialog>        criar/editar
 ```
@@ -149,8 +149,13 @@ CSS, nunca `useIsMobile()`.
 
 - **Tabela no desktop vira card no mobile.** UMA definição de coluna produz as duas renderizações.
   **O switch é pela LARGURA DO CONTAINER, não do viewport** (decisão 2026-11-13, auditoria):
-  o `DataList` é seu próprio `@container/main` (`LIST_CONTAINER`) e troca tabela↔card em `@3xl/main`
-  (48rem), então também troca certo dentro de aba/dialog/sidebar aberta. Densidade de coluna usa as
+  o `DataList` é seu próprio `@container/main` (`LIST_CONTAINER`) e troca tabela↔card numa largura
+  que depende de QUANTAS COLUNAS a tabela desenha (dados + seleção + ações; `tableBreakpointFor`):
+  até 2 → `@sm/main` (24rem), 3 → `@md/main` (28rem), 4 → `@2xl/main` (42rem), 5+ → `@3xl/main`
+  (48rem). Antes era 48rem fixo e o ranking de 3 colunas da Gamificação, num dialog, virava card no
+  PC (usuário 2026-11-16). Abaixo de 24rem (celular) é sempre card. Troca certo dentro de
+  aba/dialog/sidebar aberta; dialog com lista curta precisa de largura para a tabela caber
+  (`sm:max-w-lg` para 3 colunas). Densidade de coluna usa as
   variantes `@4xl/main:`, `@5xl/main:`, `@6xl/main:` (ex.: `hidden @4xl/main:table-cell`) — **nunca
   `lg:`/`xl:` de viewport**. **PROIBIDO esconder coluna de VALOR** (dinheiro, quantidade, status):
   se não cabe, vira linha do card; só coluna acessória (notas) usa `role: "hidden"`/column-collapse.
@@ -218,7 +223,7 @@ o card inteiro.
 
 | `variant` | Container | Quando |
 | --- | --- | --- |
-| `"table"` *(default)* | tabela ≥ `@3xl/main`, card abaixo | Coleção **textual**. É o caso de quase toda tela |
+| `"table"` *(default)* | tabela ≥ 24–48rem (pelo nº de colunas), card abaixo | Coleção **textual**. É o caso de quase toda tela |
 | `"grid"` | card em grade 1→2→3 colunas, todos os breakpoints | O conteúdo **é visual** (veículo com foto, pedido com miniatura) — espremer a imagem numa célula desperdiça exatamente o que se veio ver |
 | `"stack"` | card full-width empilhado, todos os breakpoints | O item **expande no lugar** (fila de aprovação com documentos, log com payload): não cabe numa linha de tabela nem numa coluna de grade |
 
@@ -475,7 +480,7 @@ Some da tela anterior: `PAGE_SIZE`, o param `page`, a aritmética de `lastPage`,
 - **NUNCA** `useState` pra filtro, busca commitada, sort ou página — é URL (`validateSearch`).
 - **NUNCA** `IntersectionObserver`/`rootMargin`/auto-encadeamento no gatilho do modo rolagem.
 - **NUNCA** tela de lista sem o ⋮ (`ListOptionsMenu`) nem contagem só no rodapé.
-- **NUNCA** `<Table>` sem alternativa em card abaixo de `@3xl/main`, nem coluna de valor escondida por breakpoint.
+- **NUNCA** `<Table>` sem alternativa em card abaixo do limiar do `DataList`, nem coluna de valor escondida por breakpoint.
 - **NUNCA** fixar um modo no código sem deixar o usuário trocar no ⋮ (o código só define o default).
 - **NUNCA** `useCrud` sem `keepPreviousData` no `useList`.
 - **NUNCA** `fetch-all` com `limit: 500` "porque a tabela é pequena" — ela não vai continuar pequena.

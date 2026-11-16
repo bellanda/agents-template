@@ -129,7 +129,7 @@ standalone e são linkados no roteamento (fim do arquivo).
   safe-area junto. *deep: `references/mobile-keyboard.md` + `references/form-dialog.tsx` (canônico).*
 - [ ] **8f. Tela de lista — tabela no PC vira card no mobile.** Lista de registros → **`ListToolbar`
   + `DataList`** (`ui/list-toolbar.tsx`, `ui/data-list.tsx`): UMA definição de coluna renderiza a
-  tabela (≥768px) e a pilha de cards (<768px); busca com debounce + mínimo 3 chars; filtros e
+  tabela (a partir de 24–48rem da própria lista, pelo nº de colunas) e a pilha de cards (abaixo); busca com debounce + mínimo 3 chars; filtros e
   ordenação. **Modo POR TELA (decisão 2026-10-09): rolagem contínua é o DEFAULT, páginas numeradas é a
   opção 2**, escolhida no ⋮ no fim da toolbar (`ListOptionsMenu` no slot `menu`; preferência por
   tela em localStorage via `useListPreferences`). Tela = `useCollectionList(endpoint, params,

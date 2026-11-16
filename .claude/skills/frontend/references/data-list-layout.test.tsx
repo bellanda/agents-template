@@ -2,7 +2,7 @@ import { fireEvent, render, screen } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 import { LuTrash2 } from "react-icons/lu";
 
-import { DataList, type DataListColumn, type DataListProps } from "./data-list";
+import { DataList, StaticDataList, type DataListColumn, type DataListProps } from "./data-list";
 
 // Regression suite for the fleet audit 2026-11-13 (design-parity-01, kailos-v1-02, nexarena-v1-01,
 // nexarena-v4-01, drift-frontend-01). Identical in every app: it only uses props common to all
@@ -29,6 +29,13 @@ const COLUMNS: DataListColumn<Row>[] = [
   { id: "total", header: "Total", cell: (row) => row.total },
 ];
 
+/** The card stack of the default variant, whatever column-count tier hides it on wide lists. */
+const CARDS = ".space-y-3[class*='/main:hidden']";
+
+function tableBoxOf(container: HTMLElement) {
+  return container.querySelector("table")!.closest("[data-slot='table-container']")!.parentElement!;
+}
+
 function listProps(overrides: Partial<DataListProps<Row>> = {}): DataListProps<Row> {
   return {
     items: ROWS,
@@ -50,22 +57,48 @@ describe("DataList responsive contract", () => {
   it("switches table and cards by the list's own width, never by the viewport", () => {
     const { container } = render(<DataList {...listProps()} />);
 
-    // The list declares itself the `main` container so `@3xl/main:` works even inside dialogs.
+    // The list declares itself the `main` container so `@…/main:` works even inside dialogs.
     expect(container.querySelector(".\\@container\\/main")).not.toBeNull();
-    const tableBox = container
-      .querySelector("table")!
-      .closest("[data-slot='table-container']")!.parentElement!;
-    expect(tableBox.className).toContain("@3xl/main:block");
+    const tableBox = tableBoxOf(container);
+    expect(tableBox.className).toContain("@2xl/main:block");
     expect(tableBox.className).not.toMatch(/(^|\s)md:block/);
 
     const cardsBox = screen.getAllByText("Ana")[1]!.closest(".space-y-3")!;
-    expect(cardsBox.className).toContain("@3xl/main:hidden");
+    expect(cardsBox.className).toContain("@2xl/main:hidden");
     expect(cardsBox.className).not.toMatch(/(^|\s)md:hidden/);
+  });
+
+  // Regression 2026-11-16 (kailos Gamificação): a fixed 48rem threshold turned a 3-column ranking
+  // inside a dialog into a stack of cards even on a PC. Short tables switch earlier; wide ones keep 48rem.
+  it("picks the table width threshold by how many columns the table draws", () => {
+    const tierOf = (columns: DataListColumn<Row>[], actions = false) => {
+      const { container, unmount } = render(
+        <StaticDataList
+          items={ROWS}
+          columns={columns}
+          getRowId={(row) => row.id}
+          actions={
+            actions ? [{ id: "delete", label: "Excluir", icon: LuTrash2, onSelect: vi.fn() }] : []
+          }
+          emptyTitle="Sem ranking no período."
+        />
+      );
+      const table = tableBoxOf(container).className.match(/@(\w+)\/main:block/)![1];
+      const cards = container.querySelector(CARDS)!.className.match(/@(\w+)\/main:hidden/)![1];
+      unmount();
+      return { table, cards };
+    };
+
+    expect(tierOf(COLUMNS.slice(0, 2))).toEqual({ table: "sm", cards: "sm" });
+    expect(tierOf(COLUMNS.slice(0, 3))).toEqual({ table: "md", cards: "md" });
+    expect(tierOf(COLUMNS)).toEqual({ table: "2xl", cards: "2xl" });
+    // The actions column counts: 4 data columns + actions is a wide table.
+    expect(tierOf(COLUMNS, true)).toEqual({ table: "3xl", cards: "3xl" });
   });
 
   it("shows every value column (Total, Status) in the card, never only in the table", () => {
     const { container } = render(<DataList {...listProps()} />);
-    const cards = container.querySelector(".space-y-3.\\@3xl\\/main\\:hidden")!;
+    const cards = container.querySelector(CARDS)!;
 
     expect(cards.textContent).toContain("R$ 10,00");
     expect(cards.textContent).toContain("Pago");
@@ -83,9 +116,7 @@ describe("DataList responsive contract", () => {
 
   it("keeps the card title readable next to a wide badge", () => {
     const { container } = render(<DataList {...listProps()} />);
-    const badgeBox = container.querySelector(
-      ".space-y-3.\\@3xl\\/main\\:hidden .max-w-\\[60\\%\\]"
-    );
+    const badgeBox = container.querySelector(`${CARDS} .max-w-\\[60\\%\\]`);
 
     expect(badgeBox).not.toBeNull();
     expect(badgeBox!.className).toContain("min-w-0");
@@ -93,7 +124,7 @@ describe("DataList responsive contract", () => {
 
   it("lets the card's secondary line wrap to two lines instead of truncating to one", () => {
     const { container } = render(<DataList {...listProps()} />);
-    const cards = container.querySelector(".space-y-3.\\@3xl\\/main\\:hidden")!;
+    const cards = container.querySelector(CARDS)!;
     const secondary = [...cards.querySelectorAll("div")].find(
       (el) => el.textContent === "ana@example.com" && el.children.length === 0
     )!;

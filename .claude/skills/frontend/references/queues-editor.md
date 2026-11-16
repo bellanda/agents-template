@@ -76,6 +76,29 @@ Clique no card (ou "Nova equipe") → FormDialog size="xl" (full-bleed no mobile
 - Equipe removida: conversas em andamento ficam com o vendedor atual, **sem equipe** — diga isso no
   `ConfirmDialog`.
 
+## Ausência do membro (kailos + emporion, 2026-11-16)
+
+Regra de negócio e backend → skill `integrations` › `human-handoff-queues.md` §"Ausência do vendedor".
+
+- Linha de membro no editor: chip "Ausente até 23/11 18:00" / "Ausente (sem data)" / "Ausência a partir
+  de 20/11" + botão **"Ausência"** (só ícone no celular, alvo ≥36px; o grid de membros leva
+  `[&>*]:min-w-0` para não vazar a 390px). "Próximo a receber" pula quem está ausente AGORA (agendada
+  ainda conta). Card da equipe mostra "{n} ausente(s)" (`absent_member_count`).
+- **`MemberAbsenceDialog`** (`FormDialog` `size="lg"`, abre por cima do editor), pastas
+  `components/settings/sections/queues/absence/`: Motivo (Pausa curta · Folga · Férias / viagem · Sem
+  novos leads (advertência) · Outro) → Início (Agora / Agendar) → Até (1 hora · 3 horas · Fim do dia ·
+  1 · 3 · 7 dias · data · Sem data), padrão do "Até" segue o motivo (pausa 3 h, folga 1 dia, férias e
+  advertência 7 dias, outro sem data) até o gestor mexer → conversas atuais (manter /
+  transferir para… `MemberPicker excludeUserIds` / distribuir na equipe; escondido se agendada) →
+  "se o cliente responder" (só ao manter) → observação. Datas no dia LOCAL; payload em UTC ISO.
+- Ausência existente: resumo + "Transferir conversas agora" + **"Encerrar ausência"** (botão normal,
+  NÃO destrutivo — só devolve a pessoa ao rodízio) + "Alterar ausência" (nova substitui).
+- Tempo real: o backend anuncia `entity.changed` da equipe (kailos `"queue"`, emporion `"queues"`) →
+  `entity-handlers.ts` invalida a entidade `queue` (que é dona do path `member-absences`).
+- kailos: tirar alguém da ÚLTIMA equipe com conversas/atendimentos abertos pede `ConfirmDialog` antes
+  de Salvar ("vão para os outros da equipe — para só pausar, use Ausência"); o próprio vendedor vê
+  "Você está sem receber novos leads até …" (`MyAbsenceNotice`).
+
 ## Anti-padrões
 
 - **NUNCA** lista em `<ul>` com lápis + lixeira por linha, nem tela de detalhe separada (`QueueDetailView`

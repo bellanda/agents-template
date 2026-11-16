@@ -175,6 +175,35 @@ plataforma (prompt-base), não do gatilho da equipe.
   com as mesmas regras do avaliador. Dono que já respondeu, ou depois de `sla_escalated`, fica sem
   contador. `tests/whatsapp/test_sla_deadline.py` prende os dois.
 
+## Ausência do vendedor (kailos + emporion, 2026-11-16)
+
+Pedido do gestor da Promocar: vendedor viajou / de folga / "7 dias sem lead" de advertência, e tirar
+alguém da equipe passava TODAS as conversas dele para os outros de uma vez. Ausência é por ORG (vale
+em todas as equipes), quem marca é o gestor (`queue:manage`), e **não mexe na escala** — a pessoa
+continua na equipe, na mesma posição.
+
+- **Tabela `member_absences`** (`reason` break|day_off|vacation|blocked|other, `starts_at`,
+  `ends_at` NULL = até reativar, `on_customer_reply` keep|reroute, `ended_at`/`ended_by`). Uma nova
+  substitui a vigente/agendada. A volta é automática no `ends_at`; **nada volta para a pessoa**.
+- **Fragmento único `MEMBER_NOT_ABSENT_SQL`** em `repositories/queues/rotation_availability.py`:
+  TODO escolhedor automático o usa (ponteiro do rodízio, `fallback_to_all`, vendedor grudado,
+  `pick_routing_queue_id`, `list_serving_members`, `pick_next_excluding`, rodízio por prazo/resgate,
+  `crm.unowned`, cron de negociação, brief diário, contagem de atendentes). Fallback NUNCA devolve
+  ausente; o vendedor grudado (`preferred_user_id`) é pulado naquela escolha mas a preferência fica.
+  Ação manual (transferir para alguém no inbox) não é bloqueada. Picker novo de dono = usa o fragmento.
+- **Conversas atuais**: manter (default — negócio quase fechado) · transferir para UMA pessoa (CAS
+  `assign_conversation_owner`, preferido do contato vira o destino) · distribuir na equipe (cada
+  conversa vai já ao próximo disponível da equipe dela; ninguém disponível → 409 pt-BR e nada se
+  move). Só na criação de ausência que começa AGORA; agendada mantém e o gestor usa "Transferir
+  conversas agora" no dia. Destino inválido/ausente → 4xx pt-BR.
+- **Cliente responde durante a ausência**: `keep` → a conversa fica, push usual + aviso aos gestores
+  (1 por conversa a cada 30 min, Valkey `SET NX`); `reroute` → próximo disponível, sem ninguém cai no `keep`.
+- **Sair da última equipe ≠ ausência**: solta conversas do inbox E atendimentos do CRM juntos
+  (`services/crm/holdings_release.py`, mesma função do `seller_exit`); antes só o CRM era solto e o
+  inbox ficava com o dono antigo (bug de 2026-11-16). A UI do kailos confirma antes de salvar a equipe.
+- Apps sem filas (nexarena: handoff avisa todos os superusuários; akmeo/promoservice/optimuslar)
+  não têm ausência — não há a quem deixar de atribuir.
+
 ## Assinatura do atendente humano (decisão do usuário 2026-10-16)
 
 IA e todos os vendedores falam pelo MESMO número: depois da transferência o cliente só sabe quem

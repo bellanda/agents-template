@@ -157,6 +157,24 @@ export interface DataListProps<T> {
  */
 const LIST_CONTAINER = "@container/main w-full min-w-0";
 
+/**
+ * A partir de que largura a tabela substitui os cards, pelo nº de colunas que ela desenha (dados +
+ * seleção + ações). Era 48rem fixo para toda tabela: o ranking de 3 colunas da Gamificação, num
+ * dialog estreito, virava pilha de cards até no PC (usuário 2026-11-16). Tabela curta cabe em pouco
+ * espaço; só a larga precisa dos 48rem. Abaixo de 24rem (celular de 390px tem ~21rem úteis) é card
+ * para qualquer tabela. Classes literais: o Tailwind só gera o que lê no fonte.
+ */
+const TABLE_BREAKPOINTS = [
+  { maxColumns: 2, table: "@sm/main:block", cards: "@sm/main:hidden" },
+  { maxColumns: 3, table: "@md/main:block", cards: "@md/main:hidden" },
+  { maxColumns: 4, table: "@2xl/main:block", cards: "@2xl/main:hidden" },
+] as const;
+const WIDE_TABLE_BREAKPOINT = { table: "@3xl/main:block", cards: "@3xl/main:hidden" } as const;
+
+function tableBreakpointFor(columnCount: number) {
+  return TABLE_BREAKPOINTS.find((tier) => columnCount <= tier.maxColumns) ?? WIDE_TABLE_BREAKPOINT;
+}
+
 /** Quantas linhas de esqueleto na primeira carga. */
 const SKELETON_ROWS = 5;
 /** Acima disto as ações viram DropdownMenu em vez de botões inline. */
@@ -300,7 +318,8 @@ function PageSelectionBox<T>({
  * Corpo compartilhado por `DataList` e `StaticDataList`: a tabela do desktop e a
  * pilha de cards do mobile, a partir da MESMA definição de coluna.
  *
- * O switch é CSS (`hidden @3xl/main:block` / `@3xl/main:hidden`), NÃO `useIsMobile()`: o hook
+ * O switch é CSS (`hidden @3xl/main:block` / `@3xl/main:hidden`, limiar por nº de colunas em
+ * `tableBreakpointFor`), NÃO `useIsMobile()`: o hook
  * resolve em `useEffect`, então no celular a tabela pisca no primeiro paint e a
  * subárvore inteira remonta a cada resize cruzando 768px — derrubando o
  * IntersectionObserver junto.
@@ -327,9 +346,9 @@ function ResponsiveRows<T>({
   selection?: DataListSelection<T>;
 }) {
   const cardsOnly = variant !== "table";
-  const cardsClassName = cardsClassNameFor(variant);
-
   const hasActions = actions.length > 0;
+  const tableColumnCount = columns.length + (hasActions ? 1 : 0) + (selection ? 1 : 0);
+  const cardsClassName = cardsClassNameFor(variant, tableColumnCount);
   // Desktop mostra TODAS as colunas — inclusive `role: "hidden"`, que significa
   // "só desktop". A densidade por breakpoint continua no `className` da coluna.
   const desktopColumns = columns;
@@ -381,7 +400,7 @@ function ResponsiveRows<T>({
     <div className={LIST_CONTAINER}>
       {/* ── Desktop: tabela (ausente em `variant="grid"`/`"stack"`) ─────── */}
       {!cardsOnly && (
-        <div className="hidden rounded-md border @3xl/main:block">
+        <div className={cn("hidden rounded-md border", tableBreakpointFor(tableColumnCount).table)}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -536,7 +555,7 @@ function LoadingRows<T>({
   return (
     <div className={cn("space-y-3", LIST_CONTAINER, className)}>
       {!cardsOnly && (
-        <div className="hidden rounded-md border @3xl/main:block">
+        <div className={cn("hidden rounded-md border", tableBreakpointFor(columnCount).table)}>
           <Table>
             <TableHeader>
               <TableRow>
@@ -571,13 +590,16 @@ function LoadingRows<T>({
   );
 }
 
-/** Classe do container de cards — compartilhada pelos dois componentes. */
-function cardsClassNameFor(variant: "table" | "grid" | "stack") {
+/**
+ * Classe do container de cards — compartilhada pelos dois componentes. `tableColumnCount` = colunas
+ * que a tabela desenha (dados + seleção + ações): decide quando os cards somem (`tableBreakpointFor`).
+ */
+function cardsClassNameFor(variant: "table" | "grid" | "stack", tableColumnCount: number) {
   return variant === "grid"
     ? // Colunas pela largura da lista, cada card com no mínimo 17rem: nunca espreme o conteúdo
       // (EventCard/nexarena-v4-01). `min(100%, 17rem)` evita estourar numa lista mais estreita.
       "grid grid-cols-[repeat(auto-fill,minmax(min(100%,17rem),1fr))] gap-4"
-    : cn("space-y-3", variant === "table" && "@3xl/main:hidden");
+    : cn("space-y-3", variant === "table" && tableBreakpointFor(tableColumnCount).cards);
 }
 
 export interface StaticDataListProps<T> {
@@ -640,7 +662,7 @@ export function StaticDataList<T>({
         columns={columns}
         hasActions={actions.length > 0}
         cardsOnly={variant !== "table"}
-        cardsClassName={cardsClassNameFor(variant)}
+        cardsClassName={cardsClassNameFor(variant, columns.length + (actions.length > 0 ? 1 : 0))}
         className={className}
       />
     );
@@ -735,7 +757,7 @@ export function DataList<T>({
         columns={columns}
         hasActions={actions.length > 0}
         cardsOnly={cardsOnly}
-        cardsClassName={cardsClassNameFor(variant)}
+        cardsClassName={cardsClassNameFor(variant, columns.length + (actions.length > 0 ? 1 : 0))}
         className={className}
       />
     );
