@@ -13,7 +13,7 @@ from asyncpg.connection import Connection
 from api.core.agents import model_catalog
 from api.core.agents.prompt_cache import prompt_cache
 from api.core.agents.tenant_instructions import tenant_instructions_cache_key
-from api.core.exceptions import BadRequestError, NotFoundError
+from api.core.exceptions import BadRequestError, DoesNotExistError
 from api.repositories.agents.agent_config import (
     get_agent_config,
     get_agent_config_version,
@@ -66,7 +66,7 @@ async def save_config_version(
     current = await get_agent_config(conn, tenant_id, agent_id)
     resolved_model = model_id or (current or {}).get("model_id") or model_catalog.DEFAULT_MODEL_ID
     if not model_catalog.exists(resolved_model):
-        raise BadRequestError(f"Modelo {resolved_model!r} não está disponível.")
+        raise BadRequestError(detail=f"Modelo {resolved_model!r} não está disponível.")
 
     async with conn.transaction():
         row = await upsert_agent_config(
@@ -101,11 +101,11 @@ async def list_config_versions(
 async def activate_config_version(
     conn: Connection, *, tenant_id: str, agent_id: str, version: int, created_by: str | None
 ) -> dict[str, Any]:
-    """Restore `version` as a NEW version. Raises NotFoundError if it does not exist."""
+    """Restore `version` as a NEW version. Raises DoesNotExistError if it does not exist."""
     current = await get_agent_config(conn, tenant_id, agent_id)
     snapshot = await get_agent_config_version(conn, current["id"], version) if current else None
     if snapshot is None:
-        raise NotFoundError(f"Versão {version} não encontrada.")
+        raise DoesNotExistError(detail=f"Versão {version} não encontrada.")
     return await save_config_version(
         conn,
         tenant_id=tenant_id,

@@ -22,3 +22,13 @@ class StreamDefinition:
 
 
 STREAM_DEFINITIONS: tuple[StreamDefinition, ...] = ()
+
+
+# --- Subjects — Core Pub/Sub (ephemeral SSE fanout) ---------------------------
+# One channel per USER (never per organisation): who may see an event is decided at publish time
+# (the recipient list), so a user can only receive what the REST API would show them.
+REALTIME_USER_SUBJECT_PREFIX = "realtime.user"
+
+
+def realtime_user_subject(user_id: int | str) -> str:
+    return f"{REALTIME_USER_SUBJECT_PREFIX}.{user_id}"

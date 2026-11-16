@@ -223,7 +223,7 @@ def print_post_install(target: Path) -> None:
     "anyio>=4.13.0",                     # llm.py limiter/retry, ocr.py fan-out
     "curl-cffi>=0.15.0",                 # media.py (Whisper STT) + speech.py (TTS), OpenRouter
     "pypdfium2>=5.13.0",                # ocr.py (render PDF pages) — only if you use OCR
-    "duckpy>=2.1.1",          # only if using web_search_agent
+    "beautifulsoup4>=4.13.0",  # only if using web_search_agent (duckduckgo.py + scrapper.py parse HTML)
     "orjson>=3.11.7",
     "asyncpg>=0.31.0",
     "structlog>=25.5.0",                 # logging stack (core/logging.py)

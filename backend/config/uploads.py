@@ -22,6 +22,7 @@ import base64
 import mimetypes
 import re
 import shutil
+import struct
 import unicodedata
 import uuid
 from dataclasses import dataclass
@@ -40,6 +41,33 @@ from config.api import api_config
 
 SLUG_MAX_LENGTH = 60
 AVIF_QUALITY = 80
+
+# Audit 2026-11-13 skills-backend-08: byte limits say nothing about pixels. A few-KB PNG can
+# declare 40000x40000 and make cv2.imdecode allocate GBs, getting the worker killed by
+# GRANIAN_WORKERS_MAX_RSS. 50 MP covers any phone/DSLR photo (the biggest are ~48 MP).
+MAX_IMAGE_PIXELS = 50_000_000
+
+# Audit 2026-11-13 core-performance-12: decode + AVIF encode of a full-size photo costs
+# hundreds of MB of RAM per call. anyio's default thread limiter is 40, so a gallery bulk
+# upload blew past the worker RSS cap. Two at a time keeps the peak bounded on a shared 4 vCPU.
+IMAGE_LIMITER = anyio.CapacityLimiter(2)
+
+# One OpenCV thread per call: concurrency is already bounded by IMAGE_LIMITER and each call
+# used every core of the shared VPS otherwise.
+cv2.setNumThreads(1)
+
+PNG_SIGNATURE = b"\x89PNG\r\n\x1a\n"
+JPEG_SOF_MARKERS = frozenset(
+    {*range(0xC0, 0xC4), *range(0xC5, 0xC8), *range(0xC9, 0xCC), *range(0xCD, 0xD0)}
+)
+JPEG_FILL_BYTE = 0xFF
+JPEG_STANDALONE_MARKERS = frozenset({0x01, *range(0xD0, 0xDA)})
+
+GRAY_NDIM = 2
+BGR_CHANNELS = 3
+BGRA_CHANNELS = 4
+UINT8_MAX = 255.0
+UINT16_MAX = 65535.0
 
 ImageProfile = Literal["original", "hd", "full_hd"]
 PROFILE_LONGEST_SIDE: dict[str, int] = {"hd": 1280, "full_hd": 1920}
@@ -249,12 +277,118 @@ async def delete_directory(*parts: str | int) -> bool:
 # ---------- image pipeline ----------
 
 
+def _parse_header_dimensions(content: bytes) -> tuple[int, int] | None:
+    """Declared (width, height) read from the file header, without decoding any pixel.
+
+    Covers PNG, JPEG, WebP, BMP and AVIF (``ispe`` box). Returns None for a format it does
+    not parse (TIFF, GIF...); those stay bounded by ``OPENCV_IO_MAX_IMAGE_PIXELS`` set in the
+    backend Dockerfile.
+    """
+    head = content[:32]
+    if head.startswith(PNG_SIGNATURE):
+        return struct.unpack(">II", content[16:24])
+    if head.startswith(b"BM"):
+        width, height = struct.unpack("<ii", content[18:26])
+        return abs(width), abs(height)
+    if head[:4] == b"RIFF" and head[8:12] == b"WEBP":
+        chunk = head[12:16]
+        if chunk == b"VP8X":
+            return (
+                int.from_bytes(content[24:27], "little") + 1,
+                int.from_bytes(content[27:30], "little") + 1,
+            )
+        if chunk == b"VP8L":
+            bits = int.from_bytes(content[21:25], "little")
+            return (bits & 0x3FFF) + 1, ((bits >> 14) & 0x3FFF) + 1
+        if chunk == b"VP8 ":
+            width, height = struct.unpack("<HH", content[26:30])
+            return width & 0x3FFF, height & 0x3FFF
+        return None
+    if head.startswith(b"\xff\xd8"):
+        pos = 2
+        while pos + 9 < len(content):
+            if content[pos] != JPEG_FILL_BYTE:
+                pos += 1
+                continue
+            marker = content[pos + 1]
+            if marker in JPEG_SOF_MARKERS:
+                height, width = struct.unpack(">HH", content[pos + 5 : pos + 9])
+                return width, height
+            if marker == JPEG_FILL_BYTE:
+                pos += 1
+                continue
+            if marker in JPEG_STANDALONE_MARKERS:
+                pos += 2
+                continue
+            pos += 2 + struct.unpack(">H", content[pos + 2 : pos + 4])[0]
+        return None
+    if head[4:8] == b"ftyp":
+        best: tuple[int, int] | None = None
+        idx = content.find(b"ispe")
+        while idx != -1 and idx + 16 <= len(content):
+            width, height = struct.unpack(">II", content[idx + 8 : idx + 16])
+            if best is None or width * height > best[0] * best[1]:
+                best = (width, height)
+            idx = content.find(b"ispe", idx + 4)
+        return best
+    return None
+
+
+def _header_dimensions(content: bytes) -> tuple[int, int] | None:
+    """``_parse_header_dimensions`` that treats a truncated header as 'unknown'."""
+    try:
+        return _parse_header_dimensions(content)
+    except (struct.error, IndexError):
+        return None
+
+
+def assert_pixel_budget(content: bytes) -> None:
+    """Reject, before decoding, an image whose declared width x height exceeds the cap."""
+    dims = _header_dimensions(content)
+    if dims is not None and dims[0] * dims[1] > MAX_IMAGE_PIXELS:
+        raise BadRequestError(
+            detail=(
+                f"Imagem com dimensões grandes demais ({dims[0]}x{dims[1]}). "
+                f"O limite é {MAX_IMAGE_PIXELS // 1_000_000} megapixels."
+            )
+        )
+
+
+def flatten_alpha(img: np.ndarray, background: int = 255) -> np.ndarray:
+    """BGRA -> BGR composited over ``background`` (white). No-op for BGR.
+
+    ``decode_image_bytes`` keeps the alpha channel (AVIF stores it), but JPEG has none:
+    encoding BGRA straight to JPEG turns transparent pixels black. Call this before any
+    JPEG/PDF/OCR consumer.
+    """
+    if img.ndim != BGR_CHANNELS or img.shape[2] != BGRA_CHANNELS:
+        return img
+    alpha = img[:, :, 3:4].astype(np.float32) / UINT8_MAX
+    blended = img[:, :, :3].astype(np.float32) * alpha + background * (1.0 - alpha)
+    return np.clip(blended + 0.5, 0, 255).astype(np.uint8)
+
+
 def decode_image_bytes(content: bytes) -> np.ndarray:
-    """OpenCV decode bytes → ndarray. Raises BadRequestError on invalid bytes."""
+    """OpenCV decode bytes → ndarray BGR or BGRA, 8 bits.
+
+    ``IMREAD_UNCHANGED`` (not ``IMREAD_COLOR``) so a transparent PNG logo keeps its alpha
+    instead of getting a solid black background in the AVIF (audit 2026-11-13 drift-backend-04;
+    first fixed in promoservice, commit 1db519f). Rejects absurd declared dimensions before
+    allocating anything (skills-backend-08). Raises BadRequestError on invalid bytes.
+    """
+    assert_pixel_budget(content)
     arr = np.frombuffer(content, np.uint8)
-    img = cv2.imdecode(arr, cv2.IMREAD_COLOR)
+    img = cv2.imdecode(arr, cv2.IMREAD_UNCHANGED)
     if img is None:
         raise BadRequestError(detail="Imagem inválida ou corrompida.")
+    if img.dtype == np.uint16:  # 16-bit PNG/TIFF
+        img = cv2.convertScaleAbs(img, alpha=UINT8_MAX / UINT16_MAX)
+    elif img.dtype != np.uint8:
+        raise BadRequestError(detail="Formato de imagem não suportado.")
+    if img.ndim == GRAY_NDIM:
+        return cv2.cvtColor(img, cv2.COLOR_GRAY2BGR)
+    if img.shape[2] not in (BGR_CHANNELS, BGRA_CHANNELS):
+        raise BadRequestError(detail="Formato de imagem não suportado.")
     return img
 
 
@@ -371,7 +505,7 @@ async def save_upload(
     if mode == "image":
         limit = max_bytes or api_config.IMAGE_MAX_BYTES
         content, width, height = await anyio.to_thread.run_sync(
-            process_image_sync, content, image_profile, limit
+            process_image_sync, content, image_profile, limit, limiter=IMAGE_LIMITER
         )
         target_ext = ".avif"
         mime_type = "image/avif"
@@ -443,6 +577,8 @@ __all__ = [
     "DOCUMENTS",
     "EXPORTS",
     "GALLERY",
+    "IMAGE_LIMITER",
+    "MAX_IMAGE_PIXELS",
     "MEDIA",
     "MIME_EXT_OVERRIDES",
     "ORGS",
@@ -451,6 +587,7 @@ __all__ = [
     "USERS",
     "ImageProfile",
     "UploadResult",
+    "assert_pixel_budget",
     "decode_data_url_image",
     "decode_image_bytes",
     "delete_directory",
@@ -459,6 +596,7 @@ __all__ = [
     "encode_avif_bytes",
     "ext_from_name",
     "fit_inside",
+    "flatten_alpha",
     "generate_upload_filename",
     "get_upload_base",
     "org_dir",

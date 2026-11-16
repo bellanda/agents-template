@@ -5,8 +5,16 @@ from typing import Any
 
 import orjson
 from asyncpg.connection import Connection
+from langgraph.errors import GraphRecursionError
 
 from api.core.agents.callbacks import usage_recorder
+from api.core.agents.run_limits import (
+    TURN_STEP_LIMIT_USER_MESSAGE,
+    TURN_TIMEOUT_USER_MESSAGE,
+    bounded_events,
+    run_limits_config,
+    turn_timeout_seconds,
+)
 from api.core.agents.subagents import SUBAGENT_RUN_TAG
 from api.core.logging import get_logger
 from api.models.agents.history import ChatHistoryThread
@@ -137,7 +145,6 @@ async def stream_agent(
     completion_id: str,
     current_timestamp: int,
     requested_model: str,
-    conn: Connection | None,
     active_client_id: str | None = None,
     tenant_id: str | None = None,
     user_file_parts: list[dict[str, Any]] | None = None,
@@ -226,16 +233,21 @@ async def stream_agent(
         # astream_events doesn't propagate callbacks attached via .with_config() —
         # pass the recorder explicitly so on_chat_model_start/end fire on every LLM call.
         "callbacks": [usage_recorder],
+        # Step cap: the LangGraph default (10007) lets a tool loop spend until the socket drops.
+        **run_limits_config(),
     }
 
     _stream_chunk_i = 0
     _stream_chars = 0
 
     try:
-        async for event in agent.astream_events(
-            {"messages": [{"role": "user", "content": query}]},
-            version="v1",
-            config=langgraph_config,
+        async for event in bounded_events(
+            agent.astream_events(
+                {"messages": [{"role": "user", "content": query}]},
+                version="v1",
+                config=langgraph_config,
+            ),
+            turn_timeout_seconds(),
         ):
             event_type = event.get("event") or ""
             # Subagent runs (core/agents/subagents.py) are internal work of a tool call: their
@@ -441,6 +453,20 @@ async def stream_agent(
             text_len=len(full_response),
             reasoning_len=len(full_reasoning),
             tool_calls=len(tool_parts_by_call_id),
+        )
+    except (TimeoutError, GraphRecursionError) as e:
+        # Turn cut by the per-turn bounds (core/agents/run_limits.py): a clear, tratable error.
+        stream_failed = True
+        log.warning(
+            "stream_agent_turn_bounded",
+            session_id=session_id,
+            model=requested_model,
+            reason=type(e).__name__,
+        )
+        yield _error_chunk(
+            TURN_TIMEOUT_USER_MESSAGE
+            if isinstance(e, TimeoutError)
+            else TURN_STEP_LIMIT_USER_MESSAGE
         )
     except Exception as e:
         stream_failed = True

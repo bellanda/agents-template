@@ -38,6 +38,7 @@ import pypdfium2.raw as pdfium_raw
 from langchain_core.language_models.chat_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 
+from api.core.agents.ai_budget import enforce_for_usage
 from api.core.agents.custom_providers import init_model
 from api.core.agents.llm import UsageContext
 from api.core.agents.models import Models
@@ -267,6 +268,8 @@ async def ocr_document(
     Raises ValueError for unreadable/unsupported input; page-level failures become
     `warnings` (`page_N:<reason>`) instead. Each page is one billed call — pass `usage`.
     """
+    # Spend cap before paying for N page calls (audit 2026-11-13 skills-backend-02).
+    await enforce_for_usage(usage.tenant_id if usage else None)
     sources = await anyio.to_thread.run_sync(render_document, raw, mime_type)
     extra = (extra_instructions or "").strip()
     prompt = f"{OCR_PROMPT} {extra}" if extra else OCR_PROMPT

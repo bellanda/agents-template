@@ -16,9 +16,14 @@ from collections.abc import Awaitable, Callable
 import anyio
 import structlog
 
+from api.services.messaging.consumer_support import nak_unsettled_inflight
+
 log = structlog.get_logger(__name__)
 
-STOP_GRACE_SECONDS = 5.0
+# Audit 2026-11-13 core-performance-05: 5 s cancelled LLM turns (10-60 s) on every worker recycle.
+# 20 s stays under the container stop_grace_period (30 s) and Granian's kill timeout (60 s); the
+# handlers that still outlive it are cancelled and their messages NAKed (consumer_support).
+STOP_GRACE_SECONDS = 20.0
 
 # Task supervision stays on asyncio (create_task/wait/gather) so consumers drain gracefully
 # BEFORE close_nats; a single anyio task group cancelled last would close NATS first.
@@ -72,6 +77,8 @@ async def stop_consumers() -> None:
             for task in pending:
                 task.cancel()
             await asyncio.gather(*pending, return_exceptions=True)
+            # Cancelled handlers never ack/nak: hand their messages back NOW instead of after ack_wait.
+            await nak_unsettled_inflight()
 
     _TASKS.clear()
     _STOP_EVENT = None

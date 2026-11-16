@@ -1,3 +1,4 @@
+import asyncio
 from contextlib import asynccontextmanager
 
 import uvicorn
@@ -6,16 +7,18 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 
 from api import accounts_router, agents_router, uploads_router
+from api.core.agents.checkpoint_retention import run_retention_loop
 from api.core.agents.checkpointer import close_checkpointer, init_checkpointer
 from api.core.logging import get_logger, setup_logging, shutdown_logging
 from api.middlewares.logging_middleware import LoggingMiddleware
 from api.routes.observability import client_logs_router
+from api.routes.realtime import router as realtime_router
 from api.services.agents.registry import get_agents_registry, reload_agents_registry
 from api.services.cache import close_valkey, init_valkey
 from api.services.messaging import close_nats, connect_nats
 from api.services.messaging.consumers import start_consumers, stop_consumers
 from config.api import api_config
-from config.database import close_asyncpg_pool, init_asyncpg_pool
+from config.database import close_asyncpg_pool, get_pool, init_asyncpg_pool
 from config.settings import settings
 
 setup_logging()
@@ -49,11 +52,15 @@ async def lifespan(app: FastAPI):
     # 4. Load agents
     await reload_agents_registry()
 
+    # 5. Housekeeping: prune superseded LangGraph checkpoints of idle threads (daily).
+    retention_task = asyncio.create_task(run_retention_loop(get_pool), name="checkpoint-retention")
+
     log.info("app_startup_complete")
     yield
 
     # Cleanup
     # Inverse order of startup; consumers drain BEFORE NATS closes.
+    retention_task.cancel()
     await close_checkpointer()
     await stop_consumers()
     await close_nats()
@@ -99,6 +106,7 @@ async def health_check(agents_registry: dict = Depends(get_agents_registry)):
 api_router.include_router(accounts_router)
 api_router.include_router(agents_router)
 api_router.include_router(client_logs_router)
+api_router.include_router(realtime_router)
 api_router.include_router(uploads_router, prefix="/uploads", tags=["Uploads"])
 app.include_router(api_router)
 

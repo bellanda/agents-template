@@ -6,141 +6,82 @@ import time
 import uuid
 from pathlib import Path
 from typing import Any
-from urllib.parse import urlparse
 
-from asyncpg.connection import Connection
+import anyio
 from fastapi import APIRouter, Depends, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 
+from api.core.agents.ai_budget import (
+    AiBudgetExceededError,
+    budget_http_exception,
+    ensure_within_budget,
+)
 from api.core.logging import get_logger
+from api.models.agents.history import ChatHistoryThread
+from api.repositories.agents.chat_history import get_chat_messages, get_chat_owner, save_chat
 from api.services.agents.executors import call_agent_async
 from api.services.agents.registry import get_agents_registry
-from api.services.agents.streaming import sse_error_chunk, stream_agent
+from api.services.agents.streaming import PREVIEW_LENGTH, sse_error_chunk, stream_agent
 from api.services.agents.utils import convert_file_to_text
 from api.services.auth import get_auth_context
+from api.services.uploads.upload_access_service import resolve_authorized_upload
 from config.api import api_config
-from config.database import get_conn
+from config.database import ConnScope, get_conn_scope
 
 router = APIRouter()
 log = get_logger(__name__)
 
 
 class ChatRequest(BaseModel):
+    """Chat body. NEVER carries identity or server paths (audit 2026-11-13 skills-backend-01).
+
+    The legacy ``files: list[str]`` field (server-side paths the endpoint opened and fed to the
+    model) was removed: any logged-in user could point it at ``/proc/self/environ`` or a config
+    file and read it back through the conversation. Attachments arrive as ``parts`` of the last
+    user message (Vercel AI SDK v5) and may only reference ``/uploads/...`` URLs the caller owns
+    (``upload_access_service``). Unknown fields such as ``files`` or ``user`` are ignored.
+    """
+
     messages: list[dict[str, Any]]
     model: str
     stream: bool = False
     session_id: str | None = None
-    files: list[str] | None = None  # Optional list of file paths to process
     active_client_id: str | None = None
 
 
-async def _process_files(
-    files: list[str] | None, messages: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
+async def _claim_thread_turn(
+    scope: ConnScope,
+    *,
+    session_id: str,
+    user_id: str,
+    agent_id: str,
+    user_text: str,
+    assistant_text: str,
+) -> None:
+    """Persist a non-streaming turn so the thread has an OWNER row in `chat_history`.
+
+    Streaming saves its own turn (`stream_agent`); this path did not, so `get_chat_owner` stayed
+    None and any other user who knew the `session_id` resumed the checkpoint (the victim's
+    context). Same preview rule as streaming (audit 2026-11 r2-kailos-be-portals-messaging-01).
     """
-    Process attached files.
-    - Images: Converted to base64 and added as image_url parts (multimodal).
-    - Documents: Converted to text using MarkItDown and appended to text content.
-    """
-    if not files:
-        return messages
-
-    if not messages:
-        return messages
-
-    last_msg = messages[-1]
-    if last_msg.get("role") != "user":
-        # If last message isn't user, append a new user message
-        last_msg = {"role": "user", "content": ""}
-        messages.append(last_msg)
-
-    # Ensure content is a list if we are going to add parts
-    original_content = last_msg.get("content", "")
-    content_parts = []
-
-    if isinstance(original_content, str):
-        if original_content:
-            content_parts.append({"type": "text", "text": original_content})
-    elif isinstance(original_content, list):
-        content_parts.extend(original_content)
-
-    for file_path in files:
-        mime_type, _ = mimetypes.guess_type(file_path)
-
-        # Handle Images (Multimodal)
-        if mime_type and mime_type.startswith("image/"):
-            try:
-                with open(file_path, "rb") as image_file:
-                    encoded_string = base64.b64encode(image_file.read()).decode("utf-8")
-                    content_parts.append(
-                        {
-                            "type": "image_url",
-                            "image_url": {"url": f"data:{mime_type};base64,{encoded_string}"},
-                        }
-                    )
-            except Exception as e:
-                content_parts.append(
-                    {"type": "text", "text": f"\n[Error processing image {file_path}: {e}]\n"}
-                )
-
-        # Handle Text/Documents (MarkItDown)
-        else:
-            text = convert_file_to_text(file_path)
-            if text:
-                content_parts.append(
-                    {
-                        "type": "text",
-                        "text": f"\n\n--- Conteúdo do arquivo {file_path} ---\n{text}\n-----------------------------------\n",
-                    }
-                )
-
-    # Update the message content
-    # If we have mixed content (text + images), we must use the list format
-    # If we only have text parts, we could join them, but list format is safer for multimodal models
-    if content_parts:
-        last_msg["content"] = content_parts
-
-    return messages
-
-
-def _resolve_local_upload(url: str) -> Path | None:
-    """If ``url`` points at our /uploads mount, return the on-disk Path; else None.
-
-    Aceita layout flat antigo (``/api/v1/uploads/<hash>.ext``) e novo layout
-    escopado (``/api/v1/uploads/<user_id>/<thread_id>/<hash>.ext``). Cada
-    componente é sanitizado e o resultado final precisa estar contido em
-    ``UPLOADS_DIR.resolve()``.
-    """
-    if not url:
-        return None
-    parsed = urlparse(url)
-    path = parsed.path or url
-    prefix = api_config.UPLOADS_HTTP_PREFIX
-    if not path.startswith(prefix + "/"):
-        return None
-    raw_relative = path[len(prefix) + 1 :]
-    if not raw_relative:
-        return None
-    safe_segments: list[str] = []
-    for segment in raw_relative.split("/"):
-        if not segment:
-            continue
-        cleaned = Path(segment).name
-        if not cleaned or cleaned in ("..", "."):
-            return None
-        safe_segments.append(cleaned)
-    if not safe_segments:
-        return None
-    base = api_config.UPLOADS_DIR.resolve()
-    target = (api_config.UPLOADS_DIR.joinpath(*safe_segments)).resolve()
-    try:
-        target.relative_to(base)
-    except ValueError:
-        return None
-    if not target.is_file():
-        return None
-    return target
+    async with scope() as db:
+        history = list(await get_chat_messages(db, session_id) or [])
+        history.append({"role": "user", "content": user_text})
+        history.append({"role": "assistant", "content": assistant_text})
+        preview = user_text or assistant_text
+        await save_chat(
+            db,
+            ChatHistoryThread(
+                thread_id=session_id,
+                user_id=user_id,
+                agent_id=agent_id,
+                messages=history,
+                preview=(preview[:PREVIEW_LENGTH] + "...")
+                if len(preview) > PREVIEW_LENGTH
+                else (preview or None),
+            ),
+        )
 
 
 def _document_to_text(path: Path) -> str:
@@ -148,11 +89,20 @@ def _document_to_text(path: Path) -> str:
 
 
 def _data_url_to_text(url: str, media_type: str) -> str:
-    """Decodifica um data URL e converte para texto via MarkItDown (PDF/DOCX/etc)."""
+    """Decodifica um data URL e converte para texto via MarkItDown (PDF/DOCX/etc).
+
+    Blocking (decode + temp file + MarkItDown): callers run it with ``anyio.to_thread``.
+    """
     if not url.startswith("data:"):
         return ""
     header, _, encoded = url.partition(",")
     if ";base64" not in header or not encoded:
+        return ""
+    # Same ceiling as a real upload: an inline data URL otherwise bypasses the size gate of
+    # routes/uploads.py and forces an unbounded decode + MarkItDown parse (DoS).
+    max_encoded = (api_config.DOCUMENT_MAX_BYTES // 3 + 1) * 4
+    if len(encoded) > max_encoded:
+        log.warning("data_url_document_oversize", encoded_len=len(encoded), limit=max_encoded)
         return ""
     try:
         raw = base64.b64decode(encoded)
@@ -172,7 +122,7 @@ def _data_url_to_text(url: str, media_type: str) -> str:
 
 
 def _file_to_data_url(path: Path, media_type: str) -> str:
-    """Read a local upload from disk and return it as a base64 data URL."""
+    """Read a local upload from disk and return it as a base64 data URL (blocking: to_thread)."""
     encoded = base64.b64encode(path.read_bytes()).decode("utf-8")
     return f"data:{media_type};base64,{encoded}"
 
@@ -249,7 +199,9 @@ def _extract_user_file_parts(messages: list[dict[str, Any]]) -> list[dict[str, A
     return out
 
 
-def _extract_user_content(messages: list[dict[str, Any]]) -> str | list[dict[str, Any]]:
+async def _extract_user_content(
+    messages: list[dict[str, Any]], scope: ConnScope, owner_user_id: str
+) -> str | list[dict[str, Any]]:
     """Extrai o conteúdo da última mensagem do usuário no formato consumível pelo LLM.
 
     Suporta:
@@ -259,6 +211,10 @@ def _extract_user_content(messages: list[dict[str, Any]]) -> str | list[dict[str
 
     Retorna ``str`` simples quando só há texto e ``list[dict]`` multimodal quando
     há ao menos uma imagem (formato compatível com ChatOpenAI/ChatGoogle/etc).
+
+    Attachment URLs are authorised against ``user_uploads`` (own or public only) inside a SHORT
+    ``scope()`` phase; the file read / MarkItDown conversion then runs in a worker thread so a
+    large PDF never blocks the event loop (audit 2026-11-13 core-ai-08).
     """
     if not messages:
         return ""
@@ -291,21 +247,26 @@ def _extract_user_content(messages: list[dict[str, Any]]) -> str | list[dict[str
                 )
                 if not url:
                     continue
-                local_path = _resolve_local_upload(url)
+                local_path: Path | None = None
+                if not url.startswith("data:"):
+                    async with scope() as db:
+                        local_path = await resolve_authorized_upload(db, url, owner_user_id)
                 if media_type.startswith("image/") or ptype == "image":
                     if local_path is not None:
                         effective_media = media_type or (
                             mimetypes.guess_type(local_path.name)[0] or "image/jpeg"
                         )
-                        image_url_value = _file_to_data_url(local_path, effective_media)
+                        image_url_value = await anyio.to_thread.run_sync(
+                            _file_to_data_url, local_path, effective_media
+                        )
                     else:
                         image_url_value = url
                     image_parts.append({"type": "image_url", "image_url": {"url": image_url_value}})
                 else:
                     if local_path is not None:
-                        text = _document_to_text(local_path)
+                        text = await anyio.to_thread.run_sync(_document_to_text, local_path)
                     else:
-                        text = _data_url_to_text(url, media_type)
+                        text = await anyio.to_thread.run_sync(_data_url_to_text, url, media_type)
                     if text:
                         filename = part.get("filename") or part.get("name") or "arquivo"
                         document_chunks.append(
@@ -347,14 +308,18 @@ async def chat_completions(
     request: ChatRequest,
     ctx: dict = Depends(get_auth_context),
     agents_registry: dict = Depends(get_agents_registry),
-    conn: Connection = Depends(get_conn),
+    scope: ConnScope = Depends(get_conn_scope),
 ):
     """
     OpenAI-compatible chat endpoint.
     Supports:
     - Streaming (stream=True) with XML status tags.
     - Non-streaming (stream=False).
-    - File processing (via 'files' field).
+    - Attachments via the ``parts`` of the last user message (own ``/uploads`` URLs only).
+
+    No ``Depends(get_conn)`` here on purpose: a yield-dependency stays open until the whole
+    StreamingResponse is sent, pinning 1 of ``max_size`` pool connections per running answer
+    (audit 2026-11-13 core-performance-01). Each DB phase borrows one through ``scope()``.
     """
     try:
         # 1. Validation
@@ -364,23 +329,36 @@ async def chat_completions(
         if request.model not in agents_registry:
             raise HTTPException(status_code=404, detail=f"Model '{request.model}' not found")
 
-        # 2. File Processing
-        # `request.files` é caminho legado (server-side paths). O Vercel AI SDK V5
-        # entrega arquivos dentro das `parts` da última user message, então
-        # `_extract_user_content` cuida do caso multimodal moderno.
-        messages = await _process_files(request.files, request.messages)
+        agent_info = agents_registry[request.model]
+        session_id = request.session_id or f"session_{uuid.uuid4().hex[:8]}"
+        # Identity comes from the auth seam (header/token), never the request body.
+        user_id = ctx["user_id"]
+        tenant_id = ctx["tenant_id"]
 
-        # 3. Setup
-        user_query = _extract_user_content(messages)
-        user_file_parts = _extract_user_file_parts(messages)
-        user_visible_text = _extract_user_visible_text(messages)
+        # 2. Thread ownership + spend cap, BEFORE any file work or model call. `session_id` is
+        # client-supplied and the LangGraph checkpoint is keyed by thread_id alone: without the
+        # owner check a foreign id resumes the victim's context and `save_chat` overwrites their
+        # history (audit 2026-11-13 core-ai-02).
+        async with scope() as db:
+            owner = await get_chat_owner(db, session_id)
+            if owner is not None and owner[0] != user_id:
+                raise HTTPException(status_code=403, detail="Not allowed to use this thread")
+            try:
+                await ensure_within_budget(db, tenant_id)
+            except AiBudgetExceededError:
+                raise budget_http_exception() from None
+
+        # 3. Setup (attachments come from `parts`; see ChatRequest)
+        user_query = await _extract_user_content(request.messages, scope, user_id)
+        user_file_parts = _extract_user_file_parts(request.messages)
+        user_visible_text = _extract_user_visible_text(request.messages)
         if not user_query and not user_file_parts:
             raise HTTPException(status_code=400, detail="No user query found")
 
         # Defesa em profundidade: se o modelo não suporta imagem mas o cliente
         # enviou parts image_url assim mesmo, retornamos 400 antes de gastar
         # uma request com erro confuso do provider.
-        agent_caps = agents_registry[request.model].get("capabilities") or {}
+        agent_caps = agent_info.get("capabilities") or {}
         if (
             isinstance(user_query, list)
             and any(p.get("type") == "image_url" for p in user_query)
@@ -394,10 +372,6 @@ async def chat_completions(
                 ),
             )
 
-        agent_info = agents_registry[request.model]
-        session_id = request.session_id or f"session_{uuid.uuid4().hex[:8]}"
-        # Identity comes from the auth seam (header/token), never the request body.
-        user_id = ctx["user_id"]
         active_client_id = ctx["client_id"] or request.active_client_id
         completion_id = f"chatcmpl-{uuid.uuid4().hex[:29]}"
         current_timestamp = int(time.time())
@@ -421,20 +395,19 @@ async def chat_completions(
                         completion_id,
                         current_timestamp,
                         request.model,
-                        conn=conn,
                         active_client_id=active_client_id,
                         tenant_id=ctx["tenant_id"],
                         user_file_parts=user_file_parts,
                         user_visible_text=user_visible_text,
                     ):
                         yield chunk
-                except Exception as e:
+                except Exception:
                     log.exception(
                         "chat_stream_iteration_failed",
                         session_id=session_id,
                         model=request.model,
                     )
-                    yield sse_error_chunk(f"Stream interrupted: {e!s}")
+                    yield sse_error_chunk("A resposta foi interrompida. Tente novamente.")
                 yield "data: [DONE]\n\n"
 
             return StreamingResponse(
@@ -460,6 +433,14 @@ async def chat_completions(
             client_id=active_client_id,
             tenant_id=ctx["tenant_id"],
         )
+        await _claim_thread_turn(
+            scope,
+            session_id=session_id,
+            user_id=user_id,
+            agent_id=request.model,
+            user_text=user_visible_text,
+            assistant_text=response_text,
+        )
 
         return {
             "id": completion_id,
@@ -482,5 +463,8 @@ async def chat_completions(
 
     except HTTPException:
         raise
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=str(e)) from e
+    except Exception:
+        # Never leak internal exception text (SQL fragments, upstream API errors, paths):
+        # the traceback goes to the log, the client gets a generic message.
+        log.exception("chat_completions_unhandled_error")
+        raise HTTPException(status_code=500, detail="Internal error") from None

@@ -19,6 +19,10 @@ agent worker, generalized 2026-09-30):
   without a cap fires hundreds of simultaneous requests and the provider 429s all of them.
 * **Retry only what is transient** (429/5xx/timeouts, jittered exponential backoff). A bad
   credential or payload returns the same error N times slower, and hides the cause in the log.
+* **Spend cap.** When the `UsageContext` carries a `tenant_id`, `complete*` first calls
+  `ai_budget.enforce_for_usage` and raises `AiBudgetExceededError` if the tenant already spent its
+  monthly cap (audit 2026-11-13 skills-backend-02). The limiter/retry live in `llm_limits.py` and
+  are ALSO applied inside the chat model (`ChatOpenRouter`), so agents get them too.
 * **Cost on every call.** `LlmResult.cost_usd` is the REAL upstream cost when OpenRouter reports
   it (`provider_cost_usd`), else the price-table estimate. Pass a `UsageContext` and the
   `usage_recorder` callback also persists the row in `agent_message_usage` — without one the
@@ -27,44 +31,31 @@ agent worker, generalized 2026-09-30):
 
 from __future__ import annotations
 
-import random
-from collections.abc import Awaitable, Callable, Sequence
+from collections.abc import Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-import anyio
 from langchain_core.messages import AIMessage, BaseMessage, HumanMessage, SystemMessage
 from langchain_core.tools import BaseTool
 from pydantic import BaseModel
 
+from api.core.agents.ai_budget import enforce_for_usage
 from api.core.agents.callbacks import usage_recorder
 from api.core.agents.custom_providers import init_model
+from api.core.agents.llm_limits import (  # noqa: F401  (re-exported: public API of this module)
+    BACKOFF_BASE_SECONDS,
+    BACKOFF_MAX_SECONDS,
+    RETRYABLE_MARKERS,
+    RETRYABLE_STATUS,
+    is_retryable,
+    with_llm_retry,
+)
 from api.core.agents.models import ModelConfig, Models, compute_cost_usd
 from api.core.logging import get_logger
-from config.settings import settings
 
 log = get_logger(__name__)
 
 DEFAULT_MODEL: ModelConfig = Models.OpenRouter.CLAUDE_HAIKU_5_5
-
-_limiter = anyio.CapacityLimiter(settings.agents.max_concurrent_llm)
-
-# Provider queue / momentary unavailability / gateway timeout. 4xx for credential or payload
-# is NOT here: repeating an invalid payload returns the same error, only slower.
-RETRYABLE_STATUS: frozenset[int] = frozenset({408, 409, 425, 429, 500, 502, 503, 504})
-# Fallback when the exception carries no status (connection resets, SDK timeouts).
-RETRYABLE_MARKERS: tuple[str, ...] = (
-    "rate limit",
-    "overloaded",
-    "temporarily unavailable",
-    "service unavailable",
-    "timeout",
-    "timed out",
-    "connection reset",
-    "connection error",
-)
-BACKOFF_BASE_SECONDS = 1.5
-BACKOFF_MAX_SECONDS = 30.0
 
 
 @dataclass(frozen=True, slots=True)
@@ -117,52 +108,6 @@ class StructuredResult[T: BaseModel]:
     raw: LlmResult
 
 
-def _status_code(exc: BaseException) -> int | None:
-    for attribute in ("status_code", "http_status", "code"):
-        value = getattr(exc, attribute, None)
-        if isinstance(value, int):
-            return value
-    value = getattr(getattr(exc, "response", None), "status_code", None)
-    return value if isinstance(value, int) else None
-
-
-def is_retryable(exc: BaseException) -> bool:
-    """Only what is transient. When in doubt, do NOT retry."""
-    status = _status_code(exc)
-    if status is not None:
-        return status in RETRYABLE_STATUS
-    message = str(exc).lower()
-    return any(marker in message for marker in RETRYABLE_MARKERS)
-
-
-def _backoff_seconds(attempt: int) -> float:
-    """Exponential with jitter — without jitter N workers retry at the same instant."""
-    ceiling = min(BACKOFF_BASE_SECONDS * (2**attempt), BACKOFF_MAX_SECONDS)
-    return random.uniform(ceiling / 2, ceiling)  # jitter, not crypto
-
-
-async def with_llm_retry[R](call: Callable[[], Awaitable[R]], *, label: str) -> R:
-    """Run `call` under the process limiter, retrying transient provider errors."""
-    attempts = max(settings.agents.llm_max_retries, 1)
-    async with _limiter:
-        for attempt in range(attempts):
-            try:
-                return await call()
-            except Exception as exc:
-                if not is_retryable(exc) or attempt == attempts - 1:
-                    raise
-                delay = _backoff_seconds(attempt)
-                log.warning(
-                    "llm_call_retry",
-                    label=label,
-                    attempt=attempt + 1,
-                    delay_seconds=round(delay, 2),
-                    status_code=_status_code(exc),
-                )
-                await anyio.sleep(delay)
-    raise RuntimeError("unreachable: retry loop always returns or raises")
-
-
 def cost_of(message: AIMessage, config: ModelConfig) -> tuple[float, bool]:
     """`(cost_usd, is_real)` — real when the gateway reported what the upstream charged."""
     reported = (message.response_metadata or {}).get("provider_cost_usd")
@@ -209,6 +154,7 @@ async def complete(
         )
         summary = result.text
     """
+    await enforce_for_usage(usage.tenant_id if usage else None)
     chat_model = init_model(model, streaming=False, **overrides)
     runnable = chat_model.bind_tools(list(tools)) if tools else chat_model
     config = usage.runnable_config() if usage else {}
@@ -244,6 +190,7 @@ async def complete_structured[T: BaseModel](
 
         lead = (await complete_structured(message_text, Lead, usage=ctx)).value
     """
+    await enforce_for_usage(usage.tenant_id if usage else None)
     overrides.setdefault("reasoning", False)
     overrides.setdefault("reasoning_effort", None)
     chat_model = init_model(model, streaming=False, **overrides)

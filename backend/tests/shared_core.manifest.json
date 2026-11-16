@@ -1,0 +1,7 @@
+{
+  "repo": "agents-template",
+  "files": {
+    "backend/src/api/services/cache/valkey_client.py": "fc1db70efa6a978a005b693ac4063750be30abec227bb8d25c0194a6c14f7c98"
+  },
+  "exceptions": {}
+}

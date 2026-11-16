@@ -1,7 +1,7 @@
 # =============================================================================
 # Stage 1 — builder: install deps into an isolated /app/.venv via uv
 # =============================================================================
-FROM python:3.13.13-slim-trixie AS builder
+FROM python:3.13.18-slim-trixie AS builder
 
 WORKDIR /app
 
@@ -17,7 +17,7 @@ ENV UV_PROJECT_ENVIRONMENT=/app/.venv \
     UV_COMPILE_BYTECODE=1 \
     UV_LINK_MODE=copy
 
-COPY --from=ghcr.io/astral-sh/uv:0.11.18 /uv /uvx /bin/
+COPY --from=ghcr.io/astral-sh/uv:0.13.8 /uv /uvx /bin/
 
 COPY pyproject.toml uv.lock .python-version ./
 RUN uv sync --frozen --no-dev --no-install-project
@@ -25,7 +25,7 @@ RUN uv sync --frozen --no-dev --no-install-project
 # =============================================================================
 # Stage 2 — runtime: non-root, minimal apt surface, prebuilt venv on PATH
 # =============================================================================
-FROM python:3.13.13-slim-trixie AS runtime
+FROM python:3.13.18-slim-trixie AS runtime
 
 # Runtime libs for OpenCV headless (image → AVIF in config/uploads.py).
 RUN apt-get update && apt-get install -y --no-install-recommends \
@@ -54,7 +54,10 @@ RUN install -d -o app -g app -m 0750 /app/uploads
 ENV PATH="/app/.venv/bin:$PATH" \
     PYTHONPATH=/app/src:/app \
     PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
+    PYTHONUNBUFFERED=1 \
+    # audit 2026-11-13 skills-backend-08: OpenCV refuses to decode >50 MP (formats the header
+    # parser in config/uploads.py does not read, e.g. TIFF); keep equal to MAX_IMAGE_PIXELS.
+    OPENCV_IO_MAX_IMAGE_PIXELS=50000000
 
 USER app:app
 

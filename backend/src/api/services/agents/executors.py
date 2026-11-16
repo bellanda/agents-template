@@ -1,5 +1,14 @@
+import asyncio
 from typing import Any
 
+from langgraph.errors import GraphRecursionError
+
+from api.core.agents.run_limits import (
+    TURN_STEP_LIMIT_USER_MESSAGE,
+    TURN_TIMEOUT_USER_MESSAGE,
+    run_limits_config,
+    turn_timeout_seconds,
+)
 from api.core.logging import get_logger
 
 log = get_logger(__name__)
@@ -122,6 +131,7 @@ async def execute_agent(
     """
     agent = agent_info["agent"]
     config: dict = {
+        **run_limits_config(),
         "configurable": {"thread_id": session_id, "tenant_id": tenant_id},
         "metadata": {
             "thread_id": session_id,
@@ -133,14 +143,22 @@ async def execute_agent(
     }
 
     try:
-        response = await agent.ainvoke(
-            {"messages": [{"role": "user", "content": query}]},
-            config=config,
-        )
+        async with asyncio.timeout(turn_timeout_seconds()):
+            response = await agent.ainvoke(
+                {"messages": [{"role": "user", "content": query}]},
+                config=config,
+            )
         return _extract_message_content(response)
-    except Exception as e:
+    except TimeoutError:
+        log.warning("execute_agent_timeout", agent_id=agent_id, session_id=session_id)
+        return f"❌ {TURN_TIMEOUT_USER_MESSAGE}"
+    except GraphRecursionError:
+        log.warning("execute_agent_step_limit", agent_id=agent_id, session_id=session_id)
+        return f"❌ {TURN_STEP_LIMIT_USER_MESSAGE}"
+    except Exception:
+        # No `str(e)` to the client: provider/SQL/path text belongs in the log only.
         log.exception("execute_agent_failed", agent_id=agent_id, session_id=session_id)
-        return f"❌ Desculpe, ocorreu um erro inesperado: {e!s}"
+        return "❌ Desculpe, ocorreu um erro inesperado. Tente novamente."
 
 
 async def call_agent_async(

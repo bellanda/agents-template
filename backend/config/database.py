@@ -7,7 +7,8 @@
 - orjson codec installed on every connection for fast json/jsonb.
 """
 
-from collections.abc import AsyncGenerator
+from collections.abc import AsyncGenerator, AsyncIterator, Callable
+from contextlib import AbstractAsyncContextManager, asynccontextmanager
 
 import asyncpg
 import orjson
@@ -88,3 +89,46 @@ async def get_conn() -> AsyncGenerator[asyncpg.Connection]:
 
     async with asyncpg_pool.acquire() as connection:
         yield connection
+
+
+# ----------------------------------------------------------------------------
+# CONNECTION SCOPE: work that alternates DB and slow network (LLM, SSE)
+# ----------------------------------------------------------------------------
+
+# One DB phase: `async with scope() as db:`.
+ConnScope = Callable[[], AbstractAsyncContextManager[asyncpg.Connection]]
+
+
+@asynccontextmanager
+async def _reuse(conn: asyncpg.Connection) -> AsyncIterator[asyncpg.Connection]:
+    yield conn
+
+
+@asynccontextmanager
+async def _from_pool() -> AsyncIterator[asyncpg.Connection]:
+    pool = await get_pool()
+    async with pool.acquire() as connection:
+        yield connection
+
+
+def db_scope(conn: asyncpg.Connection | None) -> ConnScope:
+    """Connection provider for code that alternates DB and a slow external call.
+
+    With `conn` (test inside a transaction) every phase runs on THAT connection, which keeps
+    the test's rollback boundary. Without it each phase takes a connection from the pool and
+    returns it before the slow part. Audit 2026-11-13 core-performance-01: `Depends(get_conn)`
+    is a yield-dependency, so FastAPI only returns the connection AFTER the whole
+    StreamingResponse is sent; a chat stream that lives for minutes then pins 1 of `max_size`
+    connections per answer and the pool starves.
+    """
+    if conn is not None:
+        return lambda: _reuse(conn)
+    return _from_pool
+
+
+def get_conn_scope() -> ConnScope:
+    """`Depends` for routes that call an LLM / stream: each DB phase borrows and returns a
+    connection instead of `get_conn` holding one for the whole response. Tests override this
+    dependency with `db_scope(db_conn)`. Rule: a route that returns a `StreamingResponse`
+    never receives `conn: Connection = Depends(get_conn)`."""
+    return db_scope(None)

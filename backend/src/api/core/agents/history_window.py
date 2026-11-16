@@ -13,6 +13,9 @@ Strategy:
 - Walk older turns from newest to oldest, keeping `HumanMessage` / `AIMessage` content
   but replacing the heavy `output` of older `ToolMessage` records with a short
   placeholder so the model sees what was asked but not the 5KB JSON payload.
+- Replace inline images (``image_url`` blocks, base64 data URLs) of OLDER user turns by a short
+  text placeholder: the chat inlines each photo as base64 into the graph state, and without this
+  every later turn re-ships (and re-pays for) all earlier photos. Audit 2026-11-13 core-ai-07.
 - Stop once the rough token estimate (`len(content) / 4`) exceeds
   `MAX_TOKENS_HEURISTIC` or once `MAX_MESSAGES_TO_LLM` is reached.
 """
@@ -43,6 +46,7 @@ MAX_MESSAGES_TO_LLM: int = 80
 # the real ceiling lands at ~150-200k tokens, leaving room for tool outputs.
 MAX_TOKENS_HEURISTIC: int = 256_000
 TOKEN_HEURISTIC_DIVISOR: int = 4
+OLD_IMAGE_PLACEHOLDER: str = "[imagem de turno anterior omitida para economizar contexto]"
 TOOL_RESULT_PLACEHOLDER: str = (
     "[resultado de turno anterior omitido para economizar contexto — "
     "se precisar dele de novo, peça ao usuário ou chame a tool novamente]"
@@ -74,6 +78,22 @@ def _replace_tool_message(message: ToolMessage) -> ToolMessage:
     )
 
 
+def _mask_old_images(message: AnyMessage) -> AnyMessage:
+    """Copy of a user message whose ``image_url`` blocks became a text placeholder (else as is)."""
+    content = getattr(message, "content", None)
+    if not isinstance(message, HumanMessage) or not isinstance(content, list):
+        return message
+    if not any(isinstance(b, dict) and b.get("type") == "image_url" for b in content):
+        return message
+    masked = [
+        {"type": "text", "text": OLD_IMAGE_PLACEHOLDER}
+        if isinstance(block, dict) and block.get("type") == "image_url"
+        else block
+        for block in content
+    ]
+    return message.model_copy(update={"content": masked})
+
+
 def _find_current_turn_start(messages: list[AnyMessage]) -> int:
     """Index of the last HumanMessage — anything from there forward is 'this turn'."""
     for index in range(len(messages) - 1, -1, -1):
@@ -98,6 +118,7 @@ def trim_messages_for_llm(messages: list[AnyMessage]) -> list[AnyMessage]:
     kept_previous: list[AnyMessage] = []
     for message in reversed(previous_turns):
         adjusted = _replace_tool_message(message) if isinstance(message, ToolMessage) else message
+        adjusted = _mask_old_images(adjusted)
         cost = _content_length(adjusted) // TOKEN_HEURISTIC_DIVISOR
         if cost > remaining_budget and kept_previous:
             break

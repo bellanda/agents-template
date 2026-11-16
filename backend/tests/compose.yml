@@ -5,7 +5,7 @@
 # Host port 5441 (default) does not collide with the fleet apps (5433/5434/5436); override with TEST_DB_PORT.
 services:
   postgres-test:
-    image: postgres:18-trixie
+    image: postgres:18.7-trixie
     container_name: agents-template-test-db
     environment:
       POSTGRES_USER: postgres

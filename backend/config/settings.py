@@ -117,6 +117,16 @@ class AgentsSettings(BaseModel):
     # DB. Saving through the API invalidates THIS process immediately; other workers converge
     # within the TTL (no cross-process cache in the template — add Valkey if that matters).
     tenant_config_ttl_seconds: float = 30.0
+    # Monthly AI spend cap PER TENANT in USD (core/agents/ai_budget.py), enforced by the
+    # authenticated chat and by `llm.complete*` when the UsageContext carries a tenant_id.
+    # 0 disables the cap (not recommended: "an app without any cap is not acceptable", skill
+    # ai-agents). Audit 2026-11-13 skills-backend-02.
+    monthly_budget_usd_per_tenant: float = 50.0
+    # Hard bounds for ONE agent turn (audit 2026-11-13 core-ai-09). `recursion_limit` is the
+    # LangGraph superstep cap (default 10007 = a tool loop spends until the connection drops);
+    # `turn_timeout_seconds` is a wall-clock `fail_after` around the turn in the chat route.
+    agent_recursion_limit: int = 25
+    agent_turn_timeout_seconds: float = 150.0
 
 
 class ViteSettings(BaseModel):

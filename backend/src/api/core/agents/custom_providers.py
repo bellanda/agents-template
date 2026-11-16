@@ -1,9 +1,13 @@
+from collections.abc import AsyncIterator
 from typing import Any, Final
 
+from langchain_core.callbacks import AsyncCallbackManagerForLLMRun
 from langchain_core.language_models.chat_models import BaseChatModel
+from langchain_core.messages import BaseMessage
 from langchain_core.outputs import ChatGenerationChunk, ChatResult
 from langchain_openai import ChatOpenAI
 
+from api.core.agents.llm_limits import guarded_call, guarded_stream
 from api.core.agents.models import ModelConfig, find_model_config_by_id
 from config.integrations import integrations_config
 
@@ -28,6 +32,34 @@ class ChatOpenRouter(ChatOpenAI):
        Routing is dynamic, so this beats the static price table — both go to ``response_metadata``
        and the usage repository prefers the real one.
     """
+
+    # Process limiter + backoff for EVERY call made through this class (agents included), not only
+    # the `llm.complete*` helpers. Audit 2026-11-13 core-ai-04. `guarded_*` are no-ops inside
+    # `with_llm_retry`, so `complete*` does not double-count.
+    async def _agenerate(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: AsyncCallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> ChatResult:
+        return await guarded_call(
+            lambda: super(ChatOpenRouter, self)._agenerate(messages, stop, run_manager, **kwargs),
+            label=self.model_name,
+        )
+
+    async def _astream(
+        self,
+        messages: list[BaseMessage],
+        stop: list[str] | None = None,
+        run_manager: AsyncCallbackManagerForLLMRun | None = None,
+        **kwargs: Any,
+    ) -> AsyncIterator[ChatGenerationChunk]:
+        async for chunk in guarded_stream(
+            lambda: super(ChatOpenRouter, self)._astream(messages, stop, run_manager, **kwargs),
+            label=self.model_name,
+        ):
+            yield chunk
 
     def _stamp_openrouter_metadata(self, target: dict, raw: dict) -> None:
         """Rewrite the provider and attach the cost/upstream reported by OpenRouter."""

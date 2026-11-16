@@ -61,9 +61,12 @@ def discover_agents() -> dict[str, Any]:
                 "capabilities": dict(agent_config.capabilities),
             }
         except Exception:
-            # One broken agent must not take the others down, but it must be visible — a
-            # silent skip looks like "the agent vanished from the picker".
-            log.exception("agent_discovery_failed", module=module_path)
+            # Log with the traceback AND fail the startup: a skipped agent looks like "it
+            # vanished from the picker" (404 'model not found') while the app boots "healthy".
+            # A module that cannot be imported/built is a deploy bug, never a runtime state
+            # (audit 2026-11 r2-kailos-be-portals-messaging-05).
+            log.exception("agent_discovery_failed", agent=agent_dir.name, module=module_path)
+            raise
 
     return agents
 

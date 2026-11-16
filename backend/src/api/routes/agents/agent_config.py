@@ -9,7 +9,7 @@ One Markdown per (tenant, agent), built in ChatGPT and pasted on the frontend sc
 from asyncpg import Connection
 from fastapi import APIRouter, Depends
 
-from api.core.exceptions import NotFoundError
+from api.core.exceptions import DoesNotExistError
 from api.schemas.agents.agent_config import (
     AgentConfigResponse,
     AgentConfigUpdate,
@@ -25,7 +25,7 @@ router = APIRouter(tags=["Agent Config"])
 
 def ensure_agent_exists(agent_id: str, registry: dict) -> None:
     if agent_id not in registry:
-        raise NotFoundError(f"Agente {agent_id!r} não encontrado.")
+        raise DoesNotExistError(detail=f"Agente {agent_id!r} não encontrado.")
 
 
 @router.get("/{agent_id}/config")

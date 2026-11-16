@@ -16,6 +16,20 @@ SET client_min_messages = warning;
 SET row_security = off;
 
 --
+-- Name: pg_stat_statements; Type: EXTENSION; Schema: -; Owner: -
+--
+
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements WITH SCHEMA public;
+
+
+--
+-- Name: EXTENSION pg_stat_statements; Type: COMMENT; Schema: -; Owner: 
+--
+
+COMMENT ON EXTENSION pg_stat_statements IS 'track planning and execution statistics of all SQL statements executed';
+
+
+--
 -- Name: update_updated_at_column(); Type: FUNCTION; Schema: public; Owner: -
 --
 
@@ -348,6 +362,13 @@ CREATE INDEX ix_user_uploads_owner_user_id ON public.user_uploads USING btree (o
 
 
 --
+-- Name: ix_user_uploads_url; Type: INDEX; Schema: public; Owner: -
+--
+
+CREATE INDEX ix_user_uploads_url ON public.user_uploads USING btree (url) WHERE (deleted_at IS NULL);
+
+
+--
 -- Name: uq_agent_config_versions_config_id_version; Type: INDEX; Schema: public; Owner: -
 --
 
@@ -401,4 +422,6 @@ ALTER TABLE ONLY public.agent_config_versions
 
 INSERT INTO public.schema_migrations (version) VALUES
     ('20260427000000'),
-    ('20260930120000');
+    ('20260930120000'),
+    ('20261113194329'),
+    ('20261113194943');
