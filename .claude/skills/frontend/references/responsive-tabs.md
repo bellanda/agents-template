@@ -128,6 +128,33 @@ A chave do `Select` NUNCA é `""` (o Radix recusa `SelectItem value=""`) — a s
 própria (`config`). Envolva as duas formas num `<div>`: soltas como irmãs num `space-y-*`, a margem
 cai no elemento escondido de um dos breakpoints. Canônico: `EventContextNav` do nexarena.
 
+## Ações da página (⋮) na linha das abas
+
+Menu de ações da página de detalhe (⋮ do veículo, do cliente…) **divide a linha das abas**; nunca
+ganha uma linha própria acima delas (usuário 2026-11-16: "o ⋮ come uma linha inteira lá em cima").
+
+```tsx
+<Tabs value={tab} onValueChange={setTab} className="w-full">
+  <div className="flex items-center gap-2">
+    {/* container NOMEADO `tabs`: o tier (cheio → compacto → Select) mede só esta fatia */}
+    <div className="@container/tabs min-w-0 flex-1">
+      <TabsList variant="ghost" className="justify-start gap-1" selectClassName="min-w-0">
+        {/* triggers */}
+      </TabsList>
+    </div>
+    <PageActionsMenu />
+  </div>
+  <TabsContent … />
+</Tabs>
+```
+
+Por quê: `getTabsTier` usa classes `@max-[Nrem]/tabs`, que casam com o container nomeado MAIS PRÓXIMO.
+Sem o wrapper, o tier mediria a `Tabs` inteira (que inclui o ⋮) e as abas comprimiriam tarde demais
+ou vazariam. `min-w-0 flex-1` deixa a lista encolher; no celular o `Select` ocupa a fatia e o ⋮
+fica ao lado. Conteúdo opcional acima das abas (badge de entrada, avisos) fica num wrapper
+`empty:hidden` com a margem no próprio wrapper, para não deixar linha vazia quando não renderiza.
+Canônico: `$vehicleId.tsx` do kailos.
+
 ## PROIBIDO
 
 - ❌ Tira de 3+ `<Button asChild><Link>` com `flex-wrap` e nada no mobile — empilha em várias linhas.
@@ -139,6 +166,7 @@ cai no elemento escondido de um dos breakpoints. Canônico: `EventContextNav` do
 - ❌ Duplicar a fonte de verdade das abas (um array pro Select, JSX pra tira).
 - ❌ Passar `value={value}` (a prop crua) para o `TabsPrimitive.Root` — tem que ser `value={current}`.
   Ver item 1: com a prop crua o Select vira enfeite no call site não controlado.
+- ❌ Menu de ações (⋮) em `<div className="flex justify-end">` numa linha própria acima das abas.
 - ❌ `mobile="strip"` como default por preguiça de conferir o rótulo em 375px.
 
 ## Auditoria
