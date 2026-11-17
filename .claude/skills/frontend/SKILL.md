@@ -178,6 +178,15 @@ standalone e são linkados no roteamento (fim do arquivo).
   de `lib/utils/currency.ts` (decisão 2026-11-13: `replace(",", ".")` perde o separador de milhar —
   "1.234,56" vira 1.234). PROIBIDO `replace(",", ".")` e `parseFloat` de input de usuário no call
   site; verificação `rg -n 'replace\(",", "\."\)' src`.
+  **Número digitado (km, dias, minutos, %, quantidade, custo) — padrão 2026-11-17** (reunião da loja: o
+  "0" não apagava e o iPhone sofria na Avaliação › "Lavar bancos"): PROIBIDO `type="number"` em valor
+  digitado (spinner, teclado errado, mantém "0", vírgula do pt-BR quebra) e PROIBIDO `|| 0`/`?? 0` no
+  `onChange` (reinsere o 0 a cada tecla). Use `CurrencyInput` (`decimals={0}` = inteiro, teclado
+  `numeric`; `2` = dinheiro/%) ou `NumericField` (`forms/NumericField.tsx`: rótulo + dica, `onChange(number | null)`,
+  vazio = `null`, quem usa decide). O estado do form é a STRING digitada; converte só no blur/submit
+  (`parseDecimalBR`/`toDecimalInput`). O campo seleciona tudo ao tocar (iOS via `requestAnimationFrame`),
+  `enterKeyHint="done"`, toque ≥ 40 px (`h-10`). Verificação: `rg -n 'type="number"' src` e `rg -n '\|\| 0\)' src`
+  (`type="number"` de eixo Recharts é outra coisa).
   **Exibir número/dinheiro = `lib/utils/money.ts`** (padrão 2026-11-16, nasceu no optimuslar): `formatDecimal(value, digits)`
   (pt-BR, casas fixas, "0,874"; null/NaN → "—"; um `Intl.NumberFormat` por precisão) e
   `formatCurrencyShort(value)` (eixo/legenda "R$ 1,5M" / "R$ 850K"). PROIBIDO `toFixed`/`toLocaleString`/

@@ -74,7 +74,19 @@ paths:
   de fechamento = fim do dia. Trava `tests/test_timezone_guard.py` + canário UTC+14 na suíte; linha
   correta leva `tz-ok: <porquê>`. Gate `database` → `local-time.md`.
 - **Backup do Postgres**: todo app em produção roda o serviço `pg-backup` (dump diário às 03:00 SP no bucket privado, `backups/postgres/`, 1 por dia por 3 dias + 2 semanais + 1 mensal + só o último pré-deploy = no máximo 7 dumps, decisão 2026-10-26) e o deploy roda `docker compose run --rm pg-backup now` ANTES do build (migration ruim tem cópia anterior). NUNCA `down -v` em prod. Desenho, restore e quando migrar para backup físico → skill `database` → `references/backup-b2.md`.
+- **Funções personalizadas** (2026-11-17): `organizations.custom_roles` é `{key: {label, description, permissions, based_on}}` (chave slug minúscula, imutável; `based_on` = função PADRÃO de origem). Leitura SÓ por `resolve_membership_permissions`/`AuthContext.effective_permissions`; CRUD só por `/organizations/admin/{org_id}/roles` com `role:manage`, permissões ⊆ as do chamador, excluir função em uso = 409. Guard é sempre permissão, nunca o literal do papel (agrupar por papel = padrão OU `based_on`). Dividir/criar chave de permissão não pode mudar o acesso de ninguém (migration expande `custom_roles`/`permissions_override`/convites + teste de paridade). Skill `auth` → `rbac-custom-roles.md`.
 - **Núcleo de auth compartilhado é byte-idêntico** (`login_throttle`, `auth_context_cache`, `valkey_client`, `client_ip`; e `permission_service` + ponte/assinante de invalidação nos apps com RBAC por organização): PROIBIDO editar a cópia do app. Muda o canônico em `<agents>/shared-backend/canonical/` e roda `rules.py --shared-only backend --shared-apply`; `backend/tests/test_shared_core_drift.py` falha se divergir. O que é de produto fica no adaptador do app (`services/auth/org_access_policy.py`, `org_admin_gate.py`, settings de tentativas/janela). nexarena e optimuslar mantêm `permission_service` próprio (modelo de permissão diferente; decisão 2026-11-15).
+- **Um valor, um lugar** (decisão do usuário 2026-11-17, incidente QUB5J53 no kailos). Todo dado
+  de negócio tem UMA coluna dona.
+  - No incidente, o preço de showroom vivia no carro e numa cópia em
+    `proposal_data.closing`. O "Editar valores" gravava só a cópia, e o Desfecho mostrava R$ 47.900
+    enquanto o carro, a vitrine e os portais seguiam em R$ 87.900.
+  - Cópia (snapshot em JSONB, coluna espelho) só existe como registro do MOMENTO e nunca é lida
+    como valor atual. Para cobrir lacuna, use `COALESCE(dona, cópia)`, nunca a cópia antes.
+  - Todo caminho que escreve o valor (rota, ação aprovada, import, sync) passa por UM serviço, com
+    a mesma permissão, a mesma validação, o mesmo Histórico e os mesmos efeitos depois do commit.
+  - Campo novo: rode `rg` do nome antes. Se o dado já existe, grave lá.
+  - Testes: "Escrita → releitura pelo que a TELA lê" em `tests.md`.
 - **Seed de bootstrap (`scripts/load_default_data.py`) é INSERT-ONLY por padrão**. Ele é upsert por chave: linha que já existe fica intacta, e o UPDATE coluna-a-coluna só sai com `--update` explícito — em base viva ele apaga o que a app gravou em runtime (`last_login_at`, CNPJ, `custom_roles`, `permissions_override`). O guard de ambiente (`ENVIRONMENT=prod|staging` exige `--yes-i-know`) vale **SÓ para `--update`**: o `CMD` do Dockerfile é `load_default_data.py online && exec granian`, então barrar o insert-only em prod não protege linha nenhuma e **derruba a API inteira pelo `&&`** — já aconteceu em produção. Os JSONs de `default_data/` carregam só identidade de bootstrap; coluna que a aplicação é dona em runtime NÃO entra no payload.
 
 ## Directory Layout (FastAPI)

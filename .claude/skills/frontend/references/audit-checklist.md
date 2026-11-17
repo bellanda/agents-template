@@ -68,11 +68,13 @@ rg -n -B2 "openFileDialog\(\)" frontend/src --glob '!**/ai-elements/**' | rg "pr
 rg -n "preventDefault" frontend/src/components/ai-elements/prompt-input.tsx
 rg -n "hasAttachments|disabled=\{!.*(input|text)" frontend/src/components/chat
 # frescor e cache (2026-11-13): mutation sem invalidação, form espelhando query, spinner eterno, dinheiro à mão
-rg -n "useMutation\(" frontend/src | rg -v "test"    # cada uma: onSuccess com invalidateEntity/setQueryData (ou comentário do porquê)
+bunx vitest run src/lib/api/__tests__/mutation-refresh-guard.test.ts   # guarda: toda useMutation atualiza a tela (refresh-ok: <motivo> nas que não mudam dado)
 rg -n "staleTime: *[1-9]\d{5,}|refetchOnWindowFocus: *false" frontend/src --glob '!**/*.test.*'   # cache longo sem comentário = bug
 rg -n "useEffect\(.*set\w*\((\w+\.)?data" -A2 frontend/src --glob '!**/*.test.*'   # form copiando query → useSyncedDraft
 rg -n "isLoading \|\| !|\|\| !data\b" frontend/src --glob '!**/*.test.*'   # falha vira spinner eterno → QueryBoundary
 rg -n 'toFixed\(|replace\(",", "\."\)|parseFloat\(' frontend/src --glob '!**/*.test.*'   # dinheiro/quantidade → parseMoney/CurrencyInput
+rg -n 'type="number"' frontend/src --glob '!**/*.test.*'   # número digitado → CurrencyInput/NumericField (eixo Recharts `<XAxis type="number">` é outra coisa)
+rg -n '\|\| 0\)' frontend/src --glob '!**/*.test.*'   # onChange que reinsere o 0 a cada tecla → string no estado, converte no blur/submit
 rg -n "new EventSource|EventSource\(" frontend/src --glob '!**/*.test.*'   # SSE próprio → useResilientStream
 # hosts externos × CSP
 rg -no 'fetch\("https://[a-z0-9.-]+' frontend/src
@@ -218,6 +220,7 @@ rg -o 'Content-Security-Policy "[^"]*"' config/nginx/snippets/security-headers-b
 - [ ] **`if (isLoading || !data)`** → `QueryBoundary` / `ErrorState` com retry (`feedback-states.md`).
 - [ ] **Número em tela por `toFixed`/`toLocaleString`** → `formatDecimal`/`formatCurrencyShort` (`lib/utils/money.ts`, gate 8h).
 - [ ] **Dinheiro por `replace(",", ".")`/`parseFloat`** → `CurrencyInput` + `parseMoney` (gate 8h).
+- [ ] **Número digitado em `<Input type="number">` ou com `onChange={… || 0}`** (o "0" não apaga, iPhone sofre) → `NumericField`/`CurrencyInput decimals={0|2}`, estado string, select-all, `h-10` (gate 8h, 2026-11-17).
 
 ### Mobile, PWA & CSP
 

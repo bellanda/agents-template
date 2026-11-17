@@ -122,18 +122,57 @@ só com motivo e dono.
 | Payload inválido / business rule violation | 400 / 409 / 422                                                  |
 | Empty result em list/search                | 200 + empty list                                                 |
 
+**Guarda "toda rota de escrita tem teste que deu certo"** (auditoria de CRUD 2026-11-17, incidente
+QUB5J53):
+
+- **O que é:** plugin `tests/write_route_coverage.py` (canônico em `shared-backend/`, byte-idêntico,
+  com autoteste `tests/test_write_route_coverage.py`), ligado por `pytest_plugins` no `conftest.py`.
+- **O que conta:** só resposta 2xx/3xx em POST/PUT/PATCH/DELETE. Teste que só recebe 403/422 não
+  prova que a escrita funciona.
+- **Modos (`WRITE_ROUTE_COVERAGE`):**
+  - o `check.sh` roda `enforce`: falha com rota nova sem teste e com linha da baseline que ganhou
+    teste ou sumiu, então a baseline só encolhe;
+  - `report` só lista;
+  - `update` reescreve `tests/write_route_coverage_baseline.json`;
+  - sem a variável, o plugin não faz nada.
+- **Baseline:** cada linha leva um motivo de verdade (ex.: "OAuth do Google: precisa do código real,
+  coberto por X"). Nunca "pendente".
+
+**Matriz de CRUD por recurso**, um cenário denso por operação, relendo pelo `GET` que a tela usa
+(regra "Escrita → releitura pelo que a TELA lê" abaixo):
+
+- **Create:** depois do `POST`, o detalhe e a lista mostram os campos enviados.
+- **Update:**
+  - muda todo campo editável, e o `GET` mostra o valor novo;
+  - a resposta do PATCH é igual ao `GET` do detalhe (o `useCrud` põe a resposta direto no cache da
+    tela);
+  - todo caminho extra que grava a mesma coluna (ação aprovada, import, sync, cron) tem o seu
+    teste.
+- **Delete:** o detalhe dá 404 e o item some da lista. No soft-delete, o item não volta.
+- **Bordas:** a tabela acima (outra org = 404, sem permissão = 403, inválido = 422).
+
 ## Assertions — business outcomes
 
 - Confirme business outcomes: status transitions, dados criados/updated, history, calculations, permissions, associations.
 - **Nunca valide só formato.** "Response tem chave `users`" não é teste.
 - Verifique error messages/codes no nível necessário para proteger o contrato. Não acople em texto frágil.
 - Garanta que campos sensíveis nunca vazam (passwords, hashes, private tokens, internal secrets).
+- **Escrita → releitura pelo que a TELA lê** (decisão do usuário 2026-11-17, incidente QUB5J53 no
+  kailos). Teste de escrita (POST/PATCH/PUT, ação aprovada, import) relê o valor pelo endpoint de
+  onde a tela o mostra: o `GET` do recurso, o resumo, o relatório. A resposta do próprio PATCH não
+  conta, porque devolve o que ele mesmo gravou.
+  - No incidente, o teste do PATCH passou com o carro em R$ 87.900 e o Desfecho em R$ 47.900.
+  - Valor gravado por N caminhos (rota direta, ação aprovada, importação, sync) = um teste por
+    caminho, cada um relendo por todas as telas que mostram o valor.
+  - Canônico: kailos `tests/approvals/test_closed_deal_showroom_price.py`. Regra irmã:
+    "Um valor, um lugar" em `backend.md`.
 
 ---
 
 # Frontend Testing (Vitest)
 
-> Aplica-se **quando o user pede** testes de componentes React, hooks, stores ou utils de frontend.
+> Testes fazem parte da entrega (decisão do usuário 2026-10-15): bug corrigido ganha teste de
+> regressão; tela de CRUD ganha o teste de tela abaixo.
 
 ## Stack canônica
 
@@ -144,7 +183,7 @@ só com motivo e dono.
 - Script `"test": "vitest run"`; entra no `check.sh` como step antes do build.
 - Imports explícitos de `"vitest"` (`describe, it, expect, vi`) mesmo com `globals: true`.
 - **vitest 5** marca o teste como falho quando um mock `vi.fn()` devolve promise REJEITADA, mesmo que o app trate o erro. Teste que rejeita request usa função comum como stub (ver kailos `routes/__tests__/public-routes.test.tsx`).
-- **Guardas de frontend na frota**: `data-list-layout.test.tsx` (idêntico nos 6 apps), `lib/api/__tests__/no-raw-fetch.test.ts`, `ios-input-zoom.test.ts`, `timezone-guard.test.ts`, `pwa-contract.test.ts`.
+- **Guardas de frontend na frota**: `data-list-layout.test.tsx` (idêntico nos 6 apps), `lib/api/__tests__/no-raw-fetch.test.ts`, `ios-input-zoom.test.ts`, `timezone-guard.test.ts`, `pwa-contract.test.ts`, `lib/api/__tests__/mutation-refresh-guard.test.ts` (2026-11-17: toda `useMutation` atualiza a tela; `invalidateQueries` com chave à mão só diminui; baseline em `src/test/mutation-refresh-baseline.json`).
 
 ## Onde moram
 
@@ -159,8 +198,32 @@ só com motivo e dono.
   NUNCA implementação (className, estrutura DOM interna).
 - Queries role-first: `getByRole` > `getByLabelText` > `getByText`; `getByTestId` é last resort;
   NUNCA `querySelector`.
-- Mock de API no nível do hook (`vi.mock("@/hooks/useX", ...)`) + `vi.clearAllMocks()` no
-  `beforeEach`. Sem msw.
+- **Tela que GRAVA (CRUD) → fake de API com memória, nunca mock de hook** (auditoria de CRUD
+  2026-11-17). O mock de hook esconde as duas falhas que mais aparecem: a tela que não atualiza
+  depois de salvar e o formulário preenchido pela fonte errada (metade de frontend do QUB5J53).
+  - **Ferramentas:** `src/test/fake-api.ts` (canônico, shared-widgets) + `src/test/crud-world.ts`
+    do app, que liga o fake ao `useDataProvider` via `vi.mock("@/lib/api/context")`.
+  - **Como o fake funciona:** as coleções REST guardam o que a tela grava (o `GET` seguinte
+    devolve o valor novo); `fail("PATCH /x/:id", fakeApiError(409, …))` simula erro; `bodyOf`
+    confere o corpo enviado.
+  - **Cache igual ao do app:** o teste usa `createAppQueryClient()` (`lib/api/query-client.ts`,
+    `staleTime` 30 s), nunca `new QueryClient()`. Com `staleTime` 0 toda tela remontada refaz a
+    busca e esconde a invalidação que falta; em produção, quem volta à lista em < 30 s vê o cache
+    velho (achado na rodada 2 da auditoria, 2026-11-17).
+  - **Exemplo canônico:** kailos `components/contacts/__tests__/contacts-crud.test.tsx`, que monta
+    a rota real com o router de memória.
+  - **Roteiro por recurso, num teste denso:**
+    1. a lista mostra o que está no fake;
+    2. **criar:** o corpo do POST está certo (vazio = `null`, zero = `0`) e o item aparece na lista
+       sem ajuste à mão no teste;
+    3. **editar:** o formulário abre com o valor que a TELA mostra; depois de salvar, o corpo do
+       PATCH está certo e toda parte da tela que mostra o valor mostra o novo;
+    4. **excluir:** o item some;
+    5. **erro 409/403:** o dialog fica aberto com o que foi digitado e nada muda;
+    6. **sem permissão:** o botão some.
+  - **Prova:** tire a invalidação da mutation por um instante e confira que o teste falha.
+- Mock de hook (`vi.mock("@/hooks/useX", ...)`) + `vi.clearAllMocks()` no `beforeEach` só para
+  componente que não grava (exibição, filtro). Sem msw.
 - Componente que usa `useSearch`/`useNavigate`/`useQuery` → harness `renderWithProviders`
   (`src/test/test-utils.tsx`): QueryClient retry-off + router de memória real
   (`createMemoryHistory` + `createRootRoute`); URL assertada via `router.state.location.search`;

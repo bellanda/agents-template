@@ -20,6 +20,9 @@ profunda está nas references abaixo.
 - [ ] **3. Trilha de acesso** — `user_access_events` (LOGIN em todo login, SESSION_RESUMED na
   rotação do refresh com throttle por família no Valkey), prova de acesso/Marco Civil →
   **`references/access-trail.md`**.
+- [ ] **4. RBAC: funções personalizadas e granularidade** — `organizations.custom_roles`, CRUD de funções
+  (`/organizations/admin/{org_id}/roles`), `role:manage`, escalada de privilégio, dividir/criar permissão,
+  migration de chave dividida → **`references/rbac-custom-roles.md`**.
 
 ## Invariantes não negociáveis (sempre)
 
@@ -44,4 +47,5 @@ profunda está nas references abaixo.
 
 - `references/auth-hardened.md` — core completo (JWT, refresh family, cookie, Argon2, denylist, frontend refresh lock).
 - `references/access-trail.md` — trilha de acesso (tabela, throttle Valkey por família, ganchos).
+- `references/rbac-custom-roles.md` — formato do `custom_roles`, API de funções, regras de escalada, invalidação, 9 regras de granularidade, migration de chave dividida.
 - `references/google-login.md` — Login com Google (popup auth-code, exchange, verify, setup Console + yaml/.env).

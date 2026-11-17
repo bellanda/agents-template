@@ -180,6 +180,41 @@ dialog "pula" e a aba curta colapsa). Aba de conteúdo curto (Perfil) preenche c
 blocos rotulados, não com coluna magra solta. Linha de totais (aba Efetivas) é UMA frase corrida
 alinhada à esquerda com separador ` · ` — NUNCA `justify-between` empurrando o sufixo pra borda.
 
+## Funções personalizadas — tela "Funções" (padrão da frota, 2026-11-17)
+
+Tela do hub de configurações (`?settings=funcoes`, ao lado de Membros) onde a org cria funções sob
+medida. Backend: skill `auth` → `rbac-custom-roles.md` (contrato `GET/POST/PATCH/DELETE
+/organizations/admin/{org}/roles`, permissão `role:manage`). Visibilidade da seção = mesma de
+Membros; criar/editar/excluir = `can("role:manage")` checado DENTRO da seção.
+
+| Reference neste diretório      | Vira, no projeto                                   |
+| ------------------------------ | -------------------------------------------------- |
+| `role-editor-helpers.ts`       | `components/roles/role-editor-helpers.ts`          |
+| `role-editor-picker.tsx`       | `components/roles/RolePermissionPicker.tsx`        |
+| `role-editor-dialog.tsx`       | `components/roles/RoleEditorDialog.tsx`            |
+| `role-editor-section.tsx`      | `components/settings/sections/RolesSection.tsx`    |
+| `role-editor-helpers.test.ts`  | `components/roles/__tests__/role-editor-helpers.test.ts` |
+
+- **Lista:** duas seções — "Funções personalizadas" (card com nome, descrição, nº de permissões,
+  nº de membros; editar/excluir) e "Funções padrão" (só leitura, abre `RoleInfoDialog`). Card
+  inteiro é o trigger; ícones de ação ≥36px.
+- **Editor = `FormDialog size="xl"`:** nome, "Começar a partir de…" (Select com TODAS as funções;
+  copia as permissões e grava `based_on` = a própria chave se a base é padrão, senão a `based_on` da
+  base), descrição, e o picker (`PermColumn` x2 + `PermissionSearchInput`, mesmo agrupamento/cores do
+  display read-only). Montado só enquanto aberto (estado inicial por props, sem `useEffect`).
+- **Só concede quem tem:** permissão que o autor não possui fica travada no picker (`GrantLock`
+  com tooltip) e é descartada da cópia da base (aviso "N permissão(ões) ficaram de fora"); função
+  com permissão que o autor não tem não é editável por ele. O backend repete a regra (403).
+- **Excluir:** `ConfirmDialog`; no 409 (função em uso) um segundo `ConfirmDialog` lista membros e
+  convites (o backend manda `detail` em texto com os nomes; `readRoleInUseError` também aceita listas em `details`) e manda trocar a função antes.
+- **Hooks:** `useListRoles(orgId)` mapeia `{key,label}` → `{id,name}` (`toAdminRole`) para os
+  componentes de membro/convite não mudarem; create/update/delete invalidam roles + members +
+  invites; update re-hidrata o `authStore` (o usuário pode ter a função editada).
+- **Listas de membro/convite** usam a MESMA lista de funções (padrão + personalizadas) e o rótulo
+  vem dela (`MemberCard`, perfil do `MemberDetailDialog`) — nunca a chave crua.
+- **Testes:** helpers (base/draft/409), cópia a partir de base com `based_on`, busca do picker,
+  409 com lista, sem `role:manage` sem botões, personalizadas nas listas de membro e convite.
+
 ## Don'ts
 
 - **NUNCA** nuvem plana de badges para listas de permissões — sempre agrupado por domínio.

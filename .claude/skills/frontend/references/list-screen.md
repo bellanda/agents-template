@@ -494,6 +494,8 @@ Some da tela anterior: `PAGE_SIZE`, o param `page`, a aritmética de `lastPage`,
 Estes arquivos são **o mesmo em todo app** (identidade = tokens, nunca o arquivo): `ui/error-state.tsx`
 (+ `.test.tsx`), `ui/confirm-dialog.tsx`, `ui/data-list.tsx`, `ui/data-list-layout.test.tsx`,
 `ui/list-toolbar.tsx`, `ui/entity-picker.tsx` (+ test), `ui/currency-input.tsx` (+ test),
+`forms/NumericField.tsx` (+ test), `forms/FieldHint.tsx` (o "(?)" do campo; Popover e não Tooltip, porque o
+Tooltip do Radix abre e fecha no mesmo toque no celular — 2026-11-17),
 `hooks/useUnsavedChangesGuard.tsx`, `hooks/useRecentlyOpened.ts`, `lib/realtime/{use-resilient-stream,resilient-stream,entity-changed}.ts` (+ 3 testes; ver `realtime-and-push-actions.md`). A lista e as exceções vivem em
 `shared-widgets/shared-widgets.json` (central); o canônico de cada um é o arquivo de mesmo nome
 nesta pasta `references/` (`useRecentlyOpened.ts` = `use-recently-opened.ts`).
