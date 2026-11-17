@@ -596,6 +596,10 @@ def build_upload_sessions_router(user_key_dependency: UserKeyDependency) -> APIR
     async def delete_upload_session(
         session_id: str, user_key: str = Depends(user_key_dependency)
     ) -> Response:
+        # 404 when the session is not this user's (or is gone): answering 204 told the caller
+        # "deleted" while nothing happened (CRUD audit 2026-11-17, user decision). The frontend
+        # never sends DELETE (`chunked-upload.ts` lets the sweeper expire abandoned sessions).
+        await get_session(user_key, session_id)
         await discard_session(user_key, session_id)
         return Response(status_code=204)
 

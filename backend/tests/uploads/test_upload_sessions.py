@@ -33,13 +33,18 @@ def staging(tmp_path, monkeypatch):
     return tmp_path
 
 
+# Mounted where every app mounts it, so the write-route coverage guard (tests/write_route_coverage.py)
+# counts these hits as the app's real `/api/v1/upload-sessions` routes (CRUD audit 2026-11-17).
+API_PREFIX = "/api/v1"
+
+
 @pytest.fixture
 def app(staging):
     app = FastAPI()
-    app.include_router(sessions.build_upload_sessions_router(fake_user_key))
+    app.include_router(sessions.build_upload_sessions_router(fake_user_key), prefix=API_PREFIX)
     staged = sessions.make_staged_or_direct_file(fake_user_key)
 
-    @app.post("/consume")
+    @app.post(f"{API_PREFIX}/consume")
     async def consume(file: UploadFile = Depends(staged), fail: bool = False) -> dict:
         body = await file.read()
         if fail:
@@ -52,7 +57,7 @@ def app(staging):
 @pytest.fixture
 async def client(app):
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://t") as http:
+    async with httpx.AsyncClient(transport=transport, base_url=f"http://t{API_PREFIX}") as http:
         yield http
 
 
@@ -150,17 +155,26 @@ async def test_chunk_bigger_than_chunk_bytes_is_413(client):
     assert (await put(client, sid, 0, b"a" * (CHUNK + 1))).status_code == 413
 
 
-async def test_other_users_session_is_404_and_delete_is_204(client):
+async def test_other_users_session_is_404_on_every_verb_and_only_the_owner_deletes(client):
     sid = (await create(client, CHUNK, user="1")).json()["id"]
 
     assert (await put(client, sid, 0, b"a", user="2")).status_code == 404
     assert (await client.get(f"/upload-sessions/{sid}", headers={"x-user": "2"})).status_code == 404
     bogus = await client.post("/consume", data={"file_upload_id": sid}, headers={"x-user": "2"})
     assert bogus.status_code == 404
+    # DELETE of someone else's session used to answer 204 ("deleted") while nothing happened
+    # (CRUD audit 2026-11-17, user decision: answer "não encontrado").
+    assert (
+        await client.delete(f"/upload-sessions/{sid}", headers={"x-user": "2"})
+    ).status_code == 404
+    assert (await client.get(f"/upload-sessions/{sid}", headers={"x-user": "1"})).status_code == 200
     assert (
         await client.delete(f"/upload-sessions/{sid}", headers={"x-user": "1"})
     ).status_code == 204
     assert (await client.get(f"/upload-sessions/{sid}", headers={"x-user": "1"})).status_code == 404
+    assert (
+        await client.delete(f"/upload-sessions/{sid}", headers={"x-user": "1"})
+    ).status_code == 404
 
 
 async def test_oversize_create_is_413_per_category_and_auth_is_required(client, monkeypatch):
