@@ -1,4 +1,5 @@
 import { deleteThread, fetchThreads, type Thread } from "@/lib/api";
+import { invalidateEntity } from "@/lib/api/invalidation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 const THREADS_STALE_TIME_MS = 60_000;
@@ -34,7 +35,7 @@ export function useDeleteThreadMutation(userId: string | undefined) {
       }
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: key });
+      void invalidateEntity(queryClient, null, "chatThreads");
     },
   });
 }

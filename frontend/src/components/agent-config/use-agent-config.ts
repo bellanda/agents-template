@@ -14,6 +14,7 @@ import {
   type AgentConfig,
   type AgentConfigVersion,
 } from "@/lib/api";
+import { invalidateEntity } from "@/lib/api/invalidation";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 
 const agentConfigKey = (agentId: string, userId: string | undefined) =>
@@ -67,7 +68,7 @@ function useConfigMutation<TVars>(
     meta: { errorTitle },
     onSuccess: (config) => {
       queryClient.setQueryData(agentConfigKey(agentId, userId), config);
-      void queryClient.invalidateQueries({ queryKey: versionsKey(agentId, userId) });
+      void invalidateEntity(queryClient, null, "agentConfig");
     },
   });
 }

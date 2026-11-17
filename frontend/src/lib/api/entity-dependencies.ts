@@ -15,4 +15,8 @@ export const ENTITY_DEPENDENCIES = defineEntityMap({
   // Exemplo (apague ao criar o app): gravar uma conta renova o painel que a soma.
   account: { keys: ["accounts"], dependents: ["dashboard"] },
   dashboard: { orgPaths: ["dashboard"], keys: ["dashboard"] },
+  // Instruções do agente (`components/agent-config/use-agent-config.ts`): config ativa + versões.
+  agentConfig: { keys: ["agent-config"] },
+  // Lista de conversas da sidebar do chat (`components/chat/use-threads-query.ts`).
+  chatThreads: { keys: ["threads"] },
 });

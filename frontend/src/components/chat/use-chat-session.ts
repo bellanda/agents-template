@@ -1,5 +1,4 @@
 import type { PromptInputMessage } from "@/components/ai-elements/prompt-input";
-import { threadsQueryKey } from "@/components/chat/use-threads-query";
 import { fetchThreadMessages, uploadFile, UploadError } from "@/lib/api";
 import {
   getCachedMessages,
@@ -13,6 +12,7 @@ import type { FileUIPart, UIMessage } from "ai";
 import { DefaultChatTransport } from "ai";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { apiFetch } from "@/lib/api/client";
+import { invalidateEntity } from "@/lib/api/invalidation";
 import { notifyError } from "@/lib/api/notify";
 
 const STREAM_THROTTLE_MS = 32;
@@ -106,7 +106,7 @@ export function useChatSession({
     transport,
     onFinish() {
       if (sessionId) invalidateThread(sessionId);
-      void queryClient.invalidateQueries({ queryKey: threadsQueryKey(userId) });
+      void invalidateEntity(queryClient, null, "chatThreads");
     },
     onError(err) {
       notifyError("Não foi possível obter a resposta do assistente", err);
@@ -181,7 +181,7 @@ export function useChatSession({
         setCachedMessages(sessionId, hydrated);
         setMessages(hydrated);
         if (hydrated.length === 0) {
-          void queryClient.invalidateQueries({ queryKey: threadsQueryKey(userId) });
+          void invalidateEntity(queryClient, null, "chatThreads");
         }
       })
       .catch((err) => {
