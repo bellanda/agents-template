@@ -19,14 +19,15 @@ USER = {"X-User-Id": "pessoa-1"}
 @pytest.fixture
 async def client(db_conn):
     app = FastAPI()
-    app.include_router(router)
+    # Same prefix as `main.py`, so the write-route coverage guard matches the real route path.
+    app.include_router(router, prefix="/api/v1")
 
     async def conn_override():
         yield db_conn
 
     app.dependency_overrides[get_conn] = conn_override
     transport = httpx.ASGITransport(app=app)
-    async with httpx.AsyncClient(transport=transport, base_url="http://test") as http:
+    async with httpx.AsyncClient(transport=transport, base_url="http://test/api/v1") as http:
         yield http
 
 

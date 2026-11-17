@@ -53,6 +53,7 @@ packages = ["config", "src/api"]
 [tool.pytest.ini_options]
 # Only the tracked suite: backend/temp/ is git-ignored scratch whose debug scripts hit the network.
 testpaths = ["tests"]
+pythonpath = ["."]
 asyncio_mode = "auto"
 # One loop per session: the shared per-process DB connection (tests/conftest.py) is bound to it.
 asyncio_default_fixture_loop_scope = "session"

@@ -153,6 +153,7 @@ async def test_threads_are_listed_read_and_deleted_only_by_their_owner(client, d
     assert mine.json()["messages"][0]["content"] == "segredo"
     assert (await client.delete(f"{API}/threads/alice-1", headers=ALICE)).status_code == 200
     assert (await client.get(f"{API}/threads/alice-1", headers=ALICE)).json()["messages"] == []
+    assert (await client.get(f"{API}/threads", headers=ALICE)).json()["threads"] == []
 
 
 # --------------------------------------------------------------------------- uploads
@@ -254,6 +255,32 @@ async def test_agent_config_is_versioned_and_isolated_per_tenant(client, fake_re
     assert other["active_version"] == 0 and "Alice" not in other["system_prompt_markdown"]
     assert (await client.get(f"{API}/ghost-agent/config", headers=ALICE)).status_code == 404
     assert (await client.get(f"{url}/versions", headers=BOB)).json()["versions"] == []
+
+
+async def test_agent_config_writes_are_what_the_screen_reads_back(client, fake_registry):
+    """Matriz de CRUD: the PUT/activate responses equal the GET the screen uses; edge cases."""
+    fake_registry({MODEL: {"name": "Echo", "capabilities": {}}})
+    url = f"{API}/{MODEL}/config"
+
+    saved = await client.put(
+        url, headers=ALICE, json={"system_prompt_markdown": "# v1", "note": "primeira"}
+    )
+    assert saved.json() == (await client.get(url, headers=ALICE)).json()
+    await client.put(url, headers=ALICE, json={"system_prompt_markdown": "# v2"})
+
+    restored = await client.post(f"{url}/versions/1/activate", headers=ALICE)
+    assert restored.json() == (await client.get(url, headers=ALICE)).json()
+    assert restored.json()["system_prompt_markdown"] == "# v1"
+
+    assert (await client.put(url, headers=ALICE, json={})).status_code == 422
+    assert (await client.post(f"{url}/versions/99/activate", headers=ALICE)).status_code == 404
+    assert (
+        await client.put(
+            f"{API}/ghost-agent/config", headers=ALICE, json={"system_prompt_markdown": "x"}
+        )
+    ).status_code == 404
+    after = (await client.get(url, headers=ALICE)).json()
+    assert after["system_prompt_markdown"] == "# v1" and after["active_version"] == 3
 
 
 @pytest.fixture(autouse=True)

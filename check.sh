@@ -86,7 +86,7 @@ if [ -n "$(find "${REPO}/backend/tests" -name 'test_*.py' -print -quit)" ]; then
     docker compose -p "${PROJECT}-tests" -f compose.yml down -v --remove-orphans
     if docker compose -p "${PROJECT}-tests" -f compose.yml up -d --wait; then
         cd "${REPO}/backend"
-        run "pytest" uv run pytest "${PYTEST_ARGS[@]}"
+        run "pytest" env WRITE_ROUTE_COVERAGE=enforce uv run pytest "${PYTEST_ARGS[@]}"
         cd "${REPO}/backend/tests"
     else
         # Porta de teste ocupada por outro projeto (TEST_DB_PORT) ou

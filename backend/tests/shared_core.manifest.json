@@ -2,8 +2,10 @@
   "repo": "agents-template",
   "files": {
     "backend/src/api/services/cache/valkey_client.py": "fc1db70efa6a978a005b693ac4063750be30abec227bb8d25c0194a6c14f7c98",
-    "backend/src/api/services/uploads/upload_sessions.py": "bb2a8b7a4c4bce222615754b416afce963439ebef6aad3ca98d8682c0f860bac",
-    "backend/tests/uploads/test_upload_sessions.py": "b80fff93c24ecb043ccca102236e7b739ee1652515d1d68deebcd14811541eca"
+    "backend/src/api/services/uploads/upload_sessions.py": "f7e70673fb82cbff1fbfcfed31f8616ad8bc1c3631cd6571fb1e84eab9a66ed0",
+    "backend/tests/uploads/test_upload_sessions.py": "784a030aef945fa1922c9e9afb7e938417230178e2649b10247522e79430b63a",
+    "backend/tests/write_route_coverage.py": "ae3bd4e631ce2bebde43dc257f9e0cd5577a31dcbec41cad250efa5b670c6d0d",
+    "backend/tests/test_write_route_coverage.py": "0b81000fdc2a93e0b28d45ec70674a7d44f7bf2276c82d5592b73d998bd9532c"
   },
   "exceptions": {}
 }

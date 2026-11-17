@@ -9,8 +9,11 @@
     "frontend/src/components/ui/list-toolbar.tsx": "df51a88e5b48d0304fa2d0e8a118b4c13a029ed42528b6c81dafb1a863977111",
     "frontend/src/components/ui/entity-picker.tsx": "cd967a7b7affb4590a5f99dfcc234022edf331a33facedc9edeefda36f156d8b",
     "frontend/src/components/ui/entity-picker.test.tsx": "bb233fa44e06fff42f360ac8dacc2e88420a6f533eb4f702640fdcabdc184704",
-    "frontend/src/components/ui/currency-input.tsx": "4427eb766881548617ab2dbf3a49c834f569a57789f41439171787ef0042cb02",
-    "frontend/src/components/ui/currency-input.test.tsx": "1769f86db707048ed32a4b0233a32e30436248e2b8a4a49768bd177ffeb4319d",
+    "frontend/src/components/ui/currency-input.tsx": "493ade0e4ae524cee3cd0037948063e4b2a7b821b56e411af85704579d5bc50c",
+    "frontend/src/components/ui/currency-input.test.tsx": "19e02539402891670c5ee89c858e8ad4b09d466e8c418ce909882035ee76b9a3",
+    "frontend/src/components/forms/NumericField.tsx": "57e3c81bf1808beab412bd16e540cf236b223904320e9a5e634409465abcc50f",
+    "frontend/src/components/forms/NumericField.test.tsx": "795d259c113d4d75749d99f36c45fc28012a2dcc878d1b18810dfdb48b0903ce",
+    "frontend/src/components/forms/FieldHint.tsx": "6a2ce5c4c77905556dedb7c5c02ca2011504e29f6cdc452d35f11ee7809a12ef",
     "frontend/src/hooks/useUnsavedChangesGuard.tsx": "cd12fb55ff870172765ec069cb8a250aa8fda253a7a7a41d2b7b636f6f4640d8",
     "frontend/src/hooks/useRecentlyOpened.ts": "3f9b719a9aa89c4598a4596855686f1e7a642ec7b210e4ec3a7f8e1e5b6a792e",
     "frontend/src/lib/realtime/use-resilient-stream.ts": "3ae145ef9225c2e0f8625efc71bb33f5d3db069cbfc232570c095608ab4b9077",
@@ -21,7 +24,10 @@
     "frontend/src/lib/realtime/__tests__/entity-changed.test.ts": "3a58c1cda6e0d4e61236565a157c9cc3852fe8e14846a6bff8d944a88b71f982",
     "frontend/src/lib/api/upload-limits.ts": "f88a21e8d05f3e866d05164303b6fa23cd788d4602cbc274f18f248cb9252ea7",
     "frontend/src/lib/api/chunked-upload.ts": "d599483c31d88c1d87d4c5bda90d285dd7ce5371d804362dac4586d483afd5e5",
-    "frontend/src/lib/api/__tests__/chunked-upload.test.ts": "270a018914d9d4e8ae3f62af5a3a195f5cc45a58f6cfb06b21831849983ac61c"
+    "frontend/src/lib/api/__tests__/chunked-upload.test.ts": "270a018914d9d4e8ae3f62af5a3a195f5cc45a58f6cfb06b21831849983ac61c",
+    "frontend/src/test/fake-api.ts": "87a7dceb336a998f52829e0ebf80be05b5bbed84960b2a87289d1660ed6b301e",
+    "frontend/src/test/__tests__/fake-api.test.ts": "8eeec22db55f92cbc9a29c1e68610d83ff04668ab511987679e7f04fa7d04995",
+    "frontend/src/lib/api/__tests__/mutation-refresh-guard.test.ts": "2cb057e6df50a954fde417649cc329c00bc5ff1340c19d97a50134281827846d"
   },
   "exceptions": {},
   "optional": "the template ships a minimal subset; a shared file it does not have is fine, but if present it must match"

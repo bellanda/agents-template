@@ -43,4 +43,36 @@ describe("CurrencyInput", () => {
     expect(input.value).toBe("1,500.00");
     expect(input.getAttribute("aria-invalid")).toBe("true");
   });
+
+  it("lets the user clear a typed 0 and keeps the field empty", () => {
+    render(<Harness onValue={() => undefined} />);
+    const input = screen.getByLabelText("valor") as HTMLInputElement;
+    fireEvent.change(input, { target: { value: "0" } });
+    expect(input.value).toBe("0");
+    fireEvent.change(input, { target: { value: "" } });
+    expect(input.value).toBe("");
+    fireEvent.blur(input);
+    expect(input.value).toBe("");
+  });
+
+  it("selects the whole content on focus (next frame, for iOS)", async () => {
+    render(<CurrencyInput aria-label="valor" value="150,00" onChange={() => undefined} />);
+    const input = screen.getByLabelText("valor") as HTMLInputElement;
+    fireEvent.focus(input);
+    await new Promise((resolve) => requestAnimationFrame(() => resolve(null)));
+    expect([input.selectionStart, input.selectionEnd]).toEqual([0, 6]);
+    expect(input.getAttribute("enterkeyhint")).toBe("done");
+  });
+
+  it("integer mode uses the numeric keyboard and drops separators", () => {
+    function IntegerHarness() {
+      const [value, setValue] = useState("");
+      return <CurrencyInput aria-label="km" decimals={0} value={value} onChange={setValue} />;
+    }
+    render(<IntegerHarness />);
+    const input = screen.getByLabelText("km") as HTMLInputElement;
+    expect(input.getAttribute("inputmode")).toBe("numeric");
+    fireEvent.change(input, { target: { value: "1.500,5" } });
+    expect(input.value).toBe("15005");
+  });
 });

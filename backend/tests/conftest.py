@@ -176,3 +176,8 @@ def pytest_make_parametrize_id(config, val, argname):
     if isinstance(val, bytes | bytearray):
         return f"{argname}-bytes"
     return None
+
+
+# Write-route coverage guard (fleet canonical, 2026-11-17): every POST/PUT/PATCH/DELETE route has
+# a test that succeeded on it. Inert unless WRITE_ROUTE_COVERAGE is set (check.sh sets `enforce`).
+pytest_plugins = ("tests.write_route_coverage",)
